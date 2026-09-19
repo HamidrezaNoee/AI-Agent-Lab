@@ -63,6 +63,16 @@ class ACLQueryTests(unittest.TestCase):
         self.assertIn("g.SubjectID=?",conn.cur.sql)
         self.assertEqual(conn.cur.params[1],"alice")
 
+    def test_meeting_document_query_excludes_other_meetings(self):
+        conn = FakeConnection([])
+        sql_store.authorized_documents(conn,self.a,"شاسی گمرک",meeting_id=390)
+        self.assertIn(
+            "(d.RelatedMeetingID IS NULL OR d.RelatedMeetingID=?)",
+            conn.cur.sql,
+        )
+        self.assertEqual(conn.cur.params[-1],390)
+        self.assertEqual(conn.cur.params[1],"alice")
+
     def test_no_keywords_returns_no_sql_queries(self):
         for query in ("؟ !", "?!", "— - ؛ ،", "___", "  "):
             with self.subTest(query=query):
