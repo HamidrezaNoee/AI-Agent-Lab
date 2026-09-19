@@ -8,6 +8,7 @@ It writes only to EnterpriseProcess2_AI_Test with Windows Authentication.
 import argparse
 import hashlib
 import os
+from array import array
 from pathlib import Path
 
 import pyodbc
@@ -61,11 +62,32 @@ def chunk_text(text: str, size: int = 900, overlap: int = 140):
         start = max(start + 1, end - overlap)
 
 
+EMBED_MODEL = "text-embedding-3-small"
+
+
+def embed_test_chunks(chunks):
+    """Optional semantic embeddings; sends FICTIONAL chunk text to OpenAI API."""
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is required when using --embed.")
+    if len(chunks) > 24:
+        raise ValueError("--embed test limit: at most 24 chunks per document.")
+    from openai import OpenAI
+    client = OpenAI()
+    texts = [piece for _start, _end, piece in chunks]
+    response = client.embeddings.create(model=EMBED_MODEL, input=texts)
+    ordered = sorted(response.data, key=lambda item: item.index)
+    if len(ordered) != len(chunks):
+        raise RuntimeError("Embedding response count differs from chunk count.")
+    return [pyodbc.Binary(array("f", item.embedding).tobytes()) for item in ordered]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Ingest a SYNTHETIC test document.")
     parser.add_argument("--file", required=True, help="One explicit local file")
     parser.add_argument("--title", default="", help="Human-readable document title")
     parser.add_argument("--meeting-no", default="", help="Optional SIM-MTG-A-... number")
+    parser.add_argument("--embed", action="store_true",
+                        help="Embed ONLY fictional test chunks via OpenAI API (optional)")
     args = parser.parse_args()
     path = Path(args.file).expanduser().resolve(strict=True)
     if not path.is_file() or path.stat().st_size > MAX_FILE_BYTES:
@@ -119,10 +141,29 @@ def main():
         )
         previous = cur.fetchone()
         if previous and previous[1] == digest and previous[3] == meeting_id:
+            if args.embed:
+                cur.execute(
+                    "SELECT COUNT_BIG(*) FROM AI.DocumentChunk "
+                    "WHERE DocumentID=? AND Embedding IS NULL",
+                    int(previous[0]),
+                )
+                if int(cur.fetchone()[0]) > 0:
+                    vectors = embed_test_chunks(chunks)
+                    for no, blob in enumerate(vectors, 1):
+                        cur.execute(
+                            "UPDATE AI.DocumentChunk SET Embedding=?, EmbeddingModel=? "
+                            "WHERE DocumentID=? AND ChunkNo=?",
+                            blob, EMBED_MODEL, int(previous[0]), no,
+                        )
+                    conn.commit()
+                    print(f"EMBEDDED EXISTING SYNTHETIC DOCUMENT: DocumentID={previous[0]}, "
+                          f"Chunks={len(vectors)}, Version={previous[2]}")
+                    return
             conn.rollback()
             print(f"ALREADY IMPORTED: DocumentID={previous[0]}, Version={previous[2]}")
             return
 
+        vectors = embed_test_chunks(chunks) if args.embed else None
         version = int(previous[2]) + 1 if previous else 1
         cur.execute(
             "UPDATE AI.Document SET IsCurrent=0 WHERE OriginalFileName=? AND IsCurrent=1",
@@ -144,10 +185,13 @@ def main():
             cur.execute(
                 """
                 INSERT INTO AI.DocumentChunk
-                    (DocumentID,ChunkNo,StartChar,EndChar,ChunkText)
-                VALUES (?,?,?,?,?)
+                    (DocumentID,ChunkNo,StartChar,EndChar,ChunkText,
+                     Embedding,EmbeddingModel)
+                VALUES (?,?,?,?,?,?,?)
                 """,
                 document_id, no, start, end, piece,
+                vectors[no-1] if vectors is not None else None,
+                EMBED_MODEL if vectors is not None else None,
             )
         conn.commit()
         print(f"IMPORTED SYNTHETIC TEST DOCUMENT: DocumentID={document_id}, "
