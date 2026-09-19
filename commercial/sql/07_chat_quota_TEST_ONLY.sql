@@ -55,7 +55,8 @@ BEGIN
  IF @TenantID IS NULL OR @RequestID IS NULL OR
     @SubjectID IS NULL OR LEN(@SubjectID)=0 OR
     @ModelName IS NULL OR LEN(@ModelName)=0 OR
-    TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'AgentTenantID')) <> @TenantID
+    (TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'AgentTenantID')) IS NULL OR
+     TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'AgentTenantID')) <> @TenantID)
     THROW 56802,'Invalid tenant session or request.',1;
  DECLARE @now datetime2(0)=SYSUTCDATETIME();
  DECLARE @monthStart datetime2(0)=CONVERT(datetime2(0),
@@ -98,7 +99,8 @@ BEGIN
  SET NOCOUNT ON;
  SET XACT_ABORT ON;
  IF @TenantID IS NULL OR @RequestID IS NULL OR
-    TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'AgentTenantID'))<>@TenantID
+    (TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'AgentTenantID')) IS NULL OR
+     TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'AgentTenantID'))<>@TenantID)
     THROW 56810,'Invalid tenant context.',1;
  IF @State NOT IN ('Completed','Failed') OR @State IS NULL
     THROW 56811,'Invalid final state.',1;
