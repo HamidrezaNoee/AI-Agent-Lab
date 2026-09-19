@@ -88,18 +88,111 @@ def authorization_snapshot(con, principal: Principal) -> dict:
 
 
 def visible_meetings(con, principal: Principal) -> list[dict]:
+    """Only resources with an EXPLICIT user grant; tenant RLS is a second boundary."""
     cur = con.cursor()
     cur.execute(
         """
-        SELECT TOP(20) MeetingID,MeetingNo,MeetingTitle,MeetingStatus
-        FROM AgentProduct.MeetingIndex
-        WHERE TenantID=?
-        ORDER BY MeetingID DESC
+        SELECT TOP (20) m.MeetingID, m.MeetingNo, m.MeetingTitle, m.MeetingStatus
+        FROM AgentProduct.MeetingIndex AS m
+        JOIN AgentProduct.MeetingGrant AS g
+          ON g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID
+        WHERE m.TenantID=? AND g.SubjectID=? AND g.TenantID=?
+        ORDER BY m.MeetingID DESC
         """,
-        str(principal.tenant_id),
+        str(principal.tenant_id), principal.subject, str(principal.tenant_id),
     )
     return [
         {"meeting_id": int(row[0]), "meeting_no": row[1],
          "title": row[2], "status": row[3]}
         for row in cur.fetchall()
     ]
+
+
+def authorized_meeting(con, principal: Principal, meeting_id: int) -> dict | None:
+    """No matching explicit grant -> no meeting data; do not disclose existence."""
+    if meeting_id <= 0:
+        return None
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT TOP (1) m.MeetingID, m.MeetingNo, m.MeetingTitle, m.MeetingStatus
+        FROM AgentProduct.MeetingIndex m
+        JOIN AgentProduct.MeetingGrant g
+          ON g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID
+        WHERE m.TenantID=? AND m.MeetingID=? AND g.SubjectID=?
+        """,
+        str(principal.tenant_id), meeting_id, principal.subject,
+    )
+    row=cur.fetchone()
+    if row is None:
+        return None
+    return {"kind":"meeting","source":f"MEETING:{row[1]}",
+            "meeting_id":int(row[0]),"meeting_no":row[1],
+            "title":row[2],"status":row[3]}
+
+
+def _literal_like(value: str) -> str:
+    return "%" + value.replace("[", "[[]").replace("%", "[%]").replace("_", "[_]") + "%"
+
+
+def authorized_documents(con, principal: Principal, query: str, limit: int = 5) -> list[dict]:
+    """Read-only keyword evidence, scoped by BOTH tenant RLS and per-user doc grant.
+
+    Never accept tenant ID/subject or arbitrary SQL from the question.
+    This small indexed-test MVP does NOT claim vector/semantic search.
+    """
+    import re
+    terms = []
+    for term in re.findall(r"[^\\W_]{3,}", query, flags=re.UNICODE):
+        if term not in terms:
+            terms.append(term)
+        if len(terms)>=4:
+            break
+    if not terms:
+        return []
+    limit = min(max(int(limit), 1), 5)
+    search_clause = " OR ".join(
+        "(c.ChunkText LIKE ? OR d.DocumentTitle LIKE ?)" for _ in terms
+    )
+    params = [str(principal.tenant_id), principal.subject]
+    for term in terms:
+        params.extend([_literal_like(term), _literal_like(term)])
+    cur=con.cursor()
+    cur.execute(
+        """
+        SELECT TOP (200) d.DocumentID,d.DocumentTitle,d.CurrentVersion,
+          c.ChunkNo,CONVERT(nvarchar(1200),c.ChunkText) AS Excerpt
+        FROM AgentProduct.DocumentIndex d
+        JOIN AgentProduct.DocumentGrant g
+          ON g.TenantID=d.TenantID AND g.DocumentID=d.DocumentID
+        JOIN AgentProduct.DocumentChunk c
+          ON c.TenantID=d.TenantID AND c.DocumentID=d.DocumentID
+         AND c.DocumentVersion=d.CurrentVersion
+        WHERE d.TenantID=? AND g.SubjectID=? AND d.IsActive=1
+          AND (""" + search_clause + """)
+        ORDER BY d.DocumentID,c.ChunkNo
+        """,
+        *params,
+    )
+    rows=cur.fetchall()
+    # Hard limit on evidence; no arbitrary unlimited document export.
+    return [
+        {"kind":"document",
+         "source":f"DOC:{row[0]}:v{row[2]}:c{row[3]}",
+         "document_id":str(row[0]),"title":row[1],
+         "version":int(row[2]),"chunk_no":int(row[3]),
+         "excerpt":row[4]}
+        for row in rows[:limit]
+    ]
+
+
+def authorized_evidence(con, principal: Principal, question: str,
+                        meeting_id: int | None = None) -> list[dict]:
+    """Collect bounded evidence before ANY future LLM API invocation."""
+    results=[]
+    if meeting_id is not None:
+        meeting=authorized_meeting(con,principal,meeting_id)
+        if meeting is not None:
+            results.append(meeting)
+    results.extend(authorized_documents(con, principal, question, limit=5))
+    return results
