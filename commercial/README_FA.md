@@ -176,3 +176,37 @@ If scripts 09, 07 and 08 report missing `AgentProduct` objects, **stop**: the ba
 6. If a schema object remains missing, do NOT drop the synthetic database or rerun seed/import scripts; share only the preflight diagnostic (no passwords) and the FIRST SQL error from the failed migration.
 
 IMPORTANT: The original README's examples assume that the SQL base migration 01 was executed successfully. An SSMS error 57001 in 09 is NOT fixed by rerunning 09 before creating `AgentProduct.DocumentIndex`. Before enabling lab chat, the commercial SQL reader needs separate least-privilege login, grants from 04, 05 and 07, a real trusted OIDC test identity, tenant-scoped synthetic fixtures and verified ACL tests.
+
+
+## Milestone 4: real SQL / API ACL integration WITHOUT a web server or OpenAI
+
+The user confirmed that synthetic SQL tests for cross-tenant isolation, per-user grants and quota all print their expected PASS messages. The next target is to prove that an independently provisioned SQL login can read the *correct fictional records through the actual FastAPI query functions*. This still is NOT an end-to-end OIDC or live model-provider test.
+
+**1. Provision the dedicated LAB SQL login once.** In SSMS, connect to `.\\SQLSERVER2022` as the TEST administrator, expand `Security > Logins > New Login` and create `AI_CommercialReader` using SQL Server Authentication and a strong unique locally held password. Set its default database to `EnterpriseProcess2_AI_Test`; under User Mapping, select **only** that test database; do NOT grant `sysadmin`, `db_owner`, `db_datareader`, `db_datawriter`, or any access to the operational ProcessMaker DB. If the server is configured for Windows-only authentication, a SQL Authentication login will not work until an administrator explicitly enables Mixed Mode on the *test instance*, and an instance restart may be necessary. Never enable it on a production instance just to run this demo. Store credentials securely, NOT in Git or this conversation. Do NOT reuse `AI_MeetingAgent`.
+
+**2. As TEST admin in SSMS, run separately:** `commercial/sql/04_reader_permissions_TEST_ONLY.sql`, then `05_resource_acl_TEST_ONLY.sql`, then `07_chat_quota_TEST_ONLY.sql` (the latter two can be rerun to grant access to objects created before the login). After that, run `13_verify_reader_permissions_ADMIN_TEST_ONLY.sql`. It impersonates the dedicated reader WITHOUT needing to know its password and checks that it has narrow read/execute permissions but no admin, schema-wide MTG/AI read, or direct tenant INSERT. Do not proceed if the permission audit fails.
+
+**3. As TEST admin in SSMS, run `12_seed_api_fixtures_TEST_ONLY.sql` ONCE.** It commits deliberately fictional records only into `AgentProduct` of `EnterpriseProcess2_AI_Test`: two tenants, lab-alice / lab-bob in A, lab-carol in B, three meetings, four documents including one tenant-wide fictional guide, per-user grants and 30-day test subscriptions. These seed records intentionally PERSIST for API integration (unlike earlier SQL rollback tests). A second execution safely refuses to overwrite fixed fixture IDs; do NOT drop or recreate existing MTG meeting data.
+
+**4. Run the real-SQL/in-process HTTP route test from PowerShell:**
+
+```powershell
+$repo = "D:\\A Project\\17 meeting ai agent\\Azure\\AI-Agent-Lab-GitHub"
+git -C $repo pull --ff-only origin main
+cd $repo
+python -m pip install -r .\\commercial\\requirements.txt
+python -m pip check
+$env:COMMERCIAL_MODE = "lab"
+$env:COMMERCIAL_SQL_SERVER = ".\\SQLSERVER2022"
+$env:COMMERCIAL_SQL_DATABASE = "EnterpriseProcess2_AI_Test"
+$env:COMMERCIAL_SQL_USER = "AI_CommercialReader"
+$securePassword = Read-Host "LAB Commercial SQL password" -AsSecureString
+$env:COMMERCIAL_SQL_PASSWORD = [System.Net.NetworkCredential]::new("", $securePassword).Password
+$env:COMMERCIAL_CHAT_ENABLED = "0"
+$env:RUN_COMMERCIAL_SQL_INTEGRATION = "LAB_ONLY_NO_SERVER"
+python -m commercial.integration_sql_lab
+```
+
+**Safety scope:** `integration_sql_lab.py` uses FastAPI's `TestClient` and a local authentication dependency override *inside that one test process* to exercise the actual read paths with fictional principals. It does **NOT** start Uvicorn or bypass authentication in the application, and it does not call OpenAI. Do not copy its dependency override into the API or make it available as an HTTP endpoint. The test checks cross-tenant and within-tenant grant boundaries using the REAL SQL Server account and reports PASS/FAIL lines. A successful result proves only the listed test scenarios, not overall penetration-tested production security. Never set `COMMERCIAL_CHAT_ENABLED=1` during this test.
+
+Once it completes, remove the SQL password from the current PowerShell process with `Remove-Item Env:COMMERCIAL_SQL_PASSWORD -ErrorAction SilentlyContinue` when no further local tests need it. The next distinct milestone is a real configured IdP/JWKS and signed access-token integration, **not** a hardcoded production user or anonymous chat endpoint.
