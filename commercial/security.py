@@ -32,7 +32,7 @@ def _https_url(value: str, name: str) -> str:
     parsed = urlsplit(value or "")
     if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
         raise ConfigurationFailed(f"{name} must be a configured HTTPS URL without credentials/fragment")
-    return value.rstrip("/")
+    return value  # Preserve exact OIDC issuer, including any required trailing slash.
 
 
 class VerifiedTokenAuthenticator:
