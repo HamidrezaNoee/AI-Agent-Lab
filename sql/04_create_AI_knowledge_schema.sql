@@ -44,6 +44,8 @@ BEGIN
         StartChar int NOT NULL,
         EndChar int NOT NULL,
         ChunkText nvarchar(max) NOT NULL,
+        Embedding varbinary(max) NULL,
+        EmbeddingModel varchar(100) NULL,
         CONSTRAINT FK_AI_DocumentChunk_Document FOREIGN KEY(DocumentID)
             REFERENCES AI.Document(DocumentID),
         CONSTRAINT UQ_AI_DocumentChunk_Number UNIQUE(DocumentID, ChunkNo),
@@ -52,6 +54,12 @@ BEGIN
     );
     CREATE INDEX IX_AI_DocumentChunk_DocumentID ON AI.DocumentChunk(DocumentID);
 END;
+GO
+/* Upgrade pre-existing test tables without dropping any data. */
+IF COL_LENGTH(N'AI.DocumentChunk', N'Embedding') IS NULL
+    ALTER TABLE [AI].[DocumentChunk] ADD Embedding varbinary(max) NULL;
+IF COL_LENGTH(N'AI.DocumentChunk', N'EmbeddingModel') IS NULL
+    ALTER TABLE [AI].[DocumentChunk] ADD EmbeddingModel varchar(100) NULL;
 GO
 IF USER_ID(N'AI_MeetingAgent') IS NULL
     THROW 54003, 'Create/map the read-only AI_MeetingAgent user first.', 1;
