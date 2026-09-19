@@ -162,3 +162,17 @@ Do **not** set `COMMERCIAL_CHAT_ENABLED=1` on an internet-facing server. The end
 ```
 
 This is an **illustrative shape**, not an observed provider response. Real answers depend on test data, explicit ACLs and a valid IdP token.
+
+
+## Recovery from SQL 57001 / 56801 / 56901 (missing AgentProduct schema)
+
+If scripts 09, 07 and 08 report missing `AgentProduct` objects, **stop**: the base schema creation has not run successfully, is not visible to the SSMS login, or a wrong database/instance was selected. Python unit tests are mocked; they cannot create database tables. SQL Server Management Studio `GO` separates batches, so a `THROW` in an early batch of a migration does **not** guarantee that later batches will not execute. Never run all migrations together blindly. Use an ADMIN login against the synthetic test DB, NOT `AI_MeetingAgent`.
+
+1. Run `commercial/sql/00_preflight_ADMIN_TEST_ONLY.sql` ALONE in SSMS and verify it prints PASS and names the expected database, server, and administrator login. If it reports 58002, reconnect with a TEST DB `db_owner` or server `sysadmin` account; do not grant admin privileges to the read-only agent.
+2. Execute `01_tenant_boundary_TEST_ONLY.sql` ALONE, check Messages, then verify `SELECT SCHEMA_ID(N'AgentProduct'), OBJECT_ID(N'AgentProduct.DocumentIndex',N'U'), OBJECT_ID(N'AgentProduct.Tenant',N'U');` gives NON-NULL values in the same test database.
+3. Execute `03_membership_usage_TEST_ONLY.sql` ALONE, then `05_resource_acl_TEST_ONLY.sql` ALONE. Stop at the first error.
+4. Execute `09_document_context_TEST_ONLY.sql` ALONE, then `07_chat_quota_TEST_ONLY.sql` ALONE. Check all object IDs returned by each.
+5. Run `10_verify_schema_ADMIN_TEST_ONLY.sql` ALONE. Only when this prints PASS, run the rollback-only tests `02_test_tenant_isolation.sql`, `06_test_resource_acl.sql`, and `08_test_chat_quota.sql` individually. SQL tests are not considered passed until their actual PASS messages are observed.
+6. If a schema object remains missing, do NOT drop the synthetic database or rerun seed/import scripts; share only the preflight diagnostic (no passwords) and the FIRST SQL error from the failed migration.
+
+IMPORTANT: The original README's examples assume that the SQL base migration 01 was executed successfully. An SSMS error 57001 in 09 is NOT fixed by rerunning 09 before creating `AgentProduct.DocumentIndex`. Before enabling lab chat, the commercial SQL reader needs separate least-privilege login, grants from 04, 05 and 07, a real trusted OIDC test identity, tenant-scoped synthetic fixtures and verified ACL tests.
