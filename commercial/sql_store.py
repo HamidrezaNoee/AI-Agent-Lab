@@ -143,7 +143,7 @@ def authorized_documents(con, principal: Principal, query: str, limit: int = 5) 
     """
     import re
     terms = []
-    for term in re.findall(r"[^\\W_]{3,}", query, flags=re.UNICODE):
+    for term in re.findall(r"[^\W_]{3,}", query, flags=re.UNICODE):
         if term not in terms:
             terms.append(term)
         if len(terms)>=4:
