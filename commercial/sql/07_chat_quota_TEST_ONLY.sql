@@ -62,9 +62,11 @@ BEGIN
  DECLARE @monthStart datetime2(0)=CONVERT(datetime2(0),
    DATEFROMPARTS(YEAR(@now),MONTH(@now),1));
  DECLARE @limit int, @count bigint, @lockResult int;
+ DECLARE @lockResource nvarchar(255) =
+   CONCAT(N'APChatQuota:', CONVERT(nvarchar(36),@TenantID));
  BEGIN TRAN;
  EXEC @lockResult = sys.sp_getapplock
-  @Resource = CONCAT('APChatQuota:', CONVERT(varchar(36),@TenantID)),
+  @Resource = @lockResource,
   @LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=5000;
  IF @lockResult < 0 THROW 56803,'Quota lock unavailable.',1;
  SELECT @limit=s.MonthlyRequestLimit
