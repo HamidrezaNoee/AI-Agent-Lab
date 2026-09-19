@@ -7,7 +7,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from commercial.api import app, _authenticated_principal
-from commercial.security import Principal
+from commercial.security import ConfigurationFailed, Principal
 from commercial.sql_store import AccessDenied
 
 
@@ -27,10 +27,9 @@ class CommercialApiTests(unittest.TestCase):
 
     def test_protected_endpoint_never_returns_data_without_valid_auth_configuration(self):
         # Server has no OIDC settings in offline test. Fail closed, not 200.
-        with patch("commercial.api._verifier", side_effect=Exception("test misconfig")):
-            # App suppresses only ConfigurationFailed; assert never returns success.
+        with patch("commercial.api._verifier", side_effect=ConfigurationFailed("test misconfig")):
             response = self.client.get("/v1/meetings")
-            self.assertNotEqual(response.status_code, 200)
+            self.assertEqual(response.status_code, 503)
 
     def test_authenticated_but_unsubscribed_user_is_denied(self):
         app.dependency_overrides[_authenticated_principal] = lambda: self.principal
