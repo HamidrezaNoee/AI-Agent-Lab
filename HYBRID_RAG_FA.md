@@ -33,19 +33,12 @@ git -C $repo pull --ff-only origin main
 Copy-Item "$repo\06_meeting_ai_agent.py" "$project\06_meeting_ai_agent.py" -Force
 Copy-Item "$repo\knowledge_tools.py" "$project\knowledge_tools.py" -Force
 Copy-Item "$repo\07_ingest_documents.py" "$project\07_ingest_documents.py" -Force
+New-Item -ItemType Directory -Path "$project\sample_docs" -Force | Out-Null
 Copy-Item "$repo\sample_docs\synthetic_import_procedure.md" "$project\sample_docs\synthetic_import_procedure.md" -Force
 cd $project
 $env:SQL_SERVER = ".\SQLSERVER2022"
 $env:SQL_DATABASE = "EnterpriseProcess2_AI_Test"
 ```
-
-پیش از کپی فایل نمونه، پوشه مقصد را در صورت نبودن بسازید:
-
-```powershell
-New-Item -ItemType Directory -Path "$project\sample_docs" -Force | Out-Null
-```
-
-اگر در اجرای `Copy-Item` خطای نبود پوشه مقصد گرفتید، دستور `New-Item` را **قبل از** کپی نمونه اجرا و فقط همان `Copy-Item` را تکرار کنید.
 
 ۴. وابستگی‌ها و کنترل Syntax / تست‌های بدون دیتابیس:
 
