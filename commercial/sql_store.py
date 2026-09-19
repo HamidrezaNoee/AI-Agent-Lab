@@ -135,7 +135,8 @@ def _literal_like(value: str) -> str:
     return "%" + value.replace("[", "[[]").replace("%", "[%]").replace("_", "[_]") + "%"
 
 
-def authorized_documents(con, principal: Principal, query: str, limit: int = 5) -> list[dict]:
+def authorized_documents(con, principal: Principal, query: str, limit: int = 5,
+                         meeting_id: int | None = None) -> list[dict]:
     """Read-only keyword evidence, scoped by BOTH tenant RLS and per-user doc grant.
 
     Never accept tenant ID/subject or arbitrary SQL from the question.
@@ -157,11 +158,17 @@ def authorized_documents(con, principal: Principal, query: str, limit: int = 5) 
     params = [str(principal.tenant_id), principal.subject]
     for term in terms:
         params.extend([_literal_like(term), _literal_like(term)])
+    # When answering about a meeting, exclude documents linked to OTHER meetings.
+    scope_clause = ""
+    if meeting_id is not None:
+        scope_clause = " AND (d.RelatedMeetingID IS NULL OR d.RelatedMeetingID=?)"
+        params.append(meeting_id)
     cur=con.cursor()
     cur.execute(
         """
         SELECT TOP (200) d.DocumentID,d.DocumentTitle,d.CurrentVersion,
-          c.ChunkNo,CONVERT(nvarchar(1200),c.ChunkText) AS Excerpt
+          c.ChunkNo,CONVERT(nvarchar(1200),c.ChunkText) AS Excerpt,
+          d.RelatedMeetingID
         FROM AgentProduct.DocumentIndex d
         JOIN AgentProduct.DocumentGrant g
           ON g.TenantID=d.TenantID AND g.DocumentID=d.DocumentID
@@ -170,6 +177,7 @@ def authorized_documents(con, principal: Principal, query: str, limit: int = 5) 
          AND c.DocumentVersion=d.CurrentVersion
         WHERE d.TenantID=? AND g.SubjectID=? AND d.IsActive=1
           AND (""" + search_clause + """)
+        """ + scope_clause + """
         ORDER BY d.DocumentID,c.ChunkNo
         """,
         *params,
@@ -181,7 +189,8 @@ def authorized_documents(con, principal: Principal, query: str, limit: int = 5) 
          "source":f"DOC:{row[0]}:v{row[2]}:c{row[3]}",
          "document_id":str(row[0]),"title":row[1],
          "version":int(row[2]),"chunk_no":int(row[3]),
-         "excerpt":row[4]}
+         "excerpt":row[4], "related_meeting_id":row[5],
+         "scope":"global" if row[5] is None else "meeting"}
         for row in rows[:limit]
     ]
 
@@ -194,5 +203,7 @@ def authorized_evidence(con, principal: Principal, question: str,
         meeting=authorized_meeting(con,principal,meeting_id)
         if meeting is not None:
             results.append(meeting)
-    results.extend(authorized_documents(con, principal, question, limit=5))
+    results.extend(authorized_documents(
+        con, principal, question, limit=5, meeting_id=meeting_id
+    ))
     return results
