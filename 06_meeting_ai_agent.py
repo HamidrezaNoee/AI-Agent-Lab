@@ -354,8 +354,8 @@ def main():
             "from words such as پرونده 1094. Prefer FinalProgressPercent for final progress "
             "and mention a difference between OwnerProgressPercent and SecretaryProgressPercent "
             "when material. as_of_sql_server_local is the SQL server clock. "
-            "For exact aggregate action figures use management_kpis (pass meeting_id for a
-            specific meeting), not mental "
+            "For exact aggregate action figures use management_kpis; pass meeting_id "
+            "for a specific meeting. Do not use mental "
             "arithmetic on a limited sample of actions. "
             "Document search can use semantic embeddings when present, else keyword "
             "fallback; never claim semantic retrieval unless the tool reports hybrid. "
