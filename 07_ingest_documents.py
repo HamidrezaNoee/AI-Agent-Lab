@@ -108,7 +108,7 @@ def open_admin_connection():
     )
 
 
-def ingest(file_path: Path, embed: bool) -> None:
+def ingest(file_path: Path, embed: bool, meeting_id: int = 0) -> None:
     file_path = file_path.resolve(strict=True)
     if file_path.stat().st_size > MAX_FILE_BYTES:
         raise ValueError("File exceeds 2MB MVP safety limit.")
@@ -128,6 +128,15 @@ def ingest(file_path: Path, embed: bool) -> None:
         cur.execute("SELECT DB_NAME()")
         if cur.fetchone()[0] != TEST_DB:
             raise RuntimeError("Wrong target database.")
+        if meeting_id < 0:
+            raise ValueError("meeting_id cannot be negative.")
+        if meeting_id:
+            cur.execute(
+                "SELECT 1 FROM MTG.Meeting WHERE MeetingID=? AND MeetingNo LIKE N'SIM-MTG-A-%'",
+                meeting_id,
+            )
+            if cur.fetchone() is None:
+                raise ValueError("Related MeetingID is not a synthetic meeting in the test DB.")
         cur.execute(
             "SELECT TOP(1) Sha256,VersionNo FROM AI.Document WITH (UPDLOCK,HOLDLOCK) "
             "WHERE OriginalFileName=? AND IsCurrent=1 ORDER BY VersionNo DESC",
@@ -153,10 +162,10 @@ def ingest(file_path: Path, embed: bool) -> None:
             INSERT AI.Document(OriginalFileName,Title,FileType,Sha256,VersionNo,
                                     IsCurrent,IsSynthetic,RelatedMeetingID,CharCount)
             OUTPUT inserted.DocumentID
-            VALUES (?,?,?,?,?,1,1,NULL,?)
+            VALUES (?,?,?,?,?,1,1,?,?)
             """,
             source_name, file_path.stem[:300], file_path.suffix.lower().lstrip("."),
-            sha, version, len(text),
+            sha, version, meeting_id or None, len(text),
         )
         doc_id = int(cur.fetchone()[0])
         for index, ((start, end, body), vector) in enumerate(zip(parts, vector_bytes), 1):
@@ -193,9 +202,11 @@ if __name__ == "__main__":
     parser.add_argument("--file", required=True, type=Path)
     parser.add_argument("--synthetic", action="store_true",
                         help="Confirm the file contains fictional data approved for testing.")
+    parser.add_argument("--meeting-id", type=int, default=0,
+                        help="Optional verified SIM-MTG-A MeetingID to link this fictional document.")
     parser.add_argument("--embed", action="store_true",
                         help="Send chunks to OpenAI embeddings API for semantic search.")
     args = parser.parse_args()
     if not args.synthetic:
         parser.error("Add --synthetic ONLY for approved fictional test documents.")
-    ingest(args.file, args.embed)
+    ingest(args.file, args.embed, args.meeting_id)
