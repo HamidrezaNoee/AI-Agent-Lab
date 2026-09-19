@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.bak
+*.bak.gz
+*.bacpac
+*.dacpac
+*.mdf
+*.ldf
+*.zip
+*.7z
+*.log
+secrets.*
+credentials.*
