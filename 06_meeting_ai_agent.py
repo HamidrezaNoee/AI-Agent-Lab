@@ -11,6 +11,7 @@ from contextlib import contextmanager
 
 import pyodbc
 from agents import Agent, Runner, function_tool
+from knowledge_tools import search_knowledge_documents
 
 TEST_DATABASE = "EnterpriseProcess2_AI_Test"
 PREFIX = "SIM-MTG-A-%"
@@ -425,6 +426,16 @@ def main():
             "a vehicle and a subject, use search_meetings_by_vehicle_topic and pass "
             "two separate short search terms, e.g. vehicle=نیسان سیلفی and topic=گمرک. "
             "Do not claim no meetings exist based on searching an entire sentence as one phrase. "
+            "For questions about document text, policy, procedure, free-text evidence or "
+            "reasons stated in documents, call search_knowledge_documents. "
+            "For questions requiring BOTH meeting/action status and document guidance, "
+            "call the relevant SQL tools AND search_knowledge_documents, then distinguish "
+            "the two sources in the answer. Do not claim a document is an actual company "
+            "policy: this environment contains fictional test documents only. "
+            "Always cite the document source_file and citation identifier DOC:id:v:c "
+            "for each document-specific factual claim; do not create document citations. "
+            "If document tool returns no matches, explicitly say that supporting source "
+            "material was not found instead of inventing a policy. "
             "For dataset counts call dataset_summary. "
             "If the user asks for overdue actions call list_overdue_actions; distinguish "
             "total_overdue_actions from returned_actions (at most 15). Report both if relevant. "
@@ -449,6 +460,7 @@ def main():
         tools=[
             dataset_summary, search_meetings, search_meetings_by_vehicle_topic,
             get_meeting_details, list_overdue_actions,
+            search_knowledge_documents,
             management_kpis, search_document_chunks,
         ],
     )
