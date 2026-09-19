@@ -64,9 +64,22 @@ class ACLQueryTests(unittest.TestCase):
         self.assertEqual(conn.cur.params[1],"alice")
 
     def test_no_keywords_returns_no_sql_queries(self):
+        for query in ("؟ !", "?!", "— - ؛ ،", "___", "  "):
+            with self.subTest(query=query):
+                conn = FakeConnection([])
+                self.assertEqual(sql_store.authorized_documents(conn,self.a,query),[])
+                self.assertEqual(conn.cur.sql,"")
+
+    def test_persian_words_accepted_without_punctuation_tokens(self):
         conn = FakeConnection([])
-        self.assertEqual(sql_store.authorized_documents(conn,self.a,"؟ !"),[])
-        self.assertEqual(conn.cur.sql,"")
+        self.assertEqual(
+            sql_store.authorized_documents(conn,self.a,"؟ ! گمرک و ترخیص ؛"), []
+        )
+        self.assertIn("AgentProduct.DocumentGrant",conn.cur.sql)
+        self.assertIn("%گمرک%",conn.cur.params)
+        self.assertIn("%ترخیص%",conn.cur.params)
+        self.assertNotIn("%؟%",conn.cur.params)
+        self.assertNotIn("%!%",conn.cur.params)
 
 
 class PreviewRouteTests(unittest.TestCase):
