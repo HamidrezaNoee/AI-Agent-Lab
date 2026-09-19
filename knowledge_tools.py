@@ -69,13 +69,22 @@ def _cosine_from_bytes(vector_bytes, query_vector):
     return sum(a * b for a, b in zip(values, query_vector)) / (magnitude * query_magnitude)
 
 
-def retrieve_knowledge(query: str, limit: int = 5):
+def retrieve_knowledge(query: str, limit: int = 5, meeting_id: int = 0):
     query = query.strip()[:400]
     if not query:
         return {"error": "Empty document question."}
     limit = min(max(int(limit), 1), 5)
+    if meeting_id < 0:
+        return {"error": "meeting_id cannot be negative"}
     with _connection() as conn:
         cursor = conn.cursor()
+        if meeting_id:
+            cursor.execute(
+                "SELECT 1 FROM MTG.Meeting WHERE MeetingID=? AND MeetingNo LIKE N'SIM-MTG-A-%'",
+                meeting_id,
+            )
+            if cursor.fetchone() is None:
+                return {"error": "Synthetic meeting does not exist"}
         cursor.execute(
             """
             SELECT TOP (5001)
@@ -85,8 +94,10 @@ def retrieve_knowledge(query: str, limit: int = 5):
             FROM AI.DocumentChunk c
             JOIN AI.Document d ON d.DocumentID=c.DocumentID
             WHERE d.IsCurrent=1 AND d.IsSynthetic=1
+              AND (?=0 OR d.RelatedMeetingID IS NULL OR d.RelatedMeetingID=?)
             ORDER BY d.DocumentID,c.ChunkNo
-            """
+            """,
+            meeting_id, meeting_id,
         )
         rows = cursor.fetchall()
     if not rows:
@@ -139,6 +150,7 @@ def retrieve_knowledge(query: str, limit: int = 5):
     return {
         "kind": "SYNTHETIC_TEST_DOCUMENTS",
         "active_chunks_searched": len(rows),
+        "meeting_id_filter": meeting_id,
         "matches": [item[1] for item in ranked[:limit]],
         "source_policy": (
             "Cite exact DOC identifiers for document claims. "
@@ -148,14 +160,15 @@ def retrieve_knowledge(query: str, limit: int = 5):
 
 
 @function_tool
-def search_knowledge_documents(question: str) -> str:
+def search_knowledge_documents(question: str, meeting_id: int = 0) -> str:
     """Find cited passages in versioned synthetic Word/text documents.
 
     Use for document policies, guidelines, reasons, procedures and free-text
     facts, not for numerical meeting/action counts. Returns source file,
     version, chunk ID, character offsets and exact passage for attribution.
     """
-    return json.dumps(retrieve_knowledge(question), ensure_ascii=False, default=str)
+    return json.dumps(retrieve_knowledge(question, meeting_id=meeting_id),
+                      ensure_ascii=False, default=str)
 
 
 if __name__ == "__main__":
