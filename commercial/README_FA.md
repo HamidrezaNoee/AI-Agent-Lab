@@ -1,12 +1,12 @@
-# Commercial Agent | Milestone 1: tenant & identity boundary (LAB ONLY)
+# Commercial Agent | Milestone 1–2: tenant identity + per-user ACL (LAB ONLY)
 
-**Current status: security foundation / prototype, NOT a production-ready or sellable AI service.**
+**Current status: security + evidence-retrieval foundation / prototype, NOT a production-ready or sellable AI service.**
 The existing `06_meeting_ai_agent.py` and `knowledge_tools.py` remain synthetic research tools; **do not expose them directly to customers**. Their shared SQL login is NOT a user-by-user authorization system.
 
 ## Repository deliverables in this milestone
 
 - `commercial/security.py`: validate a real IdP-signed RS256 JWT against an ADMIN-CONFIGURED HTTPS issuer, audience and JWKS endpoint; reject bad signature, issuer, audience, lifetime, empty/invalid tenant and missing bearer tokens. The `tenant_id` must be a trusted claim issued by the IdP. A request header or a field in the user's question is never accepted as tenant identity.
-- `commercial/api.py`: authenticated `GET /v1/me` and `GET /v1/meetings` skeleton; zero unfiltered SQL endpoints; no chatbot endpoint at this stage.
+- `commercial/api.py`: authenticated `GET /v1/me` and `GET /v1/meetings` skeleton; zero unfiltered SQL endpoints; `POST /v1/chat/preview` for explicitly authorized *evidence only*; no external model completion endpoint at this stage.
 - `commercial/sql_store.py`: each request creates a NEW SQL connection, sets `AgentTenantID` SQL session context, checks the database's active membership + active tenant + unexpired subscription, and queries a tenant-scoped meeting index. The commercial SQL user MUST be separate from `AI_MeetingAgent`.
 - `commercial/sql/01_tenant_boundary_TEST_ONLY.sql`: isolated tenant, meeting-index, document-index, chunk, subscription and audit contracts with SQL Server row-level security (RLS).
 - `commercial/sql/03_membership_usage_TEST_ONLY.sql`: per-tenant memberships and token usage storage contracts.
@@ -14,7 +14,7 @@ The existing `06_meeting_ai_agent.py` and `knowledge_tools.py` remain synthetic 
 - `commercial/sql/04_reader_permissions_TEST_ONLY.sql`: least-privilege SELECT grants for a separately provisioned login and explicit DENY on the original unscoped `MTG` and `AI` lab schemas.
 - `commercial/tests`: offline JWT/API access-gate unit tests.
 
-**Important limitations:** The gateway currently reads only `AgentProduct.MeetingIndex` test rows, not real ProcessMaker sessions. No production document import, chat completion, per-resource ACL, token metering enforcement, billing, customer onboarding, audit writer, rate limiting, or real license enforcement has been shipped. Do not describe the `Subscription` table as a billing integration: it is only an admission flag/date. Do not treat the JWT `tenant_id` claim as sufficient: membership is checked in SQL on every request.
+**Important limitations:** The gateway currently reads only `AgentProduct.MeetingIndex` test rows, not real ProcessMaker sessions. No production document import, LLM chat completion, token metering enforcement, billing, customer onboarding, audit writer, rate limiting, or real license enforcement has been shipped. Meeting/document per-user ACL is implemented at the new API query layer, NOT as a separate per-user database RLS policy. Do not describe the `Subscription` table as a billing integration: it is only an admission flag/date. Do not treat the JWT `tenant_id` claim as sufficient: membership is checked in SQL on every request.
 
 ## Development safety
 
@@ -41,15 +41,17 @@ In SSMS, Windows Authentication, instance `.\SQLSERVER2022`, run IN THIS ORDER:
 commercial/sql/01_tenant_boundary_TEST_ONLY.sql
 commercial/sql/03_membership_usage_TEST_ONLY.sql
 commercial/sql/02_test_tenant_isolation.sql
+commercial/sql/05_resource_acl_TEST_ONLY.sql
+commercial/sql/06_test_resource_acl.sql
 ```
 
 Expected message from the third script:
 
 ```
-PASS: tenant A, tenant B, and missing-context SELECT isolation.
+PASS: tenant A, tenant B, and missing-context SELECT isolation.\nPASS: same-tenant user meeting/document grants and missing-context isolation.
 ```
 
-The SQL script's RLS test runs in a transaction and rolls back its synthetic tenants and meeting indexes. After it passes, create the NEW server login `AI_CommercialReader` in SSMS with a separately generated password; do not add it to any administrative or bulk-reading role. Then execute `commercial/sql/04_reader_permissions_TEST_ONLY.sql`. Do not type passwords into chat or commit them to Git.
+Both SQL isolation tests run inside transactions and roll back all fictional tenant/resource test rows. After it passes, create the NEW server login `AI_CommercialReader` in SSMS with a separately generated password; do not add it to any administrative or bulk-reading role. Then execute `commercial/sql/04_reader_permissions_TEST_ONLY.sql` (script 05 can be rerun afterward to grant read-only access to new grant/document tables). Do not type passwords into chat or commit them to Git.
 
 ## Gateway is deliberately not ready to start without a real trusted IdP
 
@@ -78,3 +80,15 @@ Placeholders are intentionally NOT real provider settings. Without a configured 
 4. **Sales/operations:** signed licenses, plan/seat limits, *atomic* token/request quotas, payment-webhook verification, cost and usage metering, backup/DR, observability, disaster recovery, security review, and documented data-processing agreements.
 
 A WordPress/WooCommerce frontend can later sell subscriptions and display the chat UI, but it MUST NOT hold SQL credentials or be the authorization authority for tenant data. An ASP.NET Core 8 gateway remains a natural integration option for the user's existing .NET stack.
+
+## Milestone 2: query-layer access control and cited evidence preview
+
+- `commercial/sql/05_resource_acl_TEST_ONLY.sql` creates `MeetingGrant` and `DocumentGrant` tables with FK-scoped tenant/user membership; no grant = no resource in normal API response. The SQL tenant RLS policy is a second, independent filter.
+- `commercial/sql/06_test_resource_acl.sql` checks two users of ONE fictional tenant with different meeting/document grants and missing SQL tenant context. It rolls back test rows.
+- `GET /v1/meetings` now requires explicit `MeetingGrant` for the verified JWT subject.
+- `GET /v1/knowledge/search?q=...` retrieves a bounded set of fragments only after joining `DocumentGrant` for the subject and selecting the active document version; this lab search is **lexical only**.
+- `POST /v1/chat/preview` accepts `{"question":"...","meeting_id":71}` and returns up to six attributed, authorized evidence items, **not a synthesized answer**. Request bodies reject `tenant_id`, `subject`, and other extra fields. `meeting_id` must refer to a record granted to the verified principal or its existence is not disclosed.
+- `commercial/tests/test_acl_preview.py` has offline tests of grant-bound SQL query construction and API preview behavior. Run `python -m unittest discover -s commercial/tests -v` again after pulling.
+- Access to *all* a tenant's documents using the commercial SQL login remains technically possible outside the API because per-user grants are enforced in application SQL JOINs. Keep the SQL login private to a trusted API host and use database stored-procedure/policy hardening in the next milestone. **Do not expose this MVP over the internet.**
+
+This step does **not** automatically import data from the original `MTG` or `AI` tables into the commercial index. The evidence preview remains empty until test tenants, subject memberships, explicit resource grants and fictional indexed data are deliberately provisioned. End-to-end integration with a real identity provider, SQL instance and model must still be tested.
