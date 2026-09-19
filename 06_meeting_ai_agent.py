@@ -54,27 +54,28 @@ def _json(payload):
 
 @function_tool
 def dataset_summary() -> str:
-    """Count synthetic meetings, decisions, actions and reviews in the TEST DB."""
+    """Count all synthetic meetings, decisions, actions and reviews with independent SQL counts."""
     with _connection() as conn:
         cur = conn.cursor()
         cur.execute(
             """
             SELECT
-                COUNT_BIG(DISTINCT m.MeetingID) AS MeetingCount,
-                COUNT_BIG(DISTINCT d.DecisionID) AS DecisionCount,
-                COUNT_BIG(DISTINCT a.ActionItemID) AS ActionCount,
-                COUNT_BIG(DISTINCT r.ActionReviewID) AS ReviewCount
-            FROM MTG.Meeting m
-            LEFT JOIN MTG.Decision d ON d.MeetingID=m.MeetingID
-            LEFT JOIN MTG.ActionItem a ON a.MeetingID=m.MeetingID
-            LEFT JOIN MTG.ActionReview r ON r.ActionItemID=a.ActionItemID
-            WHERE m.MeetingNo LIKE ?
+              (SELECT COUNT_BIG(*) FROM MTG.Meeting m
+               WHERE m.MeetingNo LIKE ?) AS MeetingCount,
+              (SELECT COUNT_BIG(*) FROM MTG.Decision d
+               JOIN MTG.Meeting m ON m.MeetingID=d.MeetingID
+               WHERE m.MeetingNo LIKE ?) AS DecisionCount,
+              (SELECT COUNT_BIG(*) FROM MTG.ActionItem a
+               JOIN MTG.Meeting m ON m.MeetingID=a.MeetingID
+               WHERE m.MeetingNo LIKE ?) AS ActionCount,
+              (SELECT COUNT_BIG(*) FROM MTG.ActionReview r
+               JOIN MTG.ActionItem a ON a.ActionItemID=r.ActionItemID
+               JOIN MTG.Meeting m ON m.MeetingID=a.MeetingID
+               WHERE m.MeetingNo LIKE ?) AS ReviewCount
             """,
-            PREFIX,
+            PREFIX, PREFIX, PREFIX, PREFIX,
         )
-        row = _rows(cur)[0]
-        return _json({"kind": "SYNTHETIC_TEST_DATA", "counts": row})
-
+        return _json({"kind": "SYNTHETIC_TEST_DATA", "counts": _rows(cur)[0]})
 
 @function_tool
 def search_meetings(term: str) -> str:
@@ -263,12 +264,14 @@ def list_overdue_actions(vehicle_or_topic: str = "") -> str:
 
 
 @function_tool
-def management_kpis(vehicle: str = "") -> str:
+def management_kpis(vehicle: str = "", meeting_id: int = 0) -> str:
     """Compute exact synthetic action counts in SQL, optionally filtered by vehicle name.
 
     Returns totals/open/closed/overdue using ONE SQL-server timestamp.
     Not a prediction and not derived from a sample of 15 overdue actions.
     """
+    if meeting_id < 0:
+        return _json({"error": "meeting_id must be nonnegative"})
     term = vehicle.strip()
     safe = term.replace("[", "[[]").replace("%", "[%]").replace("_", "[_]")
     with _connection() as conn:
@@ -289,13 +292,15 @@ def management_kpis(vehicle: str = "") -> str:
             FROM MTG.ActionItem a
             JOIN MTG.Meeting m ON m.MeetingID = a.MeetingID
             WHERE m.MeetingNo LIKE ?
+              AND (? = 0 OR m.MeetingID = ?)
               AND (? = N'' OR m.MeetingTitle LIKE ? OR m.Objective LIKE ?)
             """,
-            as_of, PREFIX, term, f"%{safe}%", f"%{safe}%",
+            as_of, PREFIX, meeting_id, meeting_id, term, f"%{safe}%", f"%{safe}%",
         )
         metrics = _rows(cur)[0]
         return _json({
             "kind": "SYNTHETIC_TEST_DATA", "vehicle_filter": term,
+            "meeting_id_filter": meeting_id,
             "as_of_sql_server_local": str(as_of), "metrics": metrics,
             "definitions": {
                 "closed": "a.Status = Closed",
@@ -349,7 +354,8 @@ def main():
             "from words such as پرونده 1094. Prefer FinalProgressPercent for final progress "
             "and mention a difference between OwnerProgressPercent and SecretaryProgressPercent "
             "when material. as_of_sql_server_local is the SQL server clock. "
-            "For exact aggregate action figures use management_kpis, not mental "
+            "For exact aggregate action figures use management_kpis (pass meeting_id for a
+            specific meeting), not mental "
             "arithmetic on a limited sample of actions. "
             "Document search can use semantic embeddings when present, else keyword "
             "fallback; never claim semantic retrieval unless the tool reports hybrid. "
