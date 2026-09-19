@@ -322,7 +322,7 @@ def search_document_chunks(query: str, meeting_id: int = 0) -> str:
     common = {"برای", "در", "از", "به", "که", "این", "آن", "با",
               "جلسه", "جلسات", "مورد", "درباره", "چه", "چگونه", "آیا"}
     terms = []
-    for token in re.findall(r"[^\\W_]{2,}", phrase, flags=re.UNICODE):
+    for token in re.findall(r"[^\W_]{2,}", phrase, flags=re.UNICODE):
         if token not in common and token not in terms:
             terms.append(token)
         if len(terms) == 6:
