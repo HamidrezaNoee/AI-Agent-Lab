@@ -120,7 +120,7 @@ def retrieve_knowledge(query: str, limit: int = 5, meeting_id: int = 0):
     tokens = _tokens(query)
     ranked = []
     for row in rows:
-        doc_id, filename, title, version, meeting_id, chunk_no, start, end, content, embedding, model = row
+        doc_id, filename, title, version, linked_meeting_id, chunk_no, start, end, content, embedding, model = row
         searchable = (title + " " + content).translate(
             str.maketrans({"ي": "ی", "ك": "ک", "‌": " "})
         ).lower()
@@ -142,7 +142,7 @@ def retrieve_knowledge(query: str, limit: int = 5, meeting_id: int = 0):
             "chunk_number": chunk_no,
             "start_character": start,
             "end_character": end,
-            "related_meeting_id": meeting_id,
+            "related_meeting_id": linked_meeting_id,
             "passage": content,
             "retrieval": "hybrid" if query_vector is not None else "lexical",
         }))
