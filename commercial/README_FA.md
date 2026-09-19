@@ -1,12 +1,12 @@
-# Commercial Agent | Milestone 1–2: tenant identity + per-user ACL (LAB ONLY)
+# Commercial Agent | Milestones 1–3: identity, ACL, cited chat and request quotas (LAB ONLY)
 
-**Current status: security + evidence-retrieval foundation / prototype, NOT a production-ready or sellable AI service.**
+**Current status: isolated commercial prototype with an optionally enabled cited chat endpoint; NOT a production-ready or sellable AI service.**
 The existing `06_meeting_ai_agent.py` and `knowledge_tools.py` remain synthetic research tools; **do not expose them directly to customers**. Their shared SQL login is NOT a user-by-user authorization system.
 
 ## Repository deliverables in this milestone
 
 - `commercial/security.py`: validate a real IdP-signed RS256 JWT against an ADMIN-CONFIGURED HTTPS issuer, audience and JWKS endpoint; reject bad signature, issuer, audience, lifetime, empty/invalid tenant and missing bearer tokens. The `tenant_id` must be a trusted claim issued by the IdP. A request header or a field in the user's question is never accepted as tenant identity.
-- `commercial/api.py`: authenticated `GET /v1/me` and `GET /v1/meetings` skeleton; zero unfiltered SQL endpoints; `POST /v1/chat/preview` for explicitly authorized *evidence only*; no external model completion endpoint at this stage.
+- `commercial/api.py`: authenticated `GET /v1/me` and `GET /v1/meetings` skeleton; zero unfiltered SQL endpoints; `POST /v1/chat/preview` for authorized evidence only; optional lab-only `POST /v1/chat/answer` and narrow quota procedures are described in milestone 3 below.
 - `commercial/sql_store.py`: each request creates a NEW SQL connection, sets `AgentTenantID` SQL session context, checks the database's active membership + active tenant + unexpired subscription, and queries a tenant-scoped meeting index. The commercial SQL user MUST be separate from `AI_MeetingAgent`.
 - `commercial/sql/01_tenant_boundary_TEST_ONLY.sql`: isolated tenant, meeting-index, document-index, chunk, subscription and audit contracts with SQL Server row-level security (RLS).
 - `commercial/sql/03_membership_usage_TEST_ONLY.sql`: per-tenant memberships and token usage storage contracts.
@@ -14,7 +14,7 @@ The existing `06_meeting_ai_agent.py` and `knowledge_tools.py` remain synthetic 
 - `commercial/sql/04_reader_permissions_TEST_ONLY.sql`: least-privilege SELECT grants for a separately provisioned login and explicit DENY on the original unscoped `MTG` and `AI` lab schemas.
 - `commercial/tests`: offline JWT/API access-gate unit tests.
 
-**Important limitations:** The gateway currently reads only `AgentProduct.MeetingIndex` test rows, not real ProcessMaker sessions. No production document import, LLM chat completion, token metering enforcement, billing, customer onboarding, audit writer, rate limiting, or real license enforcement has been shipped. Meeting/document per-user ACL is implemented at the new API query layer, NOT as a separate per-user database RLS policy. Do not describe the `Subscription` table as a billing integration: it is only an admission flag/date. Do not treat the JWT `tenant_id` claim as sufficient: membership is checked in SQL on every request.
+**Important limitations:** The gateway currently reads only `AgentProduct.MeetingIndex` test rows, not real ProcessMaker sessions. No production document import, production-certified AI chat, atomic TOKEN/cost budgets, billing, customer onboarding, audit writer, rate limiting, or real license enforcement has been shipped. The lab can reserve monthly REQUEST counts and record returned token usage; this is NOT commercial billing. Meeting/document per-user ACL is implemented at the new API query layer, NOT as a separate per-user database RLS policy. Do not describe the `Subscription` table as a billing integration: it is only an admission flag/date. Do not treat the JWT `tenant_id` claim as sufficient: membership is checked in SQL on every request.
 
 ## Development safety
 
