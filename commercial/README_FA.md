@@ -92,3 +92,73 @@ A WordPress/WooCommerce frontend can later sell subscriptions and display the ch
 - Access to *all* a tenant's documents using the commercial SQL login remains technically possible outside the API because per-user grants are enforced in application SQL JOINs. Keep the SQL login private to a trusted API host and use database stored-procedure/policy hardening in the next milestone. **Do not expose this MVP over the internet.**
 
 This step does **not** automatically import data from the original `MTG` or `AI` tables into the commercial index. The evidence preview remains empty until test tenants, subject memberships, explicit resource grants and fictional indexed data are deliberately provisioned. End-to-end integration with a real identity provider, SQL instance and model must still be tested.
+
+
+## Milestone 3: gated answer, scoped document context, atomic request quotas (TEST ONLY)
+
+The new endpoint `POST /v1/chat/answer` is **disabled by default**. It accepts the same strictly validated request as the evidence preview. It first verifies the signed OIDC identity and current DB membership/subscription, then retrieves up to SIX explicitly granted, bounded evidence items. With a specified meeting ID, ungranted meetings get HTTP 404 and documents linked to other meetings are excluded. Tenant-wide documents (`RelatedMeetingID=NULL`) can be referenced as **general guidance only**, never as an attachment or decision of a specific meeting.
+
+If evidence is absent, the endpoint returns `no_authorized_evidence` without calling the model or charging a request. Otherwise it calls the SQL stored procedure `ReserveChatRequest` **before** the external model request. The procedure serializes reservations per tenant using `sp_getapplock` and atomically checks the tenant's ACTIVE membership, unexpired subscription and `MonthlyRequestLimit` against the number of requests reserved since the beginning of the current UTC month. A server-generated RequestID cannot be reused. Failed model requests and invalid model responses still consume one request slot, because external costs may have occurred. After the model call, `FinalizeChatRequest` stores state and available input/output token counts; unknown token counts remain SQL NULL, not a fabricated zero. The current limit is **number of requests per UTC calendar month**, NOT a monetary or token budget. Billing, reconciliation, pricing and retry/refund policy are NOT implemented.
+
+The LLM receives **only** the authorized question and retrieved evidence. It has NO SQL, external tools, ProcessMaker write actions or arbitrary retrieval access. The requested output is bounded structured claims, each with a source ID. The application checks that every returned source ID belongs to the authorized evidence set before returning an answer. **A valid citation identifier does not prove that the claim is factually correct**; semantic evidence-grounding and retrieval quality still require human/automated evaluation. The lab supports only fictional data. Do not pass real company data or credentials to the model.
+
+### Installation and tests
+
+Before starting, ensure the PREVIOUS SQL isolation tests `02_test_tenant_isolation.sql` and `06_test_resource_acl.sql` have passed; if not, run the existing baseline/ACL scripts first. Run these NEW scripts in **SSMS on EnterpriseProcess2_AI_Test as test DBA**, in order:
+
+```
+commercial/sql/09_document_context_TEST_ONLY.sql
+commercial/sql/07_chat_quota_TEST_ONLY.sql
+commercial/sql/08_test_chat_quota.sql
+```
+
+Expected SQL output (only after executing on your test server):
+
+```
+PASS: chat quota reserve and usage finalization (all fictional data rolled back).
+PASS: second chat request rejected at monthly quota (all fictional data rolled back).
+PASS: missing SQL tenant context rejected before quota reservation.
+```
+
+The first two migrations are additive/test-only. If `AI_CommercialReader` does not exist yet, follow the baseline `04_reader_permissions_TEST_ONLY.sql` instructions to create a **separate least-privilege SQL login** (never share its password). Then rerun `05_resource_acl_TEST_ONLY.sql` and `07_chat_quota_TEST_ONLY.sql` so new object permissions are granted to that login. The original `AI_MeetingAgent` account is never used by the commercial endpoints.
+
+Update and test Python in the SAME activated virtual environment:
+
+```powershell
+$repo = "D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab-GitHub"
+git -C $repo pull --ff-only origin main
+cd $repo
+python -m pip install -r .\commercial\requirements.txt
+python -m py_compile .\commercial\security.py .\commercial\sql_store.py .\commercial\quota.py .\commercial\answer.py .\commercial\api.py
+python -m unittest discover -s commercial\tests -v
+```
+
+The new tests are offline: all SQL and model calls are mocked. They DO NOT prove that the SQL migrations, model provider or external identity provider are working on the user's environment. Before *any* end-to-end chat test, provision a fictional tenant, a real test identity from an authorized IdP, an active test subscription, and explicit MeetingGrant/DocumentGrant records. Until that point, empty results or 403 responses are expected.
+
+For a local test only, after the existing real OIDC configuration and commercial SQL configuration from this README are completed, an operator may enable the isolated endpoint with:
+
+```powershell
+$env:COMMERCIAL_MODE = "lab"
+$env:COMMERCIAL_SQL_DATABASE = "EnterpriseProcess2_AI_Test"
+$env:COMMERCIAL_CHAT_ENABLED = "1"
+# OPENAI_API_KEY must already be configured securely for approved FICTIONAL data.
+python -m uvicorn commercial.api:app --host 127.0.0.1 --port 8088
+```
+
+Do **not** set `COMMERCIAL_CHAT_ENABLED=1` on an internet-facing server. The endpoint is still a technical test: no audited production tenant onboarding, production database migration, independent penetration test, per-resource database-level user RLS, cost/billing reconciliation or actual ProcessMaker integration exists. HTTPS/TLS termination and a production-ready identity service are separate deployment tasks.
+
+### Response example
+
+```json
+{
+  "request_id": "server-generated-uuid",
+  "answer": "یک ادعای مبتنی بر مدرک [MEETING:SIM-EXAMPLE]",
+  "claims": [{"text":"یک ادعای مبتنی بر مدرک","source":"MEETING:SIM-EXAMPLE"}],
+  "sources": ["MEETING:SIM-EXAMPLE"],
+  "quota": {"used_this_month": 1, "monthly_limit": 100},
+  "charged_request": true,
+  "data_scope": "synthetic-authorized-commercial-evidence-only"
+}
+```
+
+This is an **illustrative shape**, not an observed provider response. Real answers depend on test data, explicit ACLs and a valid IdP token.
