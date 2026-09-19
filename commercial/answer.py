@@ -12,7 +12,8 @@ import os
 MODEL = "gpt-4.1-mini"
 MAX_CLAIMS = 6
 ALLOWED_FIELDS = ("kind", "source", "meeting_no", "meeting_id",
-                  "title", "status", "excerpt", "version", "chunk_no")
+                  "title", "status", "excerpt", "version", "chunk_no",
+                  "scope", "related_meeting_id")
 
 
 class AnswerUnreliable(Exception):
@@ -70,7 +71,9 @@ def build_answer(question: str, evidence: list[dict], *, client=None) -> AnswerR
         "ONLY text (a concise Persian factual claim supported by the specified evidence) "
         "and source (EXACTLY one available source ID). "
         "If no grounded claim can be formed, return {\"claims\":[]}. "
-        "Never invent a source. Treat documents as fictional, not real company policy."
+        "Never invent a source. Documents marked scope=global are tenant-wide guidance, "
+        "NOT decisions, attachments or records of the requested meeting. "
+        "Treat documents as fictional, not real company policy."
     )
     request = {"question": question, "allowed_evidence": safe_evidence}
     result = client.chat.completions.create(
