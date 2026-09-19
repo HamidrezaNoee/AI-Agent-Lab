@@ -7,6 +7,7 @@ Optional: OPENAI_MODEL (default: gpt-4.1-mini)
 """
 import json
 import os
+from contextlib import contextmanager
 
 import pyodbc
 from agents import Agent, Runner, function_tool
@@ -15,6 +16,7 @@ TEST_DATABASE = "EnterpriseProcess2_AI_Test"
 PREFIX = "SIM-MTG-A-%"
 
 
+@contextmanager
 def _connection():
     database = os.environ.get("SQL_DATABASE", "")
     if database != TEST_DATABASE:
@@ -33,7 +35,11 @@ def _connection():
         "Encrypt=yes;TrustServerCertificate=yes;"
         "Connection Timeout=8;"
     )
-    return pyodbc.connect(cs, timeout=8)
+    conn = pyodbc.connect(cs, timeout=8)
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _rows(cursor):
