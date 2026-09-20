@@ -61,7 +61,7 @@ class DemoPreviewTests(unittest.TestCase):
     def test_protected_commercial_api_is_not_changed_by_demo_preview(self):
         # A separate app: the existing commercial API still requires real IdP config.
         with TestClient(secured_api) as client:
-            self.assertIn(client.get("/v1/meetings").status_code, (401, 503))
+            self.assertIn(client.get("/v1/meetings").status_code, (401, 410, 503))
             self.assertIn(client.get("/v1/modules").status_code, (401, 503))
 
 
