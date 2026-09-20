@@ -79,8 +79,8 @@ BEGIN
  BEGIN TRY
  BEGIN TRAN;
  UPDATE d SET
-  d.PMUserName=r.UserName,d.DisplayName=r.DisplayName,
-  d.Email=r.Email,d.PMStatus=r.PMStatus,d.LastSeenAtUtc=SYSUTCDATETIME()
+  PMUserName=r.UserName,DisplayName=r.DisplayName,
+  Email=r.Email,PMStatus=r.PMStatus,LastSeenAtUtc=SYSUTCDATETIME()
  FROM AgentProduct.DirectoryUser d JOIN @rows r ON r.PMUserUID=d.PMUserUID
  WHERE d.TenantID=@TenantID;
  SET @updated=@@ROWCOUNT;
