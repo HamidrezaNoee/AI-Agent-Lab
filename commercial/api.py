@@ -109,7 +109,7 @@ def meeting_page(
     limit: int = Query(default=20, ge=1, le=50),
 ):
     """All authorized meetings via bounded stable keyset pages, NOT unrestricted export."""
-    _, page = _query(principal, lambda con, p: visible_meetings_page(
+    _, page = _query(principal, lambda con, p: visible_meetings_v2(
         con, p, before_id=cursor, limit=limit
     ))
     return {
@@ -117,6 +117,23 @@ def meeting_page(
         **page,
         "data_scope": "synthetic-commercial-index-only",
     }
+
+
+@app.get("/v1/organization/tree")
+def organization_tree(principal: PrincipalDep):
+    _, result = _query(principal, hierarchy_snapshot)
+    return result
+
+
+@app.post("/v1/admin/processmaker/sync-users")
+def processmaker_user_sync(principal: PrincipalDep):
+    # Source is read-only and configured server-side; no PM credentials are accepted
+    # from this HTTP request and PM password hashes are never selected.
+    source = read_processmaker_users()
+    with scoped_connection(principal) as con:
+        authorization_snapshot(con, principal)
+        result = sync_users(con, principal, source)
+    return result
 
 
 class ChatPreviewRequest(BaseModel):
