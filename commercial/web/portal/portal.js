@@ -179,7 +179,7 @@ async function changePage(target){
   try{
     switch(target){
       case "meetings": await showMeetings();break;
-      case "assistant": showAssistant();break;
+      case "assistant": await showAssistant();break;
       case "secretary": await showSecretary();break;
       case "analytics": await showAnalytics();break;
       case "monitoring": await showMonitoring();break;
@@ -237,37 +237,84 @@ async function showMeetings(){
   }
   append(panel,list,more);append(main,panel);await loadPage();
 }
-function showAssistant(){
+async function showAssistant(){
   const main=root();
-  if(config?.hierarchy_only){
-    title(main,"MODULE 01 / EVIDENCE","جست‌وجوی مستندات",
-      "تا زمان انتقال کنترل دسترسی اسناد به مسیر جدید سازمانی، جست‌وجوی محتوای قدیمی فعال نیست.");
-    notice(main,"مسیرهای قدیمی /v1/chat و /v1/knowledge در حالت چارت سازمانی بسته‌اند. اطلاعات جلسات را از فهرست مجاز و گزارش‌های /v2 ببینید.");
+  title(main,"MODULE 01 / MANAGEMENT INTELLIGENCE","پرسش‌های تخصصی جلسات",
+    "هشت گزارش مستند درباره مصوبات و عملکرد؛ نتایج فقط از جلسات مجاز حساب فعلی دریافت می‌شوند.");
+  notice(main,"این بخش فعلاً گزارش‌گیری محاسباتیِ فقط‌خواندنی است، نه گفت‌وگوی آزاد با OpenAI. برای گزارش‌های تجمیعی، دبیر و پایش، مجوز ماژول مربوط باید فعال باشد. تاریخ جلسه و متن ریسک در نمایه SQL فعلی هنوز وجود ندارند.");
+  if(!directoryProfile){
+    append(main,e("p","empty",
+      "ابتدا ورود واقعی و اتصال هویت شما به کاربر فعال ProcessMaker لازم است. تا آن زمان فقط پیش‌نمایش ۸۰۹۰ قابل بررسی است."));
     return;
-  }title(main,"MODULE 01 / EVIDENCE","جست‌وجوی مستندات و صورت‌جلسات",
-    "نسخه خواندنی: نمایش شواهد مجاز بدون فراخوانی OpenAI.");
-  notice(main,"این صفحه فقط خروجی /v1/chat/preview را نمایش می‌دهد. پاسخ تولیدشده توسط مدل زبانی غیرفعال است.");
-  const panel=box("پرسش فارسی","جست‌وجو با مجوز کاربر");
-  const input=e("textarea","textarea");input.placeholder="مثلاً: موضوع گمرک و ترخیص جلسه چیست؟";
-  input.maxLength=350;const result=e("div");
-  append(panel,input,btn("جست‌وجوی شواهد",async()=>{
+  }
+  const catalog=await api("/v2/assistant/questions");
+  const section=box("سؤال خود را بپرسید","منابع و حدود پوشش هر جواب در پاسخ نمایش داده می‌شود");
+  const input=e("textarea","textarea");
+  input.placeholder="مثلاً: کدام اقدامات مصوب جلسات عقب‌افتاده‌اند؟";
+  input.setAttribute("aria-label","پرسش تخصصی جلسات");input.maxLength=350;
+  const result=e("div");
+  let requestSequence=0;
+  async function runQuestion(text){
+    const sequence=++requestSequence;
     result.replaceChildren();
-    if(input.value.trim().length<3){append(result,e("p","note","حداقل سه کاراکتر وارد کنید."));return;}
+    if(text.trim().length<3){
+      append(result,e("p","note","پرسش باید حداقل سه کاراکتر داشته باشد."));return;
+    }
+    append(result,e("p","note","در حال محاسبه گزارش از جلسات مجاز..."));
     try{
-      const data=await api("/v1/chat/preview",{
+      const answer=await api("/v2/assistant/ask",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({question:input.value.trim()})
+        body:JSON.stringify({question:text.trim()})
       });
-      const p=box("شواهد مجاز",num(data.evidence_count)+" منبع");data.evidence.forEach(v=>{
+      if(sequence!==requestSequence||!result.isConnected)return;
+      result.replaceChildren();
+      const panel=box("نتیجه مستند",num(answer.meetings_considered)+" جلسه بررسی شده");
+      append(panel,e("p","content-text",answer.answer),
+        e("p","note","دامنه: فقط جلسات مجاز همین کاربر · اقدامات بررسی‌شده: "+
+           num(answer.actions_considered)+" · زمان بررسی (UTC): "+answer.as_of_utc));
+      for(const item of answer.items||[]){
         const row=e("div","detail-group");
-        append(row,e("strong","",v.title||v.source),
-          e("p","content-text",v.excerpt||v.status||"جزئیات بیشتر در پرونده جلسه."),
-          badge(v.source,"good"));append(p,row);
-      });
-      if(!data.evidence.length)append(p,e("p","empty","منبع مرتبط و مجازی یافت نشد."));
-      append(result,p);
-    }catch(err){append(result,e("p","note",err.message))}
-  },"button teal"),result);append(main,panel);
+        const source=item.source||{};
+        append(row,e("strong","content-title",item.text),
+          e("p","note",String(source.meeting_no||"")+
+            (source.action_no?" · "+source.action_no:"")+
+            (item.owner_unit?" · "+item.owner_unit:"")));
+        if(source.meeting_no){
+          append(row,btn("پرسش درباره اقدامات این جلسه",()=>{
+            const q="اقدامات جلسه شماره "+source.meeting_no+" در چه وضعیتی هستند؟";
+            input.value=q;runQuestion(q);
+          },"button secondary"));
+        }
+        append(panel,row);
+      }
+      if(!answer.items?.length)append(panel,e("p","note",
+        "منبعی مطابق معیار پرسش در داده‌های مجاز یافت نشد یا نمایه دارای داده کافی نیست."));
+      for(const note of answer.notes||[]){
+        append(panel,e("p","note","• "+note));
+      }
+      if(answer.coverage_complete===false)append(panel,e("p","note",
+        "پوشش اطلاعات کامل نیست؛ نتیجه را گزارش تمام جلسات تلقی نکنید."));
+      append(result,panel);
+    }catch(err){
+      if(sequence!==requestSequence||!result.isConnected)return;
+      result.replaceChildren();
+      append(result,e("p","note",err.message),
+        e("p","note",
+          "اگر ماژول خریداری نشده، منقضی یا خاموش است، مدیر سازمان باید مجوز آن را بررسی کند. دسترسی با دورزدن مجوز فعال نمی‌شود."));
+    }
+  }
+  append(section,input,btn("دریافت پاسخ مستند",()=>runQuestion(input.value),"button teal"),result);
+  append(main,section);
+  const suggestions=box("پرسش‌های مدیریتی آماده","انتخاب هر پرسش آن را روی دامنه جلسات مجاز اجرا می‌کند");
+  const buttons=e("div","bars");
+  (catalog.questions||[]).forEach((question,index)=>{
+    const button=btn(num(index+1)+". "+question,()=>{
+      input.value=question;runQuestion(question);
+    },"button secondary");
+    button.style.textAlign="right";button.style.width="100%";
+    append(buttons,button);
+  });
+  append(suggestions,buttons);append(main,suggestions);
 }
 async function showSecretary(){
   const main=root();title(main,"MODULE 02 / SECRETARY","دبیر هوشمند",
