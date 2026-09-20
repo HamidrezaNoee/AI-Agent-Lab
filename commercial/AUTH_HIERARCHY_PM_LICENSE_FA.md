@@ -26,9 +26,9 @@ GET /v1/meetings/page از این authorization v2 استفاده می‌کند.
 
 ## License Studio
 
-commercial/license_studio.py الگوی Organization Portal را دنبال می‌کند: ECDSA P-256، private key فقط نزد LIMAK، public key در نصب مشتری، bind به Installation ID، ظرفیت کاربر، expiry، edition و features. هیچ private key یا development bypass در repository وجود ندارد.
+commercial/licensing/studio.py به‌همراه commercial/licensing/codec.py الگوی Organization Portal را دنبال می‌کنند: ECDSA P-256، private key فقط نزد LIMAK، public key در نصب مشتری، bind به Installation ID، ظرفیت کاربر، expiry، edition و features. هیچ private key یا development bypass در repository وجود ندارد.
 
-برای محصول نهایی، License Studio مستقل ویندوزی مثل Limak.LicenseStudio.exe در Organization Portal ساخته می‌شود؛ codec فعلی پایه مشترک و تست‌پذیر آن است.
+نسخه آفلاین CLI/GUI ویندوزی ابزار موجود است؛ برای بسته نصب مستقل EXE و صدور/فعال‌سازی روی سیستم مشتری هنوز تست و بسته‌بندی لازم است. فایل قدیمی commercial/license_studio.py فقط به همین ابزار اصلی ارجاع می‌دهد و توکن ناسازگار مستقلی صادر نمی‌کند.
 
 ## ترتیب نصب SQL (فقط بانک آزمایشی)
 
