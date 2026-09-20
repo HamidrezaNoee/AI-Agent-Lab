@@ -10,7 +10,8 @@ const state = {
 const labels = {
   overview: "نمای کلی", meetings: "جلسات و مصوبات", assistant: "دستیار مدیریتی",
   secretary: "دبیر هوشمند", analytics: "تحلیل و گزارش", monitoring: "هشدار و پیگیری",
-  modules: "مدیریت ماژول‌ها"
+  modules: "مدیریت ماژول‌ها", sysadmin: "نمونه SysAdmin",
+  godadmin: "نمونه GodAdmin"
 };
 const names = {2:"دبیر هوشمند جلسه",3:"تحلیل و گزارش مدیریتی",4:"هشدار و پیگیری اقدامات"};
 const descriptions = {
@@ -336,6 +337,113 @@ function searchCases(question){
     add(out,row);
   });add(box,out);
 }
+
+/* Explicitly FICTIONAL screens: demonstrate product navigation and interaction
+   without a real IdP, SQL writer, ProcessMaker, signed license, or account. */
+const demoStaff = [
+  {uid:"DEMO-001",name:"کارشناس نمونه یک",unit:"بازرگانی",manager:"مدیر نمونه واحد",role:"Expert"},
+  {uid:"DEMO-002",name:"کارشناس نمونه دو",unit:"مجوزات",manager:"مدیر نمونه واحد",role:"Expert"},
+  {uid:"DEMO-003",name:"مدیر نمونه واحد",unit:"بازرگانی",manager:"رئیس نمونه هیئت‌مدیره",role:"Manager"},
+  {uid:"DEMO-004",name:"رئیس نمونه هیئت‌مدیره",unit:"هیئت‌مدیره",manager:"—",role:"Manager"},
+  {uid:"DEMO-005",name:"مدیر سیستم نمونه",unit:"فناوری اطلاعات",manager:"—",role:"SysAdmin"}
+];
+function sysadmin(main){
+  heading(main,"FICTIONAL UI / SYSADMIN","مدیریت سازمان · نمونه ظاهری",
+    "پیش‌نمایش چارت، هویت بصری، کاربران و وضعیت اتصال‌ها؛ این صفحه حساب یا مجوز واقعی ندارد.");
+  notice(main,"این صفحه فقط نمونه طراحی برای تأیید رابط کاربری است. انتخاب نقش، تغییر نام، همگام‌سازی و بازنشانی رمز در این صفحه هیچ عملیات سروری انجام نمی‌دهند.");
+  const settings=box("تنظیمات شرکت","تنظیم نمایشی نام و رنگ · فقط داخل همین مرورگر");
+  const name=node("input","search");name.maxLength=120;name.value="شرکت خودرویی کاملاً ساختگی";
+  name.setAttribute("aria-label","نام شرکت نمایشی");
+  const color=node("input","search");color.type="color";color.value="#0a917e";
+  add(settings,node("p","note","نام شرکت"),name,node("p","note","رنگ سازمان"),color,
+    action("نمایش تنظیمات پیشنهادی",()=>{
+      document.querySelector(".workspace strong").textContent=name.value.trim()||"شرکت نمونه";
+      document.documentElement.style.setProperty("--teal",color.value);
+      toast("نام و رنگ فقط در مرورگر این پیش‌نمایش تغییر کردند؛ SQL یا برندینگ واقعی تغییری نکرد.");
+    },"button teal"));
+  add(main,settings);
+  const connect=box("اتصال‌های سازمان","اطلاعات ورود و نشانی واقعی هرگز در پیش‌نمایش دریافت نمی‌شود");
+  const points=[
+    ["ProcessMaker 3.3.6","در این صفحه متصل نیست · نیازمند OAuth فقط‌خواندنی و Workspace تأییدشده"],
+    ["SQL Server","در این صفحه متصل نیست · نیازمند Reader و Admin مجزا، RLS و بانک آزمایشی"],
+    ["Keycloak / هویت سازمانی","در این صفحه متصل نیست · نیازمند issuer معتبر، MFA و شناسه sub تأییدشده"]
+  ];
+  points.forEach(([k,v])=>add(connect,section(k,v)));
+  add(connect,action("پیش‌نمایش عملیات Sync",()=>toast(
+    "این دکمه فقط نمایشی است. همگام‌سازی واقعی از پنل متصل و با احراز هویت SysAdmin انجام می‌شود."
+  ),"button secondary"));
+  add(main,connect);
+  const users=box("کاربران و چارت سازمانی نمونه","۵ هویت ساختگی · شناسه ProcessMaker واقعی نیست");
+  const table=node("table","table"),head=node("thead"),tr=node("tr");
+  ["شناسه نمونه","نام","واحد","مدیر مستقیم","نقش نمونه"].forEach(x=>add(tr,node("th","",x)));
+  add(head,tr);add(table,head);
+  const body=node("tbody");
+  demoStaff.forEach(person=>{
+    const row=node("tr");
+    [person.uid,person.name,person.unit,person.manager].forEach(x=>add(row,node("td","",x)));
+    const cell=node("td");
+    if(person.role==="SysAdmin")add(cell,node("span","badge purple","SysAdmin · نمونه"));
+    else add(cell,selectBox([["Expert","کارشناس"],["Manager","مدیر"]],person.role,v=>{
+      person.role=v;toast("نقش این شخص ساختگی فقط در رابط نمایشی تغییر کرد.");
+    },"نقش ساختگی "+person.name));
+    add(row,cell);add(body,row);
+  });
+  add(table,body);add(users,add(node("div","table-wrap"),table));
+  add(users,node("p","note",
+    "قاعده محصول واقعی: کارشناس جلسات خود/زیرچارت، مدیر همه جلسات سازمان، SysAdmin مدیریت تنظیمات و کاربران. این جدول برای نشان‌دادن طراحی است نه صدور مجوز واقعی."));
+  add(main,users);
+  const identity=box("مدیریت حساب","بدون ارسال ایمیل، تغییر رمز یا ساخت کاربر");
+  add(identity,node("p","content-text",
+    "برای ایجاد حساب و اتصال شناسه کاربر ProcessMaker، هویت باید ابتدا نزد Keycloak تأیید شود. درخواست ایمیل تغییر رمز فقط از پنل واقعیِ دارای توکن و با سرویس مدیریتی فعال ارسال خواهد شد."),
+    action("نمایش شرط فعال‌شدن مدیریت کاربران",()=>toast(
+      "نیازمند Keycloak واقعی، حساب SysAdmin تأییدشده و API متصل در /portal/ است؛ عملیات واقعی اینجا غیرفعال است."
+    ),"button secondary"));
+  add(main,identity);
+}
+function godadmin(main){
+  heading(main,"FICTIONAL UI / GODADMIN","کنترل پنل لیماک · نمونه ظاهری",
+    "مرور نمای مدیریت مشتریان، ماژول‌ها، ظرفیت کاربر و لایسنس قبل از اتصال به سامانه تجاری.");
+  notice(main,"GodAdmin واقعی فقط پس از احراز هویت معتبر و ثبت مستقل PlatformOperator فعال می‌شود؛ نقش سازنده به‌تنهایی دسترسی به محتوای محرمانه مشتری ندارد. این صفحه صرفاً نمایش طراحی است.");
+  const stats=node("div","stats");
+  add(stats,stat("مشتری ساختگی",2,"بدون ثبت مشتری در SQL","♙"),
+    stat("ماژول قابل‌فروش",3,"شماره‌های ۲، ۳ و ۴","⬡","teal"),
+    stat("لایسنس واقعی صادرشده",0,"بدون کلید خصوصی صادرکننده","◆","purple"),
+    stat("حساب واقعی ساخته‌شده",0,"بدون Keycloak و پرداخت","✓","amber"));
+  add(main,stats);
+  const catalog=box("فهرست مشتریان نمونه","داده نمایشی؛ مجوز و پرداخت واقعی ندارد");
+  [
+    ["شرکت خودرویی ساختگی الف","۳۵ کاربر · دبیر روشن، تحلیل خاموش، پایش روشن"],
+    ["شرکت خودرویی ساختگی ب","۱۲ کاربر · فقط هسته پایه"]
+  ].forEach(([name,detail])=>add(catalog,section(name,detail)));
+  add(main,catalog);
+  const studio=box("مشخصات درخواست لایسنس","پیش‌نمایش فرم · هیچ کلید یا امضایی تولید نمی‌شود");
+  const customer=node("input","search");customer.placeholder="نام مشتری کاملاً ساختگی";
+  customer.maxLength=120;customer.setAttribute("aria-label","نام مشتری نمونه");
+  const seats=node("input","search");seats.type="number";seats.min="1";
+  seats.max="100000";seats.value="100";seats.setAttribute("aria-label","حداکثر تعداد کاربران نمونه");
+  const selection=node("div","flex"),chosen=[];
+  for(const [id,titleText] of [[2,"دبیر"],[3,"تحلیل"],[4,"پایش"]]){
+    const label=node("label","chip"),input=node("input");input.type="checkbox";input.value=String(id);
+    if(id===2)input.checked=true;
+    add(label,input,node("span","",titleText));add(selection,label);chosen.push(input);
+  }
+  const output=node("div");
+  add(studio,node("p","note","نام سازمان"),customer,node("p","note","ظرفیت کاربر"),
+    seats,node("p","note","ماژول‌های اختیاری"),selection,
+    action("نمایش درخواست نمونه",()=>{
+      output.replaceChildren();
+      if(!customer.value.trim()||!Number.isInteger(Number(seats.value))||
+         Number(seats.value)<1||Number(seats.value)>100000){
+        add(output,node("p","note","نام شرکت و ظرفیت معتبر نمونه وارد کنید."));return;
+      }
+      const codes=[1,...chosen.filter(x=>x.checked).map(x=>Number(x.value))];
+      add(output,node("p","content-text","درخواست نمایشی برای "+customer.value.trim()+
+        " · ظرفیت "+numeric(Number(seats.value))+" کاربر · ماژول‌های "+codes.join("، ")),
+        node("p","note","این درخواست به سرور ارسال نشده و لایسنس ایجاد نشده است. صدور معتبر فقط با LIMAK License Studio و کلید خصوصی آفلاین انجام می‌شود."));
+    },"button teal"),output);
+  add(main,studio);
+}
+
 function render(){
   const main=$("main");main.replaceChildren();
   switch(state.tab){
@@ -345,6 +453,8 @@ function render(){
     case "analytics": analytics(main);break;
     case "monitoring": monitoring(main);break;
     case "modules": modules(main);break;
+    case "sysadmin": sysadmin(main);break;
+    case "godadmin": godadmin(main);break;
     default: overview(main);
   }
 }
