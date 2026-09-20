@@ -26,6 +26,9 @@ class ConfigurationFailed(Exception):
 class Principal:
     tenant_id: uuid.UUID
     subject: str
+    # Trusted only AFTER RS256, issuer, audience and lifetime validation.
+    # Never use realm roles ALONE for tenant data access.
+    roles: frozenset[str] = frozenset()
 
 
 def _https_url(value: str, name: str) -> str:
@@ -85,6 +88,15 @@ class VerifiedTokenAuthenticator:
             tenant_id = uuid.UUID(raw_tenant)
             if tenant_id.int == 0:
                 raise ValueError("Empty tenant is not allowed")
+            role_claim = claims.get("roles", [])
+            realm = claims.get("realm_access")
+            if isinstance(realm, dict) and "roles" in realm:
+                role_claim = realm["roles"]
+            if not isinstance(role_claim, list) or len(role_claim) > 100 or not all(
+                isinstance(x, str) and 0 < len(x) <= 80 for x in role_claim
+            ):
+                raise ValueError("Invalid signed identity roles")
+            roles = frozenset(role_claim)
         except Exception as exc:
             raise AuthenticationFailed("Invalid or expired access token") from exc
-        return Principal(tenant_id=tenant_id, subject=subject)
+        return Principal(tenant_id=tenant_id, subject=subject, roles=roles)
