@@ -1,0 +1,51 @@
+name: Commercial UI + offline security regression
+
+on:
+  push:
+    paths:
+      - "commercial/**"
+      - ".github/workflows/commercial-preview-ci.yml"
+  pull_request:
+    paths:
+      - "commercial/**"
+      - ".github/workflows/commercial-preview-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMMERCIAL_CHAT_ENABLED: "0"
+      COMMERCIAL_MODE: "lab"
+      COMMERCIAL_SQL_DATABASE: "EnterpriseProcess2_AI_Test"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: commercial/requirements.txt
+      - name: Install isolated commercial requirements
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r commercial/requirements.txt
+      - name: Check Python syntax and offline unit tests
+        run: |
+          python -m compileall -q commercial
+          python -m unittest discover -s commercial/tests -v
+      - name: Check browser preview JavaScript syntax
+        run: node --check commercial/web/preview/preview.js
+      - name: Confirm dataset and scripts remain fictional-only
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path("commercial/datasets/100_automotive_meeting_scenarios_FA.json").read_text(encoding="utf-8"))
+          assert data["synthetic"] is True and len(data["scenarios"])==100
+          assert sum(len(c["actions"]) for c in data["scenarios"])==300
+          print("PASS: exactly 100 fictional meeting scenarios and 300 synthetic actions")
+          PY
