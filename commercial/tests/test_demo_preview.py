@@ -44,6 +44,15 @@ class DemoPreviewTests(unittest.TestCase):
         self.assertEqual(style.status_code, 200)
         self.assertEqual(script.status_code, 200)
         self.assertIn(".module-grid", style.text)
+        # Absent optional user-owned fonts must not trigger failed browser HTTP
+        # requests to /portal/font/* or /preview-font-*.
+        from unittest.mock import patch
+        from commercial.local_font_css import ROOT
+        with patch("commercial.local_font_css.Path.is_file", return_value=False):
+            css = self.client.get("/preview.css")
+            self.assertEqual(css.status_code, 200)
+            self.assertNotIn("/portal/font/", css.text)
+            self.assertNotIn("/preview-font-", css.text)
         self.assertIn("function monitoring", script.text)
         self.assertNotIn("dependency_overrides", script.text)
         self.assertNotIn("COMMERCIAL_SQL_PASSWORD", script.text)
