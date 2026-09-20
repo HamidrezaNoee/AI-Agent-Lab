@@ -296,3 +296,16 @@ $env:RUN_COMMERCIAL_SQL_INTEGRATION = "LAB_ONLY_NO_SERVER"
 `commercial.integration_modules_lab` uses an ephemeral in-memory test RSA signing key, actual FastAPI Authorization verification, actual SQL account, tenant grants and the narrow SQL admin toggle. It restores the M3 fixture to OFF after its activation test, creating legitimate synthetic toggle AuditEvents. This new integration test **has not been run on the user's computer yet**; only describe its output as expected until the user executes it.
 
 Formal four-day IT announcement: `commercial/IT_MVP_4DAY_ANNOUNCEMENT_FA.md`. Scope is a staged test-environment MVP subject to IT provision of identity, data permissions and review, NOT an unconditional production rollout.
+
+
+## Milestone 7: reviewable LOCAL Persian UI + authorized pagination
+
+To review the standalone responsive Persian dashboard NOW, read `commercial/REVIEW_PREVIEW_FA.md` and start `commercial.demo_preview:app` bound ONLY to `127.0.0.1:8090`. The preview serves all 100 wholly fictional meeting lifecycle stories from the checked-in JSON and computes action indicators client-side. Its module switches are explicitly **visual-only, temporary and NOT the licensed tenant module SQL/API switches**; no customer authentication, SQL credentials, OpenAI model or operational ProcessMaker connection is used. It must NEVER be deployed externally or mistaken for the commercial application's sign-in flow.
+
+The UI offers meeting search/filter/detail, read-only secretary draft/action list, lexical synthetic source finder, analytics summaries, on-demand overdue action review and module catalog simulation. It is self-contained and uses first-party HTML/CSS/JS without CDN assets. A separate `commercial.demo_preview` FastAPI app ensures demo routes DO NOT introduce fake authentication into `commercial.api`; the production-facing API remains protected.
+
+The actual authenticated LAB API adds `GET /v1/meetings/page?limit=20&cursor=910080`. Each page is bounded to 1–50 records and uses the authenticated tenant/subject + explicit `MeetingGrant` + SQL tenant RLS for stable descending keyset pages over 100+ synthetic records. Response includes `meetings`, `returned`, `has_more`, and `next_cursor`. `cursor` is the last `meeting_id` returned by the previous page, or omit for page one. The original `GET /v1/meetings` retains its earlier limited response contract for backwards compatibility. Do not send user-defined `tenant_id` or `subject` from a web page to select another user's data.
+
+New offline regression tests: `commercial/tests/test_demo_preview.py`, `commercial/tests/test_pagination.py`. The new real-SQL `commercial.integration_modules_lab` also walks all 101 Alice meeting records and checks Bob/Carol isolation. These NEW assertions have NOT yet been run on the user's workstation. The opt-in GitHub workflow `.github/workflows/commercial-preview-ci.yml` executes offline Python tests and browser JS syntax checking; a workflow file alone does NOT prove CI passed.
+
+**Still not implemented:** real user login and IdP onboarding, connected customer web portal, payment processing, real license fulfillment, speech input/output, background alerts, real SQL-to-ProcessMaker production ingestion, or production security certification.
