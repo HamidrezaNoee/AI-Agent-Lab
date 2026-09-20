@@ -13,8 +13,9 @@ import re
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from .security import VerifiedTokenAuthenticator, ConfigurationFailed, _https_url
+from .local_font_css import installed_font_css
 
 ROOT = Path(__file__).resolve().parent / "web"
 router = APIRouter(include_in_schema=False)
@@ -109,8 +110,9 @@ def portal_js(request: Request):
 @router.get("/portal/portal.css")
 def portal_css(request: Request):
     _localhost(request)
-    return _headers(FileResponse(ROOT / "preview" / "preview.css",
-                                 media_type="text/css; charset=utf-8"))
+    css = (installed_font_css("/portal/font/")
+           + (ROOT / "preview" / "preview.css").read_text(encoding="utf-8"))
+    return _headers(Response(css, media_type="text/css; charset=utf-8"))
 
 
 @router.get("/portal/config")
