@@ -89,6 +89,18 @@ class PersianManagementQuestionsTests(unittest.TestCase):
         self.assertEqual({x["source"]["meeting_id"] for x in result["items"]},{1,2})
         self.assertTrue(any("شباهت معنایی" in n for n in result["notes"]))
 
+    def test_shared_title_keywords_are_labeled_as_lexical_not_semantic(self):
+        left=dict(self.meetings[1],meeting_id=1,meeting_no="LAB-1",
+                  title="تأخیر در تخصیص ارز")
+        right=dict(self.meetings[2],meeting_id=2,meeting_no="LAB-2",
+                   title="تأخیر در ترخیص")
+        result=self.ask(QUESTIONS[6],[left,right])
+        self.assertEqual(result["intent"],"recurring")
+        self.assertTrue(result["items"])
+        self.assertTrue(any("کلیدواژه" in item["text"] for item in result["items"]))
+        self.assertTrue(any("هم‌پوشانی" in n for n in result["notes"]))
+        self.assertEqual({i["source"]["meeting_id"] for i in result["items"]},{1,2})
+
     def test_future_agenda_is_draft_based_on_open_actions(self):
         result=self.ask(QUESTIONS[7])
         self.assertTrue(result["items"])
