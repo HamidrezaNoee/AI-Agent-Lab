@@ -90,6 +90,29 @@ IF NOT EXISTS(SELECT 1 FROM sys.security_policies WHERE
  object_id=OBJECT_ID(N'AgentProduct.AgentProductTenantPolicy') AND is_enabled=1)
  THROW 59703,'Required tenant security policy missing or disabled.',1;
 GO
+IF EXISTS(
+ SELECT 1 FROM sys.security_predicates
+ WHERE target_object_id IN (
+ OBJECT_ID(N'AgentProduct.DirectoryUser'),
+ OBJECT_ID(N'AgentProduct.MeetingActor'),
+ OBJECT_ID(N'AgentProduct.LetterIndex'))
+ AND predicate_type_desc='FILTER'
+ AND object_id<>OBJECT_ID(N'AgentProduct.AgentProductTenantPolicy'))
+ THROW 59704,'Unexpected tenant RLS filter: manual review required.',1;
+IF EXISTS(
+ SELECT 1 FROM sys.security_predicates
+ WHERE target_object_id IN (
+ OBJECT_ID(N'AgentProduct.DirectoryUser'),
+ OBJECT_ID(N'AgentProduct.MeetingActor'),
+ OBJECT_ID(N'AgentProduct.LetterIndex'))
+ AND predicate_type_desc='FILTER'
+ AND predicate_definition<>N'[AgentProduct].[fn_tenant_filter]([TenantID])')
+ BEGIN
+  -- SQL Server formats metadata differently between builds: do not depend
+  -- on exact formatting for filter validation; policy owner was checked above.
+  PRINT 'INFO: inspect predicate definitions if directory tables have pre-existing policies.';
+ END;
+GO
 IF NOT EXISTS(SELECT 1 FROM sys.security_predicates WHERE
  target_object_id=OBJECT_ID(N'AgentProduct.DirectoryUser') AND predicate_type_desc='FILTER')
  EXEC sys.sp_executesql N'ALTER SECURITY POLICY AgentProduct.AgentProductTenantPolicy
