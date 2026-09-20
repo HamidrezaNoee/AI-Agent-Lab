@@ -58,6 +58,13 @@ def _config():
     endpoint = urlsplit(token)
     if not re.fullmatch(r"[A-Za-z0-9.-]+", endpoint.hostname or ""):
         raise ConfigurationFailed("Invalid token endpoint hostname")
+    try:
+        port = endpoint.port
+    except ValueError as exc:
+        raise ConfigurationFailed("Invalid token endpoint port") from exc
+    if (port is not None and not 1 <= port <= 65535
+            or not re.fullmatch(r"[A-Za-z0-9.-]+(?::[0-9]{1,5})?", endpoint.netloc)):
+        raise ConfigurationFailed("Invalid HTTPS token endpoint origin")
     origin = "https://" + endpoint.netloc
     return {
         "issuer": verifier.issuer, "authorization_url": authorization,
