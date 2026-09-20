@@ -19,6 +19,7 @@ from .directory_access import (directory_role, visible_directory_meetings,
     visible_hierarchy_letters, directory_meeting_access, directory_action_report,
     directory_meeting_status_report)
 from .processmaker_directory import PMSyncUnavailable, fetch_users, safe_preview
+from .keycloak_admin import KeycloakUnavailable, password_update_email
 from .security import Principal
 from .modules import require_module
 from .sql_store import AccessDenied, StoreUnavailable, authorization_snapshot, scoped_connection
@@ -265,6 +266,42 @@ def make_router(principal_dependency):
             raise HTTPException(status_code=503,detail="Directory writer not configured")
         except Exception:
             raise HTTPException(status_code=409,detail="Organization role change refused")
+
+    @protected.post("/admin/directory/{pm_uid}/send-password-update")
+    def request_password_update(pm_uid: str, principal: auth):
+        """Trigger Keycloak's own password-update EMAIL, never set a password.
+
+        Requires verified external SysAdmin + current SQL SysAdmin, and an
+        ACTIVE, UUID-linked ordinary user in the SAME tenant. A PM username or
+        email alone cannot identify an account eligible for a reset.
+        """
+        _sysadmin(principal)
+        target = _uuid32(pm_uid)
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con, principal)
+                cur = con.cursor()
+                cur.execute("""
+                    SELECT TOP (1) d.SubjectID
+                    FROM AgentProduct.DirectoryUser d
+                    JOIN AgentProduct.Membership m
+                      ON m.TenantID=d.TenantID AND m.SubjectID=d.SubjectID
+                    WHERE d.TenantID=? AND d.PMUserUID=?
+                      AND d.IsEnabled=1 AND d.PMStatus='ACTIVE'
+                      AND d.OrgRole IN('Expert','Manager')
+                      AND m.IsEnabled=1 AND m.RoleCode IN('Analyst','Viewer')
+                """, str(principal.tenant_id), target)
+                row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Eligible linked user not found")
+            password_update_email(str(row[0]))
+            return {"status": "sent_to_identity_provider",
+                    "password_or_reset_token_returned": False,
+                    "note": "Keycloak sends the action email; no password or link is returned by this API."}
+        except (AccessDenied,):
+            raise HTTPException(status_code=403, detail="Tenant access denied")
+        except (StoreUnavailable, KeycloakUnavailable):
+            raise HTTPException(status_code=503, detail="Secure account action unavailable")
 
     @protected.get("/admin/directory/users")
     def directory_users(principal: auth):
