@@ -12,9 +12,9 @@
 
 ## ProcessMaker sync
 
-commercial/processmaker_sync.py فقط جدول USERS را با ستون‌های غیرمحرمانه می‌خواند. USR_PASSWORD عمداً انتخاب نمی‌شود. منبع PM با کاربر MySQL فقط‌خواندنی تنظیم می‌شود. Sync اولیه، کاربران موجودی را که قبلاً به Subject IdP متصل شده‌اند به‌روز می‌کند و کاربران جدید را new_unprovisioned گزارش می‌کند. ساخت login جدید باید توسط SysAdmin و IdP/Keycloak انجام شود تا ProcessMaker نتواند با ساخت یک کاربر، خودش دسترسی AI ایجاد کند.
+ماژول قدیمی commercial/processmaker_sync.py بازنشسته شده است؛ مسیر مورد پشتیبانی commercial/processmaker_directory.py با REST API فقط‌خواندنی ProcessMaker و endpoint امن /v2/admin/processmaker/users/sync است. USR_PASSWORD هرگز منتقل نمی‌شود و کاربر جدید بدون لینک OIDC و غیرفعال می‌ماند. ساخت login جدید فقط از مسیر هویت سازمانی تأییدشده انجام می‌شود.
 
-Endpoint: POST /v1/admin/processmaker/sync-users. هیچ credential پروسس‌میکر از HTTP body دریافت نمی‌شود؛ credential فقط server-side secret است.
+Endpoint معتبر: POST /v2/admin/processmaker/users/sync. مسیر قدیمی /v1/admin/processmaker/sync-users در نسخه فعال API وجود ندارد. هیچ credential پروسس‌میکر از HTTP body دریافت نمی‌شود؛ credential فقط server-side secret است.
 
 ## Organization tree and meeting scope
 
