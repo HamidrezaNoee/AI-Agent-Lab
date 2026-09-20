@@ -9,13 +9,13 @@ $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $repo
 $venvPython = Join-Path $repo '.venv\Scripts\python.exe'
-$parentVenvPython = Join-Path (Split-Path $repo -Parent) '.venv\Scripts\python.exe'
+$siblingVenvPython = Join-Path (Split-Path $repo -Parent) 'AI-Agent-Lab\.venv\Scripts\python.exe'
 if (Test-Path $venvPython) {
     $python = $venvPython
-} elseif (Test-Path $parentVenvPython) {
-    $python = $parentVenvPython
+} elseif (Test-Path $siblingVenvPython) {
+    $python = $siblingVenvPython
 } else {
-    throw "Python venv not found. Expected in repo\.venv or next to the repo."
+    throw "Python venv not found. Expected in repo\.venv or sibling AI-Agent-Lab\.venv."
 }
 & $python -c 'import fastapi,uvicorn,cryptography,jwt,httpx'
 if ($LASTEXITCODE -ne 0) {
