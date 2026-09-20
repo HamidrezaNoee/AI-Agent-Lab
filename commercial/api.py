@@ -24,7 +24,7 @@ from .security import (
 )
 from .sql_store import (
     AccessDenied, StoreUnavailable, authorization_snapshot,
-    scoped_connection, visible_meetings, authorized_documents,
+    scoped_connection, visible_meetings, visible_meetings_page, authorized_documents,
     authorized_evidence,
 )
 
@@ -97,6 +97,24 @@ def list_meetings(principal: PrincipalDep):
         "returned": len(meetings),
         "max_returned": 20,
         "meetings": meetings,
+        "data_scope": "synthetic-commercial-index-only",
+    }
+
+
+
+@app.get("/v1/meetings/page")
+def meeting_page(
+    principal: PrincipalDep,
+    cursor: int | None = Query(default=None, gt=0),
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    """All authorized meetings via bounded stable keyset pages, NOT unrestricted export."""
+    _, page = _query(principal, lambda con, p: visible_meetings_page(
+        con, p, before_id=cursor, limit=limit
+    ))
+    return {
+        "tenant_id": str(principal.tenant_id),
+        **page,
         "data_scope": "synthetic-commercial-index-only",
     }
 
