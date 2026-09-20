@@ -404,3 +404,9 @@ def overdue_alerts(principal: PrincipalDep):
                 "note": "On-demand overdue preview only; no scheduled delivery or messages."}
     _, result = _query(principal, action)
     return result
+
+
+# Opt-in loopback-only connected browser shell; NO auth bypass and NO routes
+# under /v1/ are supplied by the portal. The actual API verifies every JWT.
+from .connected_portal import router as connected_portal_router
+app.include_router(connected_portal_router)
