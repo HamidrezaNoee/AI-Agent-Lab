@@ -1,3 +1,5 @@
+@font-face{font-family:"BYekanPlus";src:url("/assets/byekanplus-regular.ttf") format("truetype");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"BYekanPlus";src:url("/assets/byekanplus-bold.ttf") format("truetype");font-weight:700 900;font-style:normal;font-display:swap}
 @font-face{font-family:BYekanPlus;src:url("/portal/font/regular") format("truetype"),url("/preview-font-regular") format("truetype");font-style:normal;font-weight:400;font-display:swap}
 @font-face{font-family:BYekanPlus;src:url("/portal/font/bold") format("truetype"),url("/preview-font-bold") format("truetype");font-style:normal;font-weight:700 900;font-display:swap}
 :root{font-family:BYekanPlus,Tahoma,"Segoe UI",sans-serif;color:#14233c;background:#f4f7fb;font-synthesis:none;--navy:#10243e;--ink:#14243d;--muted:#78879d;--teal:#0a917e;--purple:#715af0;--border:#e5eaf1;--white:#fff;--shadow:0 12px 30px rgba(28,47,75,.045)}
