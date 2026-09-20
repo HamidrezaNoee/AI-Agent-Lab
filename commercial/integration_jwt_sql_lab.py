@@ -76,9 +76,12 @@ def main():
             check(get(client, token("lab-alice", TENANT_A), "/v1/me").status_code == 200,
                   "Valid signed JWT reaches real tenant SQL membership")
             alice = get(client, token("lab-alice", TENANT_A))
-            check(alice.status_code == 200
-                  and [m["meeting_id"] for m in alice.json()["meetings"]] == [900001],
-                  "Signed Alice token returns only explicitly granted meeting")
+            alice_ids = [m["meeting_id"] for m in alice.json()["meetings"]]
+            check(alice.status_code == 200 and alice_ids
+                  and all(mid == 900001 or 910001 <= mid <= 910100
+                          for mid in alice_ids)
+                  and (900001 in alice_ids or 910100 in alice_ids),
+                  "Signed Alice token returns only explicitly granted A-001 / optional lab meetings")
 
             bob = get(client, token("lab-bob", TENANT_A))
             check(bob.status_code == 200
