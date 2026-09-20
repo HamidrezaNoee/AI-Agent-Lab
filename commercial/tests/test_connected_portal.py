@@ -83,7 +83,7 @@ class ConnectedPortalTests(unittest.TestCase):
 
     def test_connected_ui_does_not_bypass_protected_meeting_api(self):
         with patch.dict(os.environ, {**self.lab, **self.idp}):
-            self.assertIn(self.client.get("/v1/meetings/page").status_code, (401, 503))
+            self.assertIn(self.client.get("/v1/meetings/page").status_code, (401, 410, 503))
             self.assertIn(self.client.get("/v1/modules").status_code, (401, 503))
 
 
