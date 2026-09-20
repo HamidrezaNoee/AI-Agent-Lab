@@ -62,6 +62,33 @@ def main():
             check(cmods.status_code==200 and all(
                 not x["active"] for x in cmods.json()["modules"] if x["module_code"]!=1),
                 "Tenant B has no access to A's optional licenses")
+            # Walk every bounded page against the REAL SQL reader, ensuring
+            # the 100-case import never bypasses user grants or hides page gaps.
+            page_ids = []
+            cursor = None
+            while True:
+                params = {"limit": 25}
+                if cursor is not None:
+                    params["cursor"] = cursor
+                page = client.get("/v1/meetings/page", headers=ha, params=params)
+                check(page.status_code == 200, "Alice can read authorized paginated meetings")
+                body = page.json()
+                page_ids.extend(m["meeting_id"] for m in body["meetings"])
+                if not body["has_more"]:
+                    break
+                check(bool(body["next_cursor"]) and body["next_cursor"] not in
+                      page_ids[:-1], "Meeting pagination advances without repeated cursor")
+                cursor = body["next_cursor"]
+                if len(page_ids) > 110:
+                    raise AssertionError("FAIL: meeting pagination loop detected")
+            check(len(page_ids) == len(set(page_ids)) == 101
+                  and set(page_ids) == {900001, *range(910001, 910101)},
+                  "All 100 new fictional meetings plus A-001 retrieved, no cross-grant rows")
+            for headers, expected in ((hb, [900002]), (hc, [900003])):
+                page = client.get("/v1/meetings/page", headers=headers)
+                check(page.status_code == 200 and
+                      [x["meeting_id"] for x in page.json()["meetings"]] == expected,
+                      "Paginated list remains tenant/subject scoped")
             check(client.get("/v1/secretary/preparation/900001",headers=hc).status_code==403,
                   "Unlicensed tenant B cannot access secretary module")
             check(client.get("/v1/analytics/status-overview",headers=ha).status_code==403,
