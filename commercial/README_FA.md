@@ -236,3 +236,63 @@ $env:RUN_COMMERCIAL_SQL_INTEGRATION = "LAB_ONLY_NO_SERVER"
 ```
 
 This test does not invoke OpenAI or charge chat quota. No synthetic SQL rows are created. An actual external HTTPS IdP, JWKS key rotation, login/onboarding and a real issued access token are a SEPARATE remaining milestone.
+
+
+## Milestone 6: modular optional features + 100 automotive scenarios (LAB ONLY)
+
+This milestone adds the requested separately sellable switches, but **does NOT implement any real payment checkout, bank verification, commercial license issuer, production OAuth/OIDC, continuous reminder delivery, speech recognition/voice synthesis, or ProcessMaker write API**. The earlier signed-JWT test used an ephemeral LOCAL signer, not an external IdP. Do not market the prototype as already ready to take production customer payments or process real meeting records.
+
+**Modules and SKU boundaries:**
+- M1 / assistant (core): existing ACL-filtered text evidence and opt-in lab-only cited answer. The base assistant is available only to a verified user with ACTIVE tenant membership/subscription; live LLM remains independently disabled unless the operator explicitly and safely enables fictional LAB chat.
+- M2 / secretary (optional): `GET /v1/secretary/preparation/{meeting_id}` returns a read-only, human-reviewable agenda/evidence draft for a specifically granted meeting; it DOES NOT transcribe audio, extract actual minutes, or write ProcessMaker.
+- M3 / analytics (optional): `GET /v1/analytics/status-overview` counts all grant-visible fictional meeting-index rows by status; it does NOT invent action or financial KPIs.
+- M4 / monitoring (optional): `GET /v1/monitoring/overdue` shows up to 50 open overdue synthetic actions in explicitly granted meetings. It is a request-time preview, NOT an autonomous background job or SMS/email reminder.
+
+**Purchased-vs-on model:** `AgentProduct.TenantModule` has tenant ID, optional module code 2/3/4, `IsLicensed`, `LicenseUntilUtc`, and `IsEnabled`. Both license validity and enabled state are checked on every protected module request AFTER JWT validation and SQL membership/subscription. Missing, expired, unpurchased or disabled means HTTP 403; module visibility in the UI is NOT the security boundary. No one can turn on a module merely by sending `enabled=true`. An active tenant `Owner`/`Admin` can pause/resume only already-licensed modules via `PUT /v1/admin/modules/{module_code}` with `{"enabled":true|false}`; the SQL procedure rechecks the database role/license and appends an AuditEvent. Only a controlled operator/verified fulfillment process, NOT this API, is authorized to issue or renew real module licenses. Test `17` simulates fictional purchases and is NEVER a payment proof. `GET /v1/modules` returns statuses for the current verified tenant; it never accepts a client-supplied tenant ID.
+
+**Optional UI sample:** `commercial/web/ModuleSettings.tsx` is a Persian React administrative toggle component, ready to integrate into a properly authenticated same-origin host using a supplied `authorizedFetch` function. This repository DOES NOT yet contain the hosted customer UI or actual OIDC sign-in flow. Never paste token or SQL credentials into the UI or copy local signer mocks to a web server.
+
+**100 complete synthetic cases:** `commercial/datasets/100_automotive_meeting_scenarios_FA.json` contains precisely 100 distinct Persian automotive meeting topics across ten domains, each with initial request, preparation/agenda, meeting discussion, resolution, three owned/due actions with progress/evidence/secretary review, risk, follow-up and next-meeting prompt (300 fictional actions in total). The full lifecycle fields remain in the JSON. SQL file `16_seed_100_automotive_TEST_ONLY.sql` imports only the 100 *meeting-index projections* and 300 *action-index projections* into fictional tenant A after the structural migrations; it does NOT import all JSON lifecycle narrative into SQL or modify original MTG records.
+
+### One-time installation of the NEW optional modules in the existing isolated LAB
+
+Prerequisites already verified in previous user runs: synthetic fixtures `12` installed; earlier commercial schema, per-user grants, quotas and dedicated limited reader are present; `commercial.integration_sql_lab` and `commercial.integration_jwt_sql_lab` returned PASS. **Do not rerun seed `12`, do not wipe existing database or discard user's edited root `sql/` files.**
+
+In a **NEW SSMS Query** as test SQL sysadmin connected to `DESKTOP-GJI3D8L\\SQLSERVER2022`, execute each NEW file separately, stopping on the first SQL error:
+
+```text
+commercial/sql/14_modular_entitlements_TEST_ONLY.sql
+commercial/sql/15_action_index_TEST_ONLY.sql
+commercial/sql/16_seed_100_automotive_TEST_ONLY.sql     # ONCE: persists 100 + 300 fictional indexes
+commercial/sql/17_seed_test_module_licenses_TEST_ONLY.sql  # ONCE: fictional tenant A only
+commercial/sql/18_verify_modules_dataset_ADMIN_TEST_ONLY.sql  # READ ONLY
+```
+
+`16` and `17` are persistence-only synthetic fixtures and intentionally refuse a second execution so they do not overwrite test history. The expected final `18` output contains three PASS lines for 100 meeting indexes/300 action indexes, test license/administrator fixture, and tenant RLS protection. Running `14` alone does not license anything. Tenant B remains unlicensed. Seed `17` prepares tenant A M2=ON, M3=OFF but licensed, M4=ON, and creates `lab-admin` with Admin membership and two explicit meeting grants.
+
+### Python checks after SQL script 18 passes
+
+Run these in the **same local PowerShell window** as prior working integration tests, from the repo root. Use the virtualenv executable rather than global `python` (the latter caused `No module named fastapi` on the user's machine).
+
+```powershell
+$repo = "D:\\A Project\\17 meeting ai agent\\Azure\\AI-Agent-Lab-GitHub"
+$python = "D:\\A Project\\17 meeting ai agent\\Azure\\AI-Agent-Lab\\.venv\\Scripts\\python.exe"
+git -C $repo pull --ff-only origin main
+cd $repo
+& $python -m pip check
+& $python -m unittest discover -s commercial/tests -v
+$env:COMMERCIAL_MODE = "lab"
+$env:COMMERCIAL_SQL_SERVER = "DESKTOP-GJI3D8L\\SQLSERVER2022"
+$env:COMMERCIAL_SQL_DATABASE = "EnterpriseProcess2_AI_Test"
+$env:COMMERCIAL_SQL_USER = "AI_CommercialReader"
+$env:COMMERCIAL_CHAT_ENABLED = "0"
+$env:RUN_COMMERCIAL_SQL_INTEGRATION = "LAB_ONLY_NO_SERVER"
+# Only when the SQL password is NOT already configured in this shell:
+# $securePassword = Read-Host "LAB Commercial SQL password" -AsSecureString
+# $env:COMMERCIAL_SQL_PASSWORD = [System.Net.NetworkCredential]::new("", $securePassword).Password
+& $python -m commercial.integration_modules_lab
+```
+
+`commercial.integration_modules_lab` uses an ephemeral in-memory test RSA signing key, actual FastAPI Authorization verification, actual SQL account, tenant grants and the narrow SQL admin toggle. It restores the M3 fixture to OFF after its activation test, creating legitimate synthetic toggle AuditEvents. This new integration test **has not been run on the user's computer yet**; only describe its output as expected until the user executes it.
+
+Formal four-day IT announcement: `commercial/IT_MVP_4DAY_ANNOUNCEMENT_FA.md`. Scope is a staged test-environment MVP subject to IT provision of identity, data permissions and review, NOT an unconditional production rollout.
