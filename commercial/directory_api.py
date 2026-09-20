@@ -14,9 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from .admin_store import directory_admin_connection
-from .directory_access import directory_role, visible_directory_meetings, visible_hierarchy_letters
+from .directory_access import (directory_role, visible_directory_meetings,
+    visible_hierarchy_letters, directory_meeting_access, directory_action_report)
 from .processmaker_directory import PMSyncUnavailable, fetch_users, safe_preview
 from .security import Principal
+from .modules import require_module
 from .sql_store import AccessDenied, StoreUnavailable, authorization_snapshot, scoped_connection
 
 router = APIRouter(prefix="/v2")
@@ -83,6 +85,68 @@ def make_router(principal_dependency):
             raise HTTPException(status_code=403,detail="Tenant or directory access denied")
         except StoreUnavailable:
             raise HTTPException(status_code=503,detail="Commercial lab store unavailable")
+
+    @protected.get("/secretary/preparation/{meeting_id}")
+    def prepare_hierarchy_meeting(meeting_id: int, principal: auth):
+        """Module 2 read-only manager/subtree agenda, no ProcessMaker writes."""
+        if meeting_id<=0:raise HTTPException(status_code=422,detail="Invalid meeting ID")
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con,principal)
+                require_module(con,principal,2)
+                meeting=directory_meeting_access(con,principal,meeting_id)
+                if meeting is None:
+                    raise HTTPException(status_code=404,detail="Meeting not found")
+                cur=con.cursor()
+                cur.execute("""
+                  SELECT TOP (20) ActionNo,ActionTitle,OwnerUnit,DueAtUtc,
+                                  ProgressPercent,IsClosed
+                  FROM AgentProduct.ActionIndex
+                  WHERE TenantID=? AND MeetingID=?
+                  ORDER BY DueAtUtc,ActionNo
+                """,str(principal.tenant_id),meeting_id)
+                actions=[{"action_no":str(r[0]),"title":str(r[1]),
+                          "owner_unit":str(r[2]),"due_at_utc":str(r[3]),
+                          "progress_percent":int(r[4]),"is_closed":bool(r[5])}
+                         for r in cur.fetchall()]
+                agenda=(["مرور اقدامات باز و مصوبات جلسه"]+
+                        [f"پیگیری {a['action_no']}: {a['title']}" for a in actions
+                         if not a["is_closed"] and a["progress_percent"]<100][:5]+
+                        ["تعیین مسئول، موعد و معیار پذیرش با تأیید دبیر"])
+                return {"meeting":meeting,"actions":actions,"draft_agenda":agenda,
+                        "processmaker_write_performed":False,
+                        "human_approval_required":True,
+                        "note":"Read-only test index; not automatically generated minutes or an official resolution."}
+        except AccessDenied:
+            raise HTTPException(status_code=403,detail="Module or tenant access denied")
+        except StoreUnavailable:
+            raise HTTPException(status_code=503,detail="Isolated store unavailable")
+
+    @protected.get("/analytics/action-overview")
+    def action_overview(principal: auth):
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con,principal)
+                require_module(con,principal,3)
+                return directory_action_report(con,principal)
+        except AccessDenied:
+            raise HTTPException(status_code=403,detail="Module or hierarchy access denied")
+        except StoreUnavailable:
+            raise HTTPException(status_code=503,detail="Isolated store unavailable")
+
+    @protected.get("/monitoring/overdue")
+    def overdue_hierarchy(principal: auth):
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con,principal)
+                require_module(con,principal,4)
+                result=directory_action_report(con,principal,overdue_only=True)
+                result["note"]="On-demand test alert list only; no notification dispatched."
+                return result
+        except AccessDenied:
+            raise HTTPException(status_code=403,detail="Module or hierarchy access denied")
+        except StoreUnavailable:
+            raise HTTPException(status_code=503,detail="Isolated store unavailable")
 
     @protected.get("/letters/page")
     def letter_page(
