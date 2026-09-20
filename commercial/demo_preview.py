@@ -10,8 +10,9 @@ import json
 from ipaddress import ip_address
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from .local_font_css import installed_font_css
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web" / "preview"
@@ -62,7 +63,9 @@ def page():
 
 @app.get("/preview.css", include_in_schema=False)
 def styles():
-    return FileResponse(WEB / "preview.css", media_type="text/css; charset=utf-8")
+    css = (installed_font_css("/preview-font-")
+           + (WEB / "preview.css").read_text(encoding="utf-8"))
+    return Response(css, media_type="text/css; charset=utf-8")
 
 
 @app.get("/preview.js", include_in_schema=False)
