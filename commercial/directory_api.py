@@ -10,10 +10,11 @@ import json
 import os
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from .admin_store import directory_admin_connection
+from .branding_assets import MAX_PNG_BYTES, logo_response, store_png
 from .directory_access import (directory_role, visible_directory_meetings,
     visible_hierarchy_letters, directory_meeting_access, directory_action_report,
     directory_meeting_status_report)
@@ -358,5 +359,60 @@ def make_router(principal_dependency):
             raise HTTPException(status_code=503,detail="Tenant admin writer not configured")
         except Exception:
             raise HTTPException(status_code=409,detail="Branding update refused")
+
+    @protected.get("/branding/logo")
+    def read_tenant_logo(principal: auth):
+        """Authenticated, private tenant asset. No public third-party hosting."""
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con,principal)
+                cur=con.cursor()
+                cur.execute("""
+                    SELECT TOP (1) LogoAssetPath FROM AgentProduct.TenantBranding
+                    WHERE TenantID=?
+                """,str(principal.tenant_id))
+                row=cur.fetchone()
+                if row is None or not row[0]:
+                    raise HTTPException(status_code=404,detail="Tenant logo not configured")
+                return logo_response(str(row[0]))
+        except AccessDenied:
+            raise HTTPException(status_code=403,detail="Tenant logo access denied")
+        except StoreUnavailable:
+            raise HTTPException(status_code=503,detail="Tenant store unavailable")
+
+    @protected.put("/admin/branding/logo")
+    async def upload_tenant_logo(request: Request,principal: auth):
+        """Raw image/png, <=256KiB, DB-audited, loopback lab only."""
+        _sysadmin(principal)
+        if request.headers.get("content-type","").split(";")[0].strip().lower()!="image/png":
+            raise HTTPException(status_code=415,detail="Only PNG logo uploads are accepted")
+        if request.headers.get("content-length"):
+            try:
+                if int(request.headers["content-length"])>MAX_PNG_BYTES:
+                    raise HTTPException(status_code=413,detail="Logo too large")
+            except ValueError:
+                raise HTTPException(status_code=422,detail="Invalid upload length")
+        chunks=[]
+        total=0
+        async for piece in request.stream():
+            total+=len(piece)
+            if total>MAX_PNG_BYTES:
+                raise HTTPException(status_code=413,detail="Logo too large")
+            chunks.append(piece)
+        name,file=store_png(b"".join(chunks))
+        try:
+            with directory_admin_connection(principal) as con:
+                cur=con.cursor()
+                cur.execute("""
+                  EXEC AgentProduct.SetTenantLogo
+                    @TenantID=?,@ActorSubjectID=?,@LogoFileName=?
+                """,str(principal.tenant_id),principal.subject,name)
+                row=cur.fetchone()
+            return {"logo_available":True,"tenant_id":str(principal.tenant_id),
+                    "logo_url":"/v2/branding/logo",
+                    "note":"Private authenticated tenant PNG stored and audited"}
+        except Exception:
+            file.unlink(missing_ok=True)
+            raise HTTPException(status_code=409,detail="Tenant logo update refused")
 
     return protected
