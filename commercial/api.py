@@ -10,6 +10,7 @@ import os
 import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from .modules import OPTIONAL_MODULES, modules_snapshot, require_module, set_module_enabled
 
@@ -33,6 +34,27 @@ app = FastAPI(
     version="0.1.0",
     docs_url=None, redoc_url=None, openapi_url=None,
 )
+
+
+@app.middleware("http")
+async def quarantine_legacy_content(request, call_next):
+    """Keep old fixture-grant-only routes off a hierarchy-based deployment.
+
+    An Expert could otherwise use an old /v1 report/chat URL to bypass the
+    newer ProcessMaker participant/subtree checks. v1 identity/module catalog
+    remain for the transitional UI, but ALL content goes through /v2.
+    """
+    path = request.url.path
+    allowed = path in {"/v1/me", "/v1/modules"}
+    allowed = allowed or path.startswith("/v1/admin/modules/")
+    if (os.getenv("COMMERCIAL_V2_ONLY", "0") == "1"
+            and path.startswith("/v1/") and not allowed):
+        return JSONResponse(
+            status_code=410,
+            content={"detail": "Legacy meeting/document endpoint retired; use authorized /v2"},
+            headers={"Cache-Control": "no-store"},
+        )
+    return await call_next(request)
 
 
 @lru_cache(maxsize=1)
