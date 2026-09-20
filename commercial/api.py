@@ -11,6 +11,7 @@ import uuid
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from .modules import OPTIONAL_MODULES, modules_snapshot, require_module, set_module_enabled
 
 from .answer import MODEL, AnswerUnreliable, build_answer
 from .quota import (
@@ -231,3 +232,114 @@ def chat_answer(body: ChatPreviewRequest, principal: PrincipalDep):
         "completion_enabled": True,
         "data_scope": "synthetic-authorized-commercial-evidence-only",
     }
+
+
+
+# The catalog is public metadata ONLY; activation state is private tenant data.
+# Every protected module endpoint checks JWT -> DB membership/subscription ->
+# tenant-licensed AND enabled before querying ANY module-specific information.
+@app.get("/v1/modules")
+def list_modules(principal: PrincipalDep):
+    _, values = _query(principal, modules_snapshot)
+    return {"tenant_id": str(principal.tenant_id), "modules": values,
+            "note": "Module 1 is core; optional modules require verified purchase and admin enablement."}
+
+
+class ModuleSetting(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+
+
+@app.put("/v1/admin/modules/{module_code}")
+def toggle_optional_module(module_code: int, body: ModuleSetting,
+                           principal: PrincipalDep):
+    if module_code not in OPTIONAL_MODULES:
+        raise HTTPException(status_code=404, detail="Unknown optional module")
+    try:
+        with scoped_connection(principal) as con:
+            membership = authorization_snapshot(con, principal)
+            if membership["role"] not in ("Owner", "Admin"):
+                raise HTTPException(status_code=403, detail="Tenant administrator required")
+            # SQL procedure repeats active tenant/member/license checks and writes AuditEvent.
+            changed = set_module_enabled(con, principal, module_code, body.enabled)
+            return {"tenant_id": str(principal.tenant_id), "module": changed,
+                    "note": "Licensed module enabled/disabled; payment is not processed by this endpoint."}
+    except (AccessDenied,):
+        raise HTTPException(status_code=403, detail="Module activation not permitted")
+    except StoreUnavailable:
+        raise HTTPException(status_code=503, detail="Commercial lab store unavailable")
+
+
+@app.get("/v1/secretary/preparation/{meeting_id}")
+def secretary_preparation(meeting_id: int, principal: PrincipalDep):
+    """Module 2: human-reviewable draft based on granted records, never auto-write."""
+    if meeting_id <= 0:
+        raise HTTPException(status_code=422, detail="Invalid meeting ID")
+    def action(con, p):
+        require_module(con, p, 2)
+        from .sql_store import authorized_meeting
+        meeting = authorized_meeting(con, p, meeting_id)
+        if meeting is None:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+        docs = authorized_documents(con, p, meeting["title"], limit=5, meeting_id=meeting_id)
+        return {"meeting": meeting, "related_evidence": docs,
+                "draft_agenda": ["مرور مصوبات باز قبلی",
+                                 "بررسی موضوع جلسه و مدارک دارای مجوز",
+                                 "تعیین مسئول، مهلت و معیار پذیرش برای هر اقدام"],
+                "human_approval_required": True,
+                "processmaker_write_performed": False,
+                "note": "Read-only preparation draft; transcription and action extraction are not implemented."}
+    _, result = _query(principal, action)
+    return result
+
+
+@app.get("/v1/analytics/status-overview")
+def status_overview(principal: PrincipalDep):
+    """Module 3: exact counts of ALL grant-visible index rows (not TOP 20 sample)."""
+    def action(con, p):
+        require_module(con, p, 3)
+        cur = con.cursor()
+        cur.execute("""
+            SELECT m.MeetingStatus, COUNT_BIG(*) AS Total
+            FROM AgentProduct.MeetingIndex m
+            WHERE m.TenantID=?
+              AND EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
+                         WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID
+                           AND g.SubjectID=?)
+            GROUP BY m.MeetingStatus ORDER BY m.MeetingStatus
+        """, str(p.tenant_id), p.subject)
+        counts = [{"status": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
+        return {"scope": "only explicitly granted fictional meeting-index rows",
+                "total_visible_meetings": sum(item["count"] for item in counts),
+                "status_breakdown": counts,
+                "note": "No unsupported action-performance or financial KPIs are inferred."}
+    _, result = _query(principal, action)
+    return result
+
+
+@app.get("/v1/monitoring/overdue")
+def overdue_alerts(principal: PrincipalDep):
+    """Module 4: on-demand read-only due-date alerts; not a running notification job."""
+    def action(con, p):
+        require_module(con, p, 4)
+        cur = con.cursor()
+        cur.execute("""
+            SELECT TOP (50) a.MeetingID, a.ActionNo, a.ActionTitle,
+                   a.OwnerUnit, a.DueAtUtc, a.ProgressPercent
+            FROM AgentProduct.ActionIndex a
+            WHERE a.TenantID=? AND a.DueAtUtc<SYSUTCDATETIME()
+              AND a.ProgressPercent<100 AND a.IsClosed=0
+              AND EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
+                         WHERE g.TenantID=a.TenantID AND g.MeetingID=a.MeetingID
+                           AND g.SubjectID=?)
+            ORDER BY a.DueAtUtc,a.MeetingID,a.ActionNo
+        """, str(p.tenant_id), p.subject)
+        rows = [{"meeting_id": int(r[0]), "action_no": str(r[1]),
+                 "title": str(r[2]), "owner_unit": str(r[3]),
+                 "due_at_utc": str(r[4]), "progress_percent": int(r[5])}
+                for r in cur.fetchall()]
+        return {"alerts": rows, "returned": len(rows), "max_returned": 50,
+                "scope": "only explicitly granted fictional meetings",
+                "note": "On-demand overdue preview only; no scheduled delivery or messages."}
+    _, result = _query(principal, action)
+    return result
