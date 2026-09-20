@@ -119,6 +119,10 @@ async function refreshIdentity(){
     modules=[];directoryProfile=null;tenantAdmin=false;
     document.querySelectorAll("#nav [data-page]").forEach(item=>item.hidden=true);
   }
+  if(config?.hierarchy_only && !directoryProfile && !platformAdmin){
+    profile=null;modules=[];
+    throw Error("حساب شما هنوز به دایرکتوری فعال ProcessMaker و چارت سازمانی متصل نشده است.");
+  }
   $("tenant-admin-nav").hidden=!tenantAdmin;$("admin-heading").hidden=!tenantAdmin;
   $("platform-admin-nav").hidden=!platformAdmin;$("godadmin-heading").hidden=!platformAdmin;
   $("user-name").textContent=profile.subject;
@@ -234,7 +238,13 @@ async function showMeetings(){
   append(panel,list,more);append(main,panel);await loadPage();
 }
 function showAssistant(){
-  const main=root();title(main,"MODULE 01 / EVIDENCE","جست‌وجوی مستندات و صورت‌جلسات",
+  const main=root();
+  if(config?.hierarchy_only){
+    title(main,"MODULE 01 / EVIDENCE","جست‌وجوی مستندات",
+      "تا زمان انتقال کنترل دسترسی اسناد به مسیر جدید سازمانی، جست‌وجوی محتوای قدیمی فعال نیست.");
+    notice(main,"مسیرهای قدیمی /v1/chat و /v1/knowledge در حالت چارت سازمانی بسته‌اند. اطلاعات جلسات را از فهرست مجاز و گزارش‌های /v2 ببینید.");
+    return;
+  }title(main,"MODULE 01 / EVIDENCE","جست‌وجوی مستندات و صورت‌جلسات",
     "نسخه خواندنی: نمایش شواهد مجاز بدون فراخوانی OpenAI.");
   notice(main,"این صفحه فقط خروجی /v1/chat/preview را نمایش می‌دهد. پاسخ تولیدشده توسط مدل زبانی غیرفعال است.");
   const panel=box("پرسش فارسی","جست‌وجو با مجوز کاربر");
