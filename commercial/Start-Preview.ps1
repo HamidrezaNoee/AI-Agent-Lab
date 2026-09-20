@@ -22,8 +22,21 @@ if ($LASTEXITCODE -ne 0) {
     throw "Missing Python requirements. Install inside the venv with: & `"$python`" -m pip install -r commercial/requirements.txt"
 }
 if (-not $SkipTests) {
-    & $python -m unittest discover -s commercial/tests -v
-    if ($LASTEXITCODE -ne 0) {
+    # Legacy /v1 unit tests require their historical grant-only contract.
+    # Test the /v2 closure separately, but do not inherit a live server flag
+    # from the operator's PowerShell session into the whole test process.
+    $previousV2 = $env:COMMERCIAL_V2_ONLY
+    $previousChat = $env:COMMERCIAL_CHAT_ENABLED
+    try {
+        $env:COMMERCIAL_V2_ONLY = '0'
+        $env:COMMERCIAL_CHAT_ENABLED = '0'
+        & $python -m unittest discover -s commercial/tests -v
+        $testExit = $LASTEXITCODE
+    } finally {
+        $env:COMMERCIAL_V2_ONLY = $previousV2
+        $env:COMMERCIAL_CHAT_ENABLED = $previousChat
+    }
+    if ($testExit -ne 0) {
         throw 'Offline commercial tests FAILED; preview was not started.'
     }
 }
