@@ -37,8 +37,10 @@ jobs:
         run: |
           python -m compileall -q commercial
           python -m unittest discover -s commercial/tests -v
-      - name: Check browser preview JavaScript syntax
-        run: node --check commercial/web/preview/preview.js
+      - name: Check browser preview and connected portal JavaScript syntax
+        run: |
+          node --check commercial/web/preview/preview.js
+          node --check commercial/web/portal/portal.js
       - name: Confirm dataset and scripts remain fictional-only
         run: |
           python - <<'PY'
