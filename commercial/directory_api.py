@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from .admin_store import directory_admin_connection
-from .directory_access import directory_role, visible_directory_meetings
+from .directory_access import directory_role, visible_directory_meetings, visible_hierarchy_letters
 from .processmaker_directory import PMSyncUnavailable, fetch_users, safe_preview
 from .security import Principal
 from .sql_store import AccessDenied, StoreUnavailable, authorization_snapshot, scoped_connection
@@ -83,6 +83,27 @@ def make_router(principal_dependency):
             raise HTTPException(status_code=403,detail="Tenant or directory access denied")
         except StoreUnavailable:
             raise HTTPException(status_code=503,detail="Commercial lab store unavailable")
+
+    @protected.get("/letters/page")
+    def letter_page(
+        principal: auth,
+        cursor: str | None = Query(default=None,min_length=1,max_length=100),
+        limit: int = Query(default=20,ge=1,le=50),
+    ):
+        """Metadata only: restricted ordinary subordinate letters and explicit
+        confidential grants, NEVER raw content or automatic GodAdmin bypass.
+        """
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con,principal)
+                values=visible_hierarchy_letters(
+                    con,principal,before_id=cursor,limit=limit
+                )
+                return {"tenant_id":str(principal.tenant_id),**values}
+        except AccessDenied:
+            raise HTTPException(status_code=403,detail="Tenant or letter access denied")
+        except StoreUnavailable:
+            raise HTTPException(status_code=503,detail="Letter index unavailable")
 
     @protected.get("/admin/processmaker/users/preview")
     def preview_pm(principal: auth):
