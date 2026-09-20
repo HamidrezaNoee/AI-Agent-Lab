@@ -410,3 +410,10 @@ def overdue_alerts(principal: PrincipalDep):
 # under /v1/ are supplied by the portal. The actual API verifies every JWT.
 from .connected_portal import router as connected_portal_router
 app.include_router(connected_portal_router)
+
+
+# NEW hierarchical-ACL routes keep the existing, previously tested v1 grants
+# intact until controlled directory identity/meeting involvement migration.
+# Every v2 request still uses the SAME verified JWT dependency and real SQL.
+from .directory_api import make_router as make_directory_router
+app.include_router(make_directory_router(_authenticated_principal))
