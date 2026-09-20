@@ -139,6 +139,7 @@ def answer_question(question: str, meetings: Iterable[dict], *,
                and _date(a.get("due_at_utc")) is not None
                and _date(a["due_at_utc"]) < instant]
     overdue.sort(key=lambda pair: _date(pair[1]["due_at_utc"]))
+    overdue_keys = {(int(m["meeting_id"]), str(a["action_no"])) for m, a in overdue}
     open_actions = [(m, a) for m, a in actions if _open(a)]
 
     if intent == "overdue_actions":
@@ -184,7 +185,8 @@ def answer_question(question: str, meetings: Iterable[dict], *,
             group["total"] += 1
             if _open(a):
                 group["open"] += 1
-                if (m, a) in overdue: group["overdue"] += 1
+                if (int(m["meeting_id"]), str(a["action_no"])) in overdue_keys:
+                    group["overdue"] += 1
             else:
                 group["done"] += 1
         ranked = sorted(groups.items(), key=lambda pair: (-pair[1]["overdue"], -pair[1]["open"], pair[0]))
