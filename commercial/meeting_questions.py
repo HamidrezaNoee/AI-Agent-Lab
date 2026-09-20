@@ -259,6 +259,39 @@ def answer_question(question: str, meetings: Iterable[dict], *,
                             if recurring else
                             "عنوان یکسانِ تکرارشده‌ای در جلسات قابل مشاهده پیدا نشد.")
         notes.append("تکرار فقط با یکسان‌بودن عنوان پس از یکسان‌سازی حروف/فاصله تشخیص داده می‌شود؛ شباهت معنایی موضوعات هنوز تحلیل نشده است.")
+        if not recurring:
+            themes = (
+                ("تأخیر", ("تأخیر", "تاخیر")),
+                ("ارز و پرداخت", ("ارز", "پرداخت")),
+                ("مجوز و ثبت سفارش", ("مجوز", "ثبت سفارش")),
+                ("ترخیص و لجستیک", ("ترخیص", "گمرک", "لجستیک")),
+                ("تأمین و خرید", ("تأمین", "تامین", "خرید")),
+                ("تحویل", ("تحویل",)),
+                ("کیفیت و گارانتی", ("کیفیت", "گارانتی")),
+                ("قطعات", ("قطعه", "قطعات")),
+            )
+            shared = []
+            for theme, words in themes:
+                matched = [m for m in records if any(
+                    word in str(m["title"]).replace("ي","ی").replace("ك","ک")
+                    for word in words)]
+                if len(matched) >= 2:
+                    shared.append((theme, matched))
+            shared.sort(key=lambda pair: (-len(pair[1]), pair[0]))
+            for theme, matched in shared:
+                if len(items) >= 10:
+                    break
+                for m in matched[:min(2, 10-len(items))]:
+                    add(m, detail=f"کلیدواژه مشترک «{theme}» در عنوان {len(matched)} جلسه")
+            if shared:
+                result["answer"] = (
+                    f"عنوان یکسانی تکرار نشده است، اما {len(shared)} گروه کلیدواژه مشترک "
+                    "در عنوان چند جلسه مجاز پیدا شد."
+                )
+            notes.append(
+                "گروه‌های کلیدواژه صرفاً هم‌پوشانی واژگان عنوان هستند؛ "
+                "این نتیجه به معنی یکسان‌بودن مسئله یا تحلیل معنایی صورت‌جلسه نیست."
+            )
 
     elif intent == "next_agenda":
         pending_by_meeting = []
