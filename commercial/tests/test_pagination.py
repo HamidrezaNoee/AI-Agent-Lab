@@ -2,6 +2,7 @@
 import unittest
 from contextlib import contextmanager
 from unittest.mock import patch
+import os
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -81,7 +82,8 @@ class LegacyPaginationTests(unittest.TestCase):
             yield Connection([(900001, "A-001", "test", "Draft")])
 
         try:
-            with (patch("commercial.api.scoped_connection", fake_conn),
+            with (patch.dict(os.environ, {"COMMERCIAL_V2_ONLY": "0"}),
+                  patch("commercial.api.scoped_connection", fake_conn),
                   patch("commercial.api.authorization_snapshot",
                         return_value={"role": "Viewer"})):
                 with TestClient(app) as client:
