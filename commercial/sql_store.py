@@ -224,19 +224,27 @@ def visible_meetings_page(
     ):
         raise ValueError("Invalid meeting cursor")
 
-    cursor = con.cursor()
-    cursor.execute("""
+    sql = """
         SELECT TOP (51) m.MeetingID,m.MeetingNo,m.MeetingTitle,m.MeetingStatus
         FROM AgentProduct.MeetingIndex m
         WHERE m.TenantID=?
-          AND (? IS NULL OR m.MeetingID<?)
+    """
+    parameters = [str(principal.tenant_id)]
+    if before_id is not None:
+        # SQL syntax is static; a cursor value is ALWAYS a bound parameter.
+        sql += " AND m.MeetingID<?"
+        parameters.append(before_id)
+    sql += """
           AND EXISTS (
               SELECT 1 FROM AgentProduct.MeetingGrant g
               WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID
                 AND g.SubjectID=?
           )
         ORDER BY m.MeetingID DESC
-    """, str(principal.tenant_id), before_id, before_id, principal.subject)
+    """
+    parameters.append(principal.subject)
+    cursor = con.cursor()
+    cursor.execute(sql, *parameters)
     rows = cursor.fetchall()
     has_more = len(rows) > limit
     page = rows[:limit]
