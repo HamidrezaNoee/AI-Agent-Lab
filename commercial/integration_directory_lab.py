@@ -55,19 +55,26 @@ def main():
             if cursor is None:raise AssertionError("Missing hierarchy pagination cursor")
         raise AssertionError("Hierarchy pagination did not terminate")
 
+    # Isolated subprocess flag: enforce v2-only on this test run, never rely on
+    # old fixture grants to authorize meeting/doc/report content.
+    os.environ["COMMERCIAL_V2_ONLY"]="1"
     with patch("commercial.api._verifier",return_value=verifier):
         with TestClient(app) as client:
             check(client.get("/v2/meetings/page").status_code==401,
                   "Directory API refuses missing bearer token")
+            check(client.get("/v1/meetings",headers=h("lab-alice",A)).status_code==410
+                  and client.get("/v1/chat/preview",headers=h("lab-alice",A)).status_code==410,
+                  "Old v1 routes are quarantined; historic synthetic grants cannot bypass hierarchy")
             alice,scope=all_ids(client,h("lab-alice",A))
-            check(scope=="self-and-org-subtree" and len(alice)==len(set(alice))==102
-                  and {900001,900002,910001,910100}.issubset(alice),
-                  "Expert Alice sees own and Bob subordinate meetings without duplicate/missing pages")
+            check(scope=="self-and-org-subtree" and len(alice)==len(set(alice))==3
+                  and set(alice)=={900001,900002,910001},
+                  "Expert Alice sees ONLY herself and Bob subordinate meeting involvement, NOT old fixture grants")
             bob,scope=all_ids(client,h("lab-bob",A))
             check(scope=="self-and-org-subtree" and bob==[900002],
                   "Expert Bob cannot inspect supervisor's or unrelated meetings")
             mgr,scope=all_ids(client,h("lab-manager",A))
-            check(scope=="tenant" and set(mgr)==set(alice),
+            check(scope=="tenant" and len(mgr)==len(set(mgr))==102
+                  and set(alice).issubset(mgr) and 910100 in mgr,
                   "Tenant Manager sees all 102 fictional A meetings without being an actor")
             admin,scope=all_ids(client,h("lab-admin",A,("SysAdmin",)))
             check(scope=="tenant" and set(admin)==set(mgr),
