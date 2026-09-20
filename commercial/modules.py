@@ -31,7 +31,7 @@ def modules_snapshot(con, principal: Principal) -> list[dict]:
         end = row[3] if row else None
         if end is not None and end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
-        licensed = bool(row and row[1] and end and end > now)
+        licensed = bool(row and row[1] and (end is None or end > now))
         enabled = bool(row and row[2])
         result.append({
             "module_code": code, "key": key, "title": title,
