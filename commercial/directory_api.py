@@ -20,6 +20,8 @@ from .directory_access import (directory_role, visible_directory_meetings,
     directory_meeting_status_report)
 from .processmaker_directory import PMSyncUnavailable, fetch_users, safe_preview
 from .keycloak_admin import KeycloakUnavailable, password_update_email
+from .meeting_questions import QUESTIONS, _intent, answer_question
+from .directory_questions import authorized_question_snapshot
 from .security import Principal
 from .modules import require_module
 from .sql_store import AccessDenied, StoreUnavailable, authorization_snapshot, scoped_connection
@@ -153,6 +155,68 @@ def make_router(principal_dependency):
             raise HTTPException(status_code=403,detail="Module or hierarchy access denied")
         except StoreUnavailable:
             raise HTTPException(status_code=503,detail="Isolated store unavailable")
+
+    class ManagementQuestion(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        question: str = Field(min_length=3, max_length=350)
+
+    @protected.get("/assistant/questions")
+    def allowed_management_questions(principal: auth):
+        # Even the prompt catalog is behind the same verified identity and
+        # active linked ProcessMaker directory membership as v2 meeting data.
+        _active_member(principal)
+        return {"questions": list(QUESTIONS), "model_used": False,
+                "scope": "isolated-commercial-index-only"}
+
+    @protected.post("/assistant/ask")
+    def ask_management_question(body: ManagementQuestion, principal: auth):
+        """Read-only eight-intent answer, using only current verified ACL scope.
+
+        Core module answers a single authorized meeting's action status.
+        Module 4 guards overdue; Module 2 guards future agenda; Module 3
+        guards aggregate analytics and risk/recurrence. No external LLM is
+        invoked or enabled via this route. Never query raw MTG directly.
+        """
+        intent = _intent(body.question)
+        requested_module = {
+            "overdue_actions": 4,
+            "next_agenda": 2,
+            "monthly_unresolved": 3,
+            "unit_performance": 3,
+            "owner_backlog": 3,
+            "risks": 3,
+            "recurring": 3,
+        }.get(intent, 1)
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con, principal)
+                # Checking role on EVERY request refuses an unlinked or
+                # disabled ProcessMaker account even for an unsupported intent.
+                directory_role(con, principal)
+                if requested_module != 1:
+                    require_module(con, principal, requested_module)
+                records, complete = authorized_question_snapshot(con, principal)
+                answer = answer_question(
+                    body.question, records,
+                    data_scope="authorized-synthetic-commercial-index-only",
+                    coverage_complete=complete,
+                )
+                answer["required_module"] = requested_module
+                answer["tenant_id"] = str(principal.tenant_id)
+                answer["read_only"] = True
+                if intent in ("monthly_unresolved", "risks"):
+                    answer["notes"].append(
+                        "نمایه SQL فعلی فاقد تاریخ تشکیل جلسه/متن ریسک است. "
+                        "برای پاسخ کامل، ورود کنترل‌شده این فیلدها از منبع مجاز ضروری است."
+                    )
+                return answer
+        except AccessDenied:
+            raise HTTPException(
+                status_code=403,
+                detail="Tenant, ProcessMaker membership, or module permission denied",
+            )
+        except StoreUnavailable:
+            raise HTTPException(status_code=503, detail="Isolated commercial store unavailable")
 
     @protected.get("/letters/page")
     def letter_page(
