@@ -76,7 +76,7 @@ BEGIN
  IF NOT EXISTS(
  SELECT 1 FROM AgentProduct.TenantModule WITH(UPDLOCK,HOLDLOCK)
  WHERE TenantID=@TenantID AND ModuleCode=@ModuleCode
- AND IsLicensed=1 AND LicenseUntilUtc>SYSUTCDATETIME()
+ AND IsLicensed=1 AND (LicenseUntilUtc IS NULL OR LicenseUntilUtc>SYSUTCDATETIME())
  )
   THROW 59214,'No active purchased license for the requested module.',1;
  UPDATE AgentProduct.TenantModule
