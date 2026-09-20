@@ -3,7 +3,7 @@
 Requires the verified OIDC subject to map to an ACTIVE, ENABLED PM directory
 entry. Hierarchy is explicitly configured in DirectoryUser, not inferred from
 ProcessMaker groups or names. GodAdmin alone NEVER grants tenant content access.
-Regular experts see their own AND their subtree's involvement; Manager/SysAdmin
+Regular experts see ONLY their own AND their subtree's involvement; Manager/SysAdmin
 see all meetings of their tenant. No query ever omits tenant RLS or membership.
 """
 from .security import Principal
@@ -53,19 +53,15 @@ def visible_directory_meetings(con, principal: Principal, *, before_id=None, lim
         SELECT TOP (51) m.MeetingID,m.MeetingNo,m.MeetingTitle,m.MeetingStatus
         FROM AgentProduct.MeetingIndex m
         WHERE """+where+"""
-          AND (
-           EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
-                  WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID AND g.SubjectID=?)
-           OR EXISTS(
-             SELECT 1 FROM AgentProduct.MeetingActor a JOIN Subtree s
-               ON s.PMUserUID=a.PMUserUID
-             WHERE a.TenantID=m.TenantID AND a.MeetingID=m.MeetingID
-           )
+          AND EXISTS(
+            SELECT 1 FROM AgentProduct.MeetingActor a JOIN Subtree s
+              ON s.PMUserUID=a.PMUserUID
+            WHERE a.TenantID=m.TenantID AND a.MeetingID=m.MeetingID
           )
         ORDER BY m.MeetingID DESC
         OPTION (MAXRECURSION 32)
         """
-        params=[str(principal.tenant_id),uid,str(principal.tenant_id),*params,principal.subject]
+        params=[str(principal.tenant_id),uid,str(principal.tenant_id),*params]
     else:
         query="""
         SELECT TOP (51) m.MeetingID,m.MeetingNo,m.MeetingTitle,m.MeetingStatus
@@ -201,17 +197,14 @@ def directory_meeting_access(con, principal: Principal, meeting_id: int) -> dict
         SELECT TOP (1) m.MeetingID,m.MeetingNo,m.MeetingTitle,m.MeetingStatus
         FROM AgentProduct.MeetingIndex m
         WHERE m.TenantID=? AND m.MeetingID=?
-          AND (
-            EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
-             WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID AND g.SubjectID=?)
-            OR EXISTS(SELECT 1 FROM AgentProduct.MeetingActor a
-             JOIN Subtree s ON s.PMUserUID=a.PMUserUID
-             WHERE a.TenantID=m.TenantID AND a.MeetingID=m.MeetingID)
+          AND EXISTS(
+            SELECT 1 FROM AgentProduct.MeetingActor a
+            JOIN Subtree s ON s.PMUserUID=a.PMUserUID
+            WHERE a.TenantID=m.TenantID AND a.MeetingID=m.MeetingID
           )
         OPTION (MAXRECURSION 32)
         """,str(principal.tenant_id),principal.subject,
-            str(principal.tenant_id),str(principal.tenant_id),meeting_id,
-            principal.subject)
+            str(principal.tenant_id),str(principal.tenant_id),meeting_id)
     r=cur.fetchone()
     return ({"meeting_id":int(r[0]),"meeting_no":str(r[1]),
              "title":str(r[2]),"status":str(r[3])} if r else None)
@@ -243,20 +236,16 @@ def directory_action_report(con, principal: Principal, *,
         """
         inputs=[str(principal.tenant_id),principal.subject,str(principal.tenant_id)]
         acl="""
-        AND (
-          EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
-            WHERE g.TenantID=a.TenantID AND g.MeetingID=a.MeetingID AND g.SubjectID=?)
-          OR EXISTS(SELECT 1 FROM AgentProduct.MeetingActor ma JOIN Subtree s
-            ON s.PMUserUID=ma.PMUserUID
-            WHERE ma.TenantID=a.TenantID AND ma.MeetingID=a.MeetingID)
-        )
+        AND EXISTS(SELECT 1 FROM AgentProduct.MeetingActor ma JOIN Subtree s
+          ON s.PMUserUID=ma.PMUserUID
+          WHERE ma.TenantID=a.TenantID AND ma.MeetingID=a.MeetingID)
         """
     else:
         cte=""
         inputs=[]
         acl=""
     base=" FROM AgentProduct.ActionIndex a WHERE a.TenantID=? "+acl
-    params=inputs+[str(principal.tenant_id)]+([principal.subject] if role=="Expert" else [])
+    params=inputs+[str(principal.tenant_id)]
     cursor=con.cursor()
     if overdue_only:
         sql=cte+"""
@@ -312,20 +301,14 @@ def directory_meeting_status_report(con, principal: Principal) -> dict:
         )
         SELECT m.MeetingStatus,COUNT_BIG(*) FROM AgentProduct.MeetingIndex m
         WHERE m.TenantID=?
-        AND (
-         EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
-          WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID
-          AND g.SubjectID=?)
-         OR EXISTS(SELECT 1 FROM AgentProduct.MeetingActor a
+        AND EXISTS(SELECT 1 FROM AgentProduct.MeetingActor a
           JOIN Subtree s ON s.PMUserUID=a.PMUserUID
           WHERE a.TenantID=m.TenantID AND a.MeetingID=m.MeetingID)
-        )
         GROUP BY m.MeetingStatus ORDER BY m.MeetingStatus
         OPTION (MAXRECURSION 32)
         """
         params=(str(principal.tenant_id),principal.subject,
-                str(principal.tenant_id),str(principal.tenant_id),
-                principal.subject)
+                str(principal.tenant_id),str(principal.tenant_id))
     else:
         sql="""
           SELECT m.MeetingStatus,COUNT_BIG(*)
