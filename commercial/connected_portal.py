@@ -124,3 +124,17 @@ def portal_config(request: Request):
                                      status_code=503))
     config.pop("token_origin")
     return _headers(JSONResponse({"ready": True, **config}))
+
+
+
+@router.get("/portal/font/{weight}")
+def portal_font(weight: str, request: Request):
+    _localhost(request)
+    if weight not in ("regular", "bold"):
+        raise HTTPException(status_code=404,detail="Font not found")
+    # Serve only two fixed, user-installed paths; never accept arbitrary paths
+    # from the request. No font binaries are embedded in this repository.
+    source = ROOT / "fonts" / ("byekanplus-" + weight + ".ttf")
+    if not source.is_file():
+        raise HTTPException(status_code=404,detail="Optional local font not installed")
+    return _headers(FileResponse(source,media_type="font/ttf"))
