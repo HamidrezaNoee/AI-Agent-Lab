@@ -286,13 +286,36 @@ def secretary_preparation(meeting_id: int, principal: PrincipalDep):
         if meeting is None:
             raise HTTPException(status_code=404, detail="Meeting not found")
         docs = authorized_documents(con, p, meeting["title"], limit=5, meeting_id=meeting_id)
+        cur = con.cursor()
+        cur.execute("""
+            SELECT TOP (20) a.ActionNo,a.ActionTitle,a.OwnerUnit,
+                   a.DueAtUtc,a.ProgressPercent,a.IsClosed
+            FROM AgentProduct.ActionIndex a
+            WHERE a.TenantID=? AND a.MeetingID=? AND
+              EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
+                     WHERE g.TenantID=a.TenantID AND g.MeetingID=a.MeetingID
+                       AND g.SubjectID=?)
+            ORDER BY a.DueAtUtc,a.ActionNo
+        """, str(p.tenant_id), meeting_id, p.subject)
+        actions = [
+            {"action_no": str(r[0]), "title": str(r[1]),
+             "owner_unit": str(r[2]), "due_at_utc": str(r[3]),
+             "progress_percent": int(r[4]), "is_closed": bool(r[5])}
+            for r in cur.fetchall()
+        ]
+        open_items = [item for item in actions
+                      if not item["is_closed"] and item["progress_percent"]<100]
         return {"meeting": meeting, "related_evidence": docs,
-                "draft_agenda": ["مرور مصوبات باز قبلی",
-                                 "بررسی موضوع جلسه و مدارک دارای مجوز",
-                                 "تعیین مسئول، مهلت و معیار پذیرش برای هر اقدام"],
+                "actions": actions,
+                "draft_agenda": (
+                    ["مرور اقدامات باز و علت تأخیر مربوط به این جلسه"] +
+                    [f"پیگیری {a['action_no']}: {a['title']}" for a in open_items[:5]] +
+                    ["بررسی موضوع جلسه و مدارک دارای مجوز",
+                     "ثبت مسئول، موعد و معیار پذیرش اقدامات پس از تأیید انسانی"]
+                ),
                 "human_approval_required": True,
                 "processmaker_write_performed": False,
-                "note": "Read-only preparation draft; transcription and action extraction are not implemented."}
+                "note": "Read-only preparation draft; transcription and automatic ProcessMaker entry not implemented."}
     _, result = _query(principal, action)
     return result
 
@@ -313,10 +336,26 @@ def status_overview(principal: PrincipalDep):
             GROUP BY m.MeetingStatus ORDER BY m.MeetingStatus
         """, str(p.tenant_id), p.subject)
         counts = [{"status": str(r[0]), "count": int(r[1])} for r in cur.fetchall()]
-        return {"scope": "only explicitly granted fictional meeting-index rows",
+        cur.execute("""
+            SELECT COUNT_BIG(*) AS TotalActions,
+             COALESCE(SUM(CASE WHEN a.IsClosed=0 AND a.ProgressPercent<100
+                               THEN CAST(1 AS bigint) ELSE CAST(0 AS bigint) END),0) AS OpenActions,
+             COALESCE(SUM(CASE WHEN a.IsClosed=0 AND a.ProgressPercent<100
+                                   AND a.DueAtUtc<SYSUTCDATETIME()
+                               THEN CAST(1 AS bigint) ELSE CAST(0 AS bigint) END),0) AS OverdueActions
+            FROM AgentProduct.ActionIndex a
+            WHERE a.TenantID=? AND EXISTS(
+             SELECT 1 FROM AgentProduct.MeetingGrant g
+             WHERE g.TenantID=a.TenantID AND g.MeetingID=a.MeetingID AND g.SubjectID=?)
+        """, str(p.tenant_id), p.subject)
+        action_counts = cur.fetchone()
+        return {"scope": "only explicitly granted fictional meeting/action-index rows",
                 "total_visible_meetings": sum(item["count"] for item in counts),
                 "status_breakdown": counts,
-                "note": "No unsupported action-performance or financial KPIs are inferred."}
+                "actions": {"total": int(action_counts[0]),
+                            "open": int(action_counts[1]),
+                            "overdue": int(action_counts[2])},
+                "note": "Counts are scoped to user grants; no unsupported financial KPIs inferred."}
     _, result = _query(principal, action)
     return result
 
