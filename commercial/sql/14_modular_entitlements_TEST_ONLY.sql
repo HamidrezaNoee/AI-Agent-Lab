@@ -13,7 +13,6 @@ IF ISNULL(IS_SRVROLEMEMBER(N'sysadmin'),0)<>1
 IF OBJECT_ID(N'AgentProduct.Tenant',N'U') IS NULL
  OR OBJECT_ID(N'AgentProduct.Membership',N'U') IS NULL
  OR OBJECT_ID(N'AgentProduct.AuditEvent',N'U') IS NULL
- OR OBJECT_ID(N'AgentProduct.AgentProductTenantPolicy',N'SP') IS NOT NULL
  THROW 59202,'Commercial dependencies missing or invalid.',1;
 GO
 IF OBJECT_ID(N'AgentProduct.TenantModule',N'U') IS NULL
