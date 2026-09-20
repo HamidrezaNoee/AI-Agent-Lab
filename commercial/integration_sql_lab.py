@@ -78,9 +78,14 @@ def main():
         check(me.status_code == 200 and me.json()["role"] == "Viewer",
               "Alice has active synthetic membership and subscription")
         meetings = client.get("/v1/meetings")
-        check(meetings.status_code == 200
-              and [m["meeting_id"] for m in meetings.json()["meetings"]] == [900001],
-              "Alice sees only granted A-001 meeting")
+        # Once optional fixture 16 is installed, Alice also has 100 additional
+        # EXPLICIT meeting grants. The endpoint returns the 20 newest only.
+        alice_meeting_ids = [m["meeting_id"] for m in meetings.json()["meetings"]]
+        check(meetings.status_code == 200 and alice_meeting_ids
+              and all(mid == 900001 or 910001 <= mid <= 910100
+                      for mid in alice_meeting_ids)
+              and (900001 in alice_meeting_ids or 910100 in alice_meeting_ids),
+              "Alice sees only her explicitly granted A-001 / optional 100-case meetings")
         docs = client.get("/v1/knowledge/search", params={"q": "گمرک"})
         check(docs.status_code == 200, "Alice document search succeeds")
         ids = {d["document_id"] for d in docs.json()["matches"]}
