@@ -123,6 +123,16 @@ async function refreshIdentity(){
   $("platform-admin-nav").hidden=!platformAdmin;$("godadmin-heading").hidden=!platformAdmin;
   $("user-name").textContent=profile.subject;
   $("user-role").textContent=profile.role+" · "+profile.plan;
+  if(directoryProfile){
+    try{
+      const brand=await api("/v2/branding");
+      const workspace=document.querySelector(".workspace strong");
+      if(workspace)workspace.textContent=brand.company_name;
+      if(/^#[0-9A-Fa-f]{6}$/.test(brand.primary_color)){
+        document.documentElement.style.setProperty("--teal",brand.primary_color);
+      }
+    }catch(_){/* Never block login because optional branding is missing. */}
+  }
   $("logout").hidden=false;
 }
 function currentModule(code){return modules.find(x=>x.module_code===code)}
@@ -410,13 +420,31 @@ async function showSystemSettings(){
         append(form,e("p","content-text","تنظیمات «"+saved.company_name+"» ذخیره شد."));
       }catch(err){append(form,e("p","note",err.message))}
     },"button teal"));
-  append(main,form);
+  const logoPanel=box("لوگوی سازمان","PNG با حداکثر حجم ۲۵۶ کیلوبایت");
+  const picker=e("input","search");picker.type="file";picker.accept="image/png";
+  picker.setAttribute("aria-label","انتخاب تصویر لوگوی PNG");
+  const logoResult=e("div");append(logoPanel,
+    e("p","note",brand.logo_available?"لوگو قبلاً ثبت شده است.":"لوگویی ثبت نشده است."),
+    picker,btn("بارگذاری لوگوی سازمان",async()=>{
+      logoResult.replaceChildren();
+      const file=picker.files?.[0];
+      if(!file||file.type!=="image/png"||file.size>256*1024||file.size<33){
+        append(logoResult,e("p","note","فایل PNG معتبر و کوچک‌تر از ۲۵۶ کیلوبایت انتخاب کنید."));return;
+      }
+      try{
+        await api("/v2/admin/branding/logo",{
+          method:"PUT",headers:{"Content-Type":"image/png"},body:file,
+        });
+        append(logoResult,e("p","content-text","لوگوی سازمان ذخیره و ثبت ممیزی شد."));
+      }catch(err){append(logoResult,e("p","note",err.message))}
+    },"button secondary"),logoResult);
+  append(main,form,logoPanel);
   const con=box("تنظیمات اتصال","رمزها نمایش یا از مرورگر دریافت نمی‌شوند");
   append(con,e("p","content-text","SQL Server: "+status.commercial_sql.database+
     " · کاربر محدود: "+(status.commercial_sql.login_name||"تعریف نشده")),
     e("p","content-text","ProcessMaker: "+(status.processmaker.workspace||"تعریف نشده")+
     " · Sync "+(status.processmaker.sync_enabled?"فعال":"خاموش")),
-    e("p","note","تغییر رمز و میزبان SQL، تنظیم OAuth ProcessMaker و بارگذاری لوگو به سرویس امن مدیریت اسرار و فایل نیاز دارد؛ این عملیات در این مرحله غیرفعال‌اند."));
+    e("p","note","تغییر رمز و میزبان SQL و تنظیم OAuth ProcessMaker نیازمند سرویس مستقل مدیریت اسرار هستند؛ ویرایش مستقیم این اطلاعات از مرورگر عمداً غیرفعال است."));
   append(main,con);
 }
 async function showGodAdmin(){
