@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from commercial.api import app, _authenticated_principal
 from commercial.security import Principal
-from commercial.sql_store import visible_meetings_page
+from commercial.authorization_v2 import visible_meetings_v2
 
 
 class Cursor:
@@ -36,7 +36,7 @@ class PaginationTests(unittest.TestCase):
     def test_page_stays_tenant_and_user_scoped(self):
         rows = [(900010 - i, f"M-{i}", f"Test title {i}", "Draft") for i in range(12)]
         conn = Connection(rows)
-        data = visible_meetings_page(conn, self.principal, before_id=910000, limit=10)
+        data = visible_meetings_v2(conn, self.principal, before_id=910000, limit=10)
         self.assertEqual(len(data["meetings"]), 10)
         self.assertEqual(data["next_cursor"], 900001)
         self.assertTrue(data["has_more"])
@@ -50,7 +50,7 @@ class PaginationTests(unittest.TestCase):
 
     def test_first_page_has_no_cursor_predicate(self):
         conn = Connection([(900001, "A-001", "test", "Draft")])
-        data = visible_meetings_page(conn, self.principal, limit=20)
+        data = visible_meetings_v2(conn, self.principal, limit=20)
         self.assertEqual(data["meetings"][0]["meeting_id"], 900001)
         self.assertIsNone(data["next_cursor"])
         self.assertFalse(data["has_more"])
@@ -61,9 +61,9 @@ class PaginationTests(unittest.TestCase):
     def test_out_of_range_rejected_before_sql(self):
         for n in (0, 51, -1):
             with self.assertRaises(ValueError):
-                visible_meetings_page(Connection([]), self.principal, limit=n)
+                visible_meetings_v2(Connection([]), self.principal, limit=n)
         with self.assertRaises(ValueError):
-            visible_meetings_page(Connection([]), self.principal, before_id=-1)
+            visible_meetings_v2(Connection([]), self.principal, before_id=-1)
 
     def test_route_requires_existing_principal_and_bounded_query(self):
         app.dependency_overrides[_authenticated_principal] = lambda:self.principal
