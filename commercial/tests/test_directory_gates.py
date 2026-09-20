@@ -61,6 +61,17 @@ class V2GateTests(unittest.TestCase):
             response=self.client.get("/v2/admin/system/connections")
         self.assertEqual(response.status_code,403)
 
+    def test_password_reset_requires_both_signed_and_db_sysadmin(self):
+        target = "/v2/admin/directory/" + ("a"*32) + "/send-password-update"
+        with patch("commercial.directory_api.password_update_email",
+                   side_effect=AssertionError("Unexpected external identity call")):
+            self.assertEqual(self.client.post(target).status_code, 403)
+            self.principal = Principal(uuid.uuid4(), "fictional",
+                                       frozenset({"SysAdmin"}))
+            with patch("commercial.directory_api._active_member",
+                       return_value=({"role": "Viewer"}, "Expert")):
+                self.assertEqual(self.client.post(target).status_code, 403)
+
     def test_unregistered_godadmin_is_not_automatically_provisioned(self):
         self.principal=Principal(uuid.uuid4(),"unregistered",frozenset({"GodAdmin"}))
         @contextmanager
