@@ -78,6 +78,11 @@ def authorization_snapshot(con, principal: Principal) -> dict:
     row = cur.fetchone()
     if row is None:
         raise AccessDenied("No active tenant membership and subscription")
+    # Explicitly enabled signed-license enforcement is performed AFTER active
+    # tenant membership, before any meeting, document or optional module query.
+    # Existing purely fictional test fixtures have no signed license token.
+    from .licensing.runtime import require_signed_licensing_if_enabled
+    require_signed_licensing_if_enabled(con, principal)
     return {
         "role": str(row[0]),
         "plan": str(row[1]),
