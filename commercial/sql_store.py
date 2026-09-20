@@ -207,3 +207,46 @@ def authorized_evidence(con, principal: Principal, question: str,
         con, principal, question, limit=5, meeting_id=meeting_id
     ))
     return results
+
+
+def visible_meetings_page(
+    con, principal: Principal, *, before_id: int | None = None, limit: int = 20
+) -> dict:
+    """Stable descending pagination over per-user ACL; never fetch ungranted rows.
+
+    A cursor is the last returned MeetingID. This preserves user/tenant filtering
+    on EVERY page; it is not an offset into an unscoped meeting table.
+    """
+    if not isinstance(limit, int) or not 1 <= limit <= 50:
+        raise ValueError("Invalid page size")
+    if before_id is not None and (
+        not isinstance(before_id, int) or before_id <= 0
+    ):
+        raise ValueError("Invalid meeting cursor")
+
+    cursor = con.cursor()
+    cursor.execute("""
+        SELECT TOP (51) m.MeetingID,m.MeetingNo,m.MeetingTitle,m.MeetingStatus
+        FROM AgentProduct.MeetingIndex m
+        WHERE m.TenantID=?
+          AND (? IS NULL OR m.MeetingID<?)
+          AND EXISTS (
+              SELECT 1 FROM AgentProduct.MeetingGrant g
+              WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID
+                AND g.SubjectID=?
+          )
+        ORDER BY m.MeetingID DESC
+    """, str(principal.tenant_id), before_id, before_id, principal.subject)
+    rows = cursor.fetchall()
+    has_more = len(rows) > limit
+    page = rows[:limit]
+    meetings = [
+        {"meeting_id": int(row[0]), "meeting_no": row[1],
+         "title": row[2], "status": row[3]}
+        for row in page
+    ]
+    return {
+        "meetings": meetings, "returned": len(meetings),
+        "has_more": has_more,
+        "next_cursor": meetings[-1]["meeting_id"] if has_more and meetings else None,
+    }
