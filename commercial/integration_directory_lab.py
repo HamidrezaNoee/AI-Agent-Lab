@@ -96,6 +96,32 @@ def main():
             check(client.get("/v2/admin/processmaker/users/preview",
                              headers=h("lab-admin",A,("SysAdmin",))).status_code==503,
                   "Verified SysAdmin preview fails safely when PM source is unconfigured")
+            # The new management assistant always reuses the same signed JWT,
+            # SQL membership, active PM directory and per-user actor/subtree ACL.
+            meeting_answer=client.post("/v2/assistant/ask",
+                headers=h("lab-alice",A),
+                json={"question":"اقدامات جلسه شماره 900001 در چه وضعیتی هستند؟"})
+            check(meeting_answer.status_code==200 and
+                  meeting_answer.json()["required_module"]==1 and
+                  meeting_answer.json()["read_only"] is True,
+                  "Core per-meeting management answer uses only linked Alice's permitted meetings")
+            overdue_answer=client.post("/v2/assistant/ask",
+                headers=h("lab-alice",A),
+                json={"question":"کدام اقدامات مصوب جلسات عقب‌افتاده‌اند؟"})
+            check(overdue_answer.status_code==200 and
+                  all(item["source"]["meeting_id"] in set(alice)
+                      for item in overdue_answer.json()["items"]),
+                  "Licensed monitoring question cites ONLY Alice's hierarchy-visible meetings")
+            analytics_denied=client.post("/v2/assistant/ask",
+                headers=h("lab-alice",A),
+                json={"question":"عملکرد واحدها در اجرای مصوبات چگونه بوده است؟"})
+            check(analytics_denied.status_code==403,
+                  "Disabled analytical module cannot be bypassed through the question interface")
+            carol_denied=client.post("/v2/assistant/ask",
+                headers=h("lab-carol",B),
+                json={"question":"کدام اقدامات مصوب جلسات عقب‌افتاده‌اند؟"})
+            check(carol_denied.status_code==403,
+                  "Tenant B cannot inherit tenant A's paid monitoring question access")
     print("PASS: real SQL + signed identity + tenant hierarchy ACL regression completed.")
     print("SCOPE: fictional directory, no real PM or IdP, no production meeting data.")
 
