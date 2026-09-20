@@ -87,3 +87,28 @@ def demo_data():
 def health():
     return {"status": "up", "mode": "fictional-loopback-ui-preview",
             "real_login": False, "production_data": False, "real_license": False}
+
+
+
+# Optional locally installed user-owned fonts. Binary fonts are NOT embedded
+# in the repository or returned as downloadable artifacts from this chat.
+# Copy your original B Yekan Plus files into commercial/web/fonts yourself.
+@lru_cache(maxsize=2)
+def _installed_font(name: str) -> Path:
+    if name not in ("regular", "bold"):
+        raise HTTPException(status_code=404,detail="Font not found")
+    filename = "byekanplus-" + name + ".ttf"
+    path = ROOT / "web" / "fonts" / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404,detail="Optional local font not installed")
+    return path
+
+
+@app.get("/preview-font-regular",include_in_schema=False)
+def local_regular_font():
+    return FileResponse(_installed_font("regular"), media_type="font/ttf")
+
+
+@app.get("/preview-font-bold",include_in_schema=False)
+def local_bold_font():
+    return FileResponse(_installed_font("bold"),media_type="font/ttf")
