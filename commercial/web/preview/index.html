@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="پیش‌نمایش محلی و ساختگی پلتفرم هوشمند مدیریت جلسات">
+  <title>آوان | پیش‌نمایش دستیار هوشمند مدیریت جلسات</title>
+  <link rel="stylesheet" href="/preview.css">
+  <script src="/preview.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="منوی محصول">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">آ</div>
+        <div><strong>آوان</strong><small>پلتفرم هوشمند جلسات</small></div>
+      </div>
+      <div class="workspace"><span class="dot"></span><div><strong>محیط نمونه خودرویی</strong><small>Demo Workspace · داده ساختگی</small></div></div>
+      <p class="menu-label">فضای کاری</p>
+      <nav id="navigation" aria-label="انتخاب ماژول">
+        <button type="button" class="nav-item active" data-tab="overview"><span class="nav-icon">▦</span><span>نمای کلی</span></button>
+        <button type="button" class="nav-item" data-tab="meetings"><span class="nav-icon">▤</span><span>جلسات و مصوبات</span></button>
+        <button type="button" class="nav-item" data-tab="assistant"><span class="nav-icon">✦</span><span>دستیار مدیریتی</span></button>
+        <button type="button" class="nav-item" data-tab="secretary"><span class="nav-icon">▣</span><span>دبیر هوشمند</span><span class="nav-number">۲</span></button>
+        <button type="button" class="nav-item" data-tab="analytics"><span class="nav-icon">◫</span><span>تحلیل و گزارش</span><span class="nav-number">۳</span></button>
+        <button type="button" class="nav-item" data-tab="monitoring"><span class="nav-icon">◷</span><span>هشدار و پیگیری</span><span class="nav-number">۴</span></button>
+      </nav>
+      <p class="menu-label">مدیریت</p>
+      <nav><button type="button" class="nav-item" data-tab="modules"><span class="nav-icon">⬡</span><span>مدیریت ماژول‌ها</span></button></nav>
+      <div class="side-bottom"><span class="side-status"><span class="dot"></span>پیش‌نمایش محلی فعال</span><small>بدون ورود واقعی، پرداخت، پیامک یا اتصال به دیتابیس</small></div>
+    </aside>
+
+    <div class="workspace-main">
+      <header class="topbar">
+        <button class="mobile-menu" id="menu-toggle" type="button" aria-label="نمایش منو" aria-expanded="false">☰</button>
+        <div class="breadcrumbs">پنل مدیریت <span>›</span> <strong id="breadcrumb">نمای کلی</strong></div>
+        <div class="top-actions">
+          <span class="top-environment">● پیش‌نمایش آزمایشی</span>
+          <div class="avatar" aria-label="کاربر نمایشی">مد</div>
+          <div class="top-user"><strong>مدیر نمونه</strong><small>حساب نمایشی · بدون احراز هویت</small></div>
+        </div>
+      </header>
+
+      <main id="main">
+        <div class="loading"><div class="spinner"></div><p>در حال بارگذاری سناریوهای ساختگی...</p></div>
+      </main>
+      <footer>آوان · نسخه نمایشی مستقل · اطلاعات این صفحه ساختگی است و به سامانه عملیاتی متصل نیست.</footer>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
