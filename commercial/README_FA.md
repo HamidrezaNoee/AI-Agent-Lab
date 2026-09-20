@@ -210,3 +210,29 @@ python -m commercial.integration_sql_lab
 **Safety scope:** `integration_sql_lab.py` uses FastAPI's `TestClient` and a local authentication dependency override *inside that one test process* to exercise the actual read paths with fictional principals. It does **NOT** start Uvicorn or bypass authentication in the application, and it does not call OpenAI. Do not copy its dependency override into the API or make it available as an HTTP endpoint. The test checks cross-tenant and within-tenant grant boundaries using the REAL SQL Server account and reports PASS/FAIL lines. A successful result proves only the listed test scenarios, not overall penetration-tested production security. Never set `COMMERCIAL_CHAT_ENABLED=1` during this test.
 
 Once it completes, remove the SQL password from the current PowerShell process with `Remove-Item Env:COMMERCIAL_SQL_PASSWORD -ErrorAction SilentlyContinue` when no further local tests need it. The next distinct milestone is a real configured IdP/JWKS and signed access-token integration, **not** a hardcoded production user or anonymous chat endpoint.
+
+
+## Milestone 5: in-process signed JWT + real SQL integration (ephemeral LOCAL test signer)
+
+After the user's real-SQL/ACL integration test printed all PASS lines, the next lab check is `commercial/integration_jwt_sql_lab.py`. It exercises the actual FastAPI Authorization header and `_authenticated_principal` (unlike the prior fixture test, it does NOT override a FastAPI dependency), verifies RS256 signatures/issuer/audience/expiry and queries the REAL `EnterpriseProcess2_AI_Test` SQL database with the existing `AI_CommercialReader` account. It generates an RSA private key **in memory** and injects only its public-key resolver within that in-process test via a narrow mock of `commercial.api._verifier`. NO real identity provider or public JWKS endpoint is configured by this test; this is a local signer/verification integration check, NOT production SSO/IdP validation. Do not copy its mock/key injection into `commercial/api.py`, expose its test harness as an endpoint, or run Uvicorn with local test signing keys.
+
+Prerequisites: prior SQL fixtures 12 committed; separate reader grants 04/05/07 and SQL account verified by script 13; `commercial.integration_sql_lab` printed all PASS. Run from the repo root in the SAME PowerShell window with the existing lab-only environment variables and secret SQL password, or re-enter the password securely if this is a new shell:
+
+```powershell
+$repo = "D:\\A Project\\17 meeting ai agent\\Azure\\AI-Agent-Lab-GitHub"
+$python = "D:\\A Project\\17 meeting ai agent\\Azure\\AI-Agent-Lab\\.venv\\Scripts\\python.exe"
+git -C $repo pull --ff-only origin main
+cd $repo
+$env:COMMERCIAL_MODE = "lab"
+$env:COMMERCIAL_SQL_SERVER = "DESKTOP-GJI3D8L\\SQLSERVER2022"
+$env:COMMERCIAL_SQL_DATABASE = "EnterpriseProcess2_AI_Test"
+$env:COMMERCIAL_SQL_USER = "AI_CommercialReader"
+$env:COMMERCIAL_CHAT_ENABLED = "0"
+$env:RUN_COMMERCIAL_SQL_INTEGRATION = "LAB_ONLY_NO_SERVER"
+# Only in a NEW PowerShell window: securely prompt for the dedicated SQL account password.
+# $securePassword = Read-Host "LAB Commercial SQL password" -AsSecureString
+# $env:COMMERCIAL_SQL_PASSWORD = [System.Net.NetworkCredential]::new("", $securePassword).Password
+& $python -m commercial.integration_jwt_sql_lab
+```
+
+This test does not invoke OpenAI or charge chat quota. No synthetic SQL rows are created. An actual external HTTPS IdP, JWKS key rotation, login/onboarding and a real issued access token are a SEPARATE remaining milestone.
