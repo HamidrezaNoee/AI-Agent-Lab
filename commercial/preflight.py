@@ -18,17 +18,15 @@ import uuid
 from .security import ConfigurationFailed, VerifiedTokenAuthenticator
 
 REQUIRED_DB = "EnterpriseProcess2_AI_Test"
+# Only objects intentionally visible to the restricted READ account. Admin
+# procedures and PlatformOperator metadata are intentionally invisible here.
 SCHEMA_OBJECTS = (
     "AgentProduct.DirectoryUser",
     "AgentProduct.MeetingActor",
     "AgentProduct.LetterIndex",
     "AgentProduct.LetterGrant",
-    "AgentProduct.SyncProcessMakerUsers",
-    "AgentProduct.SetOrgManager",
-    "AgentProduct.SetOrgRole",
     "AgentProduct.TenantBranding",
     "AgentProduct.TenantLicense",
-    "AgentProduct.PlatformOperator",
 )
 
 
