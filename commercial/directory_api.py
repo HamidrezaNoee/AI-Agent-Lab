@@ -175,4 +175,99 @@ def make_router(principal_dependency):
             raise HTTPException(status_code=503,detail="Directory writer not configured")
         except Exception:
             raise HTTPException(status_code=409,detail="Organization role change refused")
+
+    @protected.get("/admin/directory/users")
+    def directory_users(principal: auth):
+        _sysadmin(principal)
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con,principal)
+                cur=con.cursor()
+                cur.execute("""
+                    SELECT TOP (500) PMUserUID,PMUserName,DisplayName,
+                      PMStatus,SubjectID,ManagerPMUserUID,OrgRole,IsEnabled
+                    FROM AgentProduct.DirectoryUser
+                    WHERE TenantID=? ORDER BY DisplayName,PMUserUID
+                """,str(principal.tenant_id))
+                rows=cur.fetchall()
+            return {"tenant_id":str(principal.tenant_id),
+                    "users":[{
+                      "pm_uid":str(r[0]),"username":str(r[1]),
+                      "display_name":str(r[2]),"pm_status":str(r[3]),
+                      "linked_subject":str(r[4]) if r[4] else None,
+                      "manager_pm_uid":str(r[5]) if r[5] else None,
+                      "org_role":str(r[6]),"enabled":bool(r[7])
+                    } for r in rows],"returned":len(rows),"max_returned":500,
+                    "source":"ProcessMaker whitelist-only; reporting lines and roles assigned manually"}
+        except (AccessDenied,StoreUnavailable):
+            raise HTTPException(status_code=503,detail="Isolated directory store unavailable")
+
+    @protected.get("/admin/system/connections")
+    def configured_connections(principal: auth):
+        _sysadmin(principal)
+        return {
+            "commercial_sql": {
+                "configured":bool(os.getenv("COMMERCIAL_SQL_SERVER")
+                                  and os.getenv("COMMERCIAL_SQL_USER")),
+                "database":"EnterpriseProcess2_AI_Test",
+                "login_name":os.getenv("COMMERCIAL_SQL_USER","") or None,
+                "credentials_exposed":False,
+                "editable_in_browser":False,
+            },
+            "processmaker": {
+                "configured":bool(os.getenv("COMMERCIAL_PM_BASE_URL")
+                     and os.getenv("COMMERCIAL_PM_WORKSPACE")
+                     and os.getenv("COMMERCIAL_PM_BEARER_TOKEN")),
+                "workspace":os.getenv("COMMERCIAL_PM_WORKSPACE","") or None,
+                "sync_enabled":os.getenv("COMMERCIAL_PM_SYNC_ENABLED")=="1",
+                "bearer_exposed":False,
+                "editable_in_browser":False,
+            },
+            "notice":"Secrets/SQL hosts are operator-managed until encrypted vault-based configuration is reviewed.",
+        }
+
+    @protected.get("/branding")
+    def branding(principal: auth):
+        try:
+            with scoped_connection(principal) as con:
+                authorization_snapshot(con,principal)
+                cur=con.cursor()
+                cur.execute("""
+                  SELECT TOP (1) CompanyDisplayName,PrimaryColor,LogoAssetPath
+                  FROM AgentProduct.TenantBranding WHERE TenantID=?
+                """,str(principal.tenant_id))
+                row=cur.fetchone()
+                if row is None:
+                    raise HTTPException(status_code=503,detail="Tenant branding is not configured")
+                return {"company_name":str(row[0]),"primary_color":str(row[1]),
+                        "logo_available":bool(row[2]),
+                        "tenant_id":str(principal.tenant_id)}
+        except (AccessDenied,StoreUnavailable):
+            raise HTTPException(status_code=403,detail="Tenant branding unavailable")
+
+    class BrandingChange(BaseModel):
+        model_config=ConfigDict(extra="forbid")
+        company_name:str=Field(min_length=2,max_length=200)
+        primary_color:str=Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+
+    @protected.put("/admin/branding")
+    def set_branding(body:BrandingChange,principal:auth):
+        _sysadmin(principal)
+        try:
+            with directory_admin_connection(principal) as con:
+                cur=con.cursor()
+                cur.execute("""
+                  EXEC AgentProduct.SetTenantBranding
+                    @TenantID=?,@ActorSubjectID=?,@CompanyDisplayName=?,@PrimaryColor=?
+                """,str(principal.tenant_id),principal.subject,
+                    body.company_name.strip(),body.primary_color.upper())
+                row=cur.fetchone()
+            return {"company_name":str(row[0]),"primary_color":str(row[1]),
+                    "tenant_id":str(principal.tenant_id),
+                    "logo_available":False,"notice":"Company name/theme updated; image upload is separate."}
+        except StoreUnavailable:
+            raise HTTPException(status_code=503,detail="Tenant admin writer not configured")
+        except Exception:
+            raise HTTPException(status_code=409,detail="Branding update refused")
+
     return protected
