@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="color-scheme" content="light">
+ <title>آوان | پنل متصل آزمایشی</title>
+ <link rel="stylesheet" href="/portal/portal.css">
+ <script src="/portal/portal.js" defer></script>
+</head>
+<body>
+ <div class="app">
+  <aside class="sidebar">
+   <div class="brand"><span class="brand-mark">آ</span><div><strong>آوان</strong><small>پلتفرم هوشمند مدیریت جلسات</small></div></div>
+   <div class="workspace"><span class="dot"></span><div><strong>محیط امن آزمایشی</strong><small>ورود از سامانه هویت سازمانی</small></div></div>
+   <p class="menu-label">فضای کاری متصل</p>
+   <nav id="nav">
+    <button class="nav-item active" type="button" data-page="overview">▦&nbsp; نمای کلی</button>
+    <button class="nav-item" type="button" data-page="meetings">▤&nbsp; جلسات مجاز</button>
+    <button class="nav-item" type="button" data-page="assistant">✦&nbsp; جست‌وجوی مستندات</button>
+    <button class="nav-item" type="button" data-page="secretary">▣&nbsp; دبیر هوشمند · ۲</button>
+    <button class="nav-item" type="button" data-page="analytics">◫&nbsp; تحلیل مدیریتی · ۳</button>
+    <button class="nav-item" type="button" data-page="monitoring">◷&nbsp; پایش اقدامات · ۴</button>
+    <button class="nav-item" type="button" data-page="modules">⬡&nbsp; ماژول‌های سازمان</button>
+   </nav>
+   <div class="side-bottom"><strong class="side-status">● فقط محیط آزمایشی</strong><small>هیچ توکن آزمایشی در سرور صادر نمی‌شود. اطلاعات صرفاً طبق مجوز API نمایش داده می‌شوند.</small></div>
+  </aside>
+  <div class="workspace-main">
+   <header class="topbar">
+    <button type="button" id="mobile-nav" class="mobile-menu" aria-label="نمایش منو">☰</button>
+    <div class="breadcrumbs">پلتفرم آوان <span>›</span> <strong id="where">ورود کاربر</strong></div>
+    <div class="top-actions"><span class="top-environment">● محیط آزمایشی</span><div class="avatar">آ</div><div class="top-user"><strong id="user-name">وارد نشده</strong><small id="user-role">هویت تأیید نشده</small></div>
+     <button type="button" class="button secondary" id="logout" hidden>خروج</button>
+    </div>
+   </header>
+   <main id="main"><div class="loading"><div class="spinner"></div><p>در حال بررسی تنظیمات ورود سازمانی...</p></div></main>
+   <footer>آوان · پنل آزمایشی با احراز هویت واقعی موردنیاز · تنها داده‌های ایزوله‌شده در SQL آزمایشی</footer>
+  </div>
+ </div>
+</body>
+</html>
