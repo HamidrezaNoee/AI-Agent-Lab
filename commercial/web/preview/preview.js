@@ -302,42 +302,96 @@ function modules(main){
   add(n,node("p","content-text","در مسیر واقعی هر درخواست، توکن امضاشده، عضویت کاربر و وضعیت اشتراک بررسی می‌شود. ماژول‌های ۲، ۳ و ۴ فقط در صورت داشتن مجوز معتبر و روشن‌بودن در دیتابیس قابل استفاده هستند. خرید بانکی و صدور مجوز واقعی هنوز پیاده‌سازی نشده است."));
   add(main,n);
 }
+const managementQuestions = [
+  "کدام اقدامات مصوب جلسات عقب‌افتاده‌اند؟",
+  "مهم‌ترین موضوعات حل‌نشده این ماه چیست؟",
+  "عملکرد واحدها در اجرای مصوبات چگونه بوده است؟",
+  "کدام مدیر یا واحد بیشترین اقدامات باز را دارد؟",
+  "اقدامات جلسه شماره LAB-910002 در چه وضعیتی هستند؟",
+  "مهم‌ترین ریسک‌های قابل مشاهده در جلسات اخیر چیست؟",
+  "چه موضوعاتی در جلسات مختلف به‌صورت مکرر مطرح شده‌اند؟",
+  "برای جلسه آینده چه مواردی باید در دستور جلسه قرار گیرد؟"
+];
 function assistant(main){
-  heading(main,"MODULE 01 / MANAGEMENT ASSISTANT","دستیار مدیریتی جلسات","پرسش فارسی و بازیابی مستندات ساختگی؛ این بخش مدل زبانی نیست و متن تولید نمی‌کند.");
-  notice(main,"این نسخه تنها جست‌وجوی واژه‌ای روی سناریوهای ساختگی انجام می‌دهد. پاسخ تحلیلی LLM، داده واقعی و صدای فارسی در این پیش‌نمایش فعال نیستند.");
-  const p=box("پرسش از سناریوهای آزمایشی","جست‌وجوی متنی · بدون ارسال داده به شبکه خارجی");
-  const input=node("textarea","textarea");input.placeholder="مثلاً: تأمین‌کننده خودروهای هیبریدی یا تأخیر ترخیص...";input.setAttribute("aria-label","متن پرسش");input.maxLength=350;
-  const btn=action("جست‌وجوی پرونده‌های مرتبط",()=>searchCases(input.value),"button teal");
-  add(p,input,node("p","note","برای نتیجه بهتر، چند واژه کلیدی از عنوان یا موضوع جلسه را وارد کنید."),btn);
-  const result=node("div");result.id="assistant-result";add(p,result);add(main,p);
-  const suggestions=box("پرسش‌های پیشنهادی","برای آزمون جست‌وجو");
-  ["ارزیابی تأمین‌کننده خودروهای هیبریدی","مجوز ثبت سفارش مدل جدید","تأخیر تحویل خودرو","سیستم مدیریت جلسات"].forEach(q=>
-    add(suggestions,action(q,()=>{input.value=q;searchCases(q)},"button secondary")));
-  add(main,suggestions);
+  heading(main,"MODULE 01 / MANAGEMENT ASSISTANT","گزارش‌گیری هوشمند جلسات",
+    "هشت پرسش تخصصی قابل اجرا روی ۱۰۰ جلسه و ۳۰۰ اقدام ساختگی، همراه با منبع هر نتیجه.");
+  notice(main,"این نسخه جواب محاسبه‌شده از داده‌های نمونه را نشان می‌دهد؛ مدل زبانی، دیتابیس واقعی، چارت مجوزهای واقعی، صدا و اطلاعات عملیاتی در این پیش‌نمایش متصل نیستند.");
+  const panel=box("پرسش مدیریتی","پاسخ قابل بررسی · همراه با شماره جلسه/اقدام");
+  const input=node("textarea","textarea");
+  input.placeholder="مثلاً: کدام اقدامات مصوب جلسات عقب‌افتاده‌اند؟";
+  input.setAttribute("aria-label","متن پرسش تخصصی");input.maxLength=350;
+  const result=node("div");result.id="assistant-result";
+  const send=action("دریافت پاسخ مستند",()=>answerManagementQuestion(input.value),"button teal");
+  add(panel,input,node("p","note",
+    "در پاسخ، بازه زمانی، تعداد داده‌های بررسی‌شده و محدودیت منابع مشخص است. از این نسخه برای تصمیم عملیاتی استفاده نکنید."),
+    send,result);add(main,panel);
+  const suggestions=box("پرسش‌های تخصصی آماده","برای اجرای گزارش، یکی از سؤال‌ها را انتخاب کنید");
+  const list=node("div","bars");
+  managementQuestions.forEach((q,i)=>{
+    const button=action(numeric(i+1)+". "+q,()=>{
+      input.value=q;answerManagementQuestion(q);
+    },"button secondary");
+    button.style.textAlign="right";button.style.width="100%";
+    add(list,button);
+  });
+  add(suggestions,list);add(main,suggestions);
 }
-function searchCases(question){
-  const box=$("assistant-result");if(!box)return;box.replaceChildren();
-  const tokens=String(question).trim().toLocaleLowerCase("fa").split(/\s+/u)
-    .filter(x=>x.length>=3).slice(0,6);
-  const valid=tokens.length>0;if(!valid){add(box,node("p","note","حداقل یک واژه معنادار و سه‌حرفی بنویسید."));return}
-  const matches=state.cases.map(c=>{
-    const text=[c.title,c.domain,c.resolution,c.discussion,...c.actions.map(a=>a.description)]
-      .join(" ").toLocaleLowerCase("fa");
-    return {c,score:tokens.reduce((s,t)=>s+(text.includes(t)?1:0),0)};
-  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,5);
-  const out=node("div","result");
-  add(out,node("h2","","نتیجه جست‌وجو در داده‌های ساختگی"),
-    node("p","","این موارد فقط پرونده‌های حاوی واژه‌های پرسش هستند؛ هیچ پاسخ استنباطی از AI تولید نشده است."));
-  if(!matches.length)add(out,node("p","muted","پرونده مرتبطی با واژه‌های واردشده پیدا نشد."));
-  matches.forEach(({c})=>{
-    const row=node("div","detail-group");add(row,node("strong","content-title",c.title),
-      node("p","content-text",c.resolution),
-      node("span","citation",c.meeting_no),
-      action("مشاهده منبع",()=>{state.selectedId=c.meeting_id;showTab("meetings")},"text-link"));
-    add(out,row);
-  });add(box,out);
+async function answerManagementQuestion(question){
+  const target=$("assistant-result");if(!target)return;
+  target.replaceChildren();
+  if(!question||question.trim().length<3){
+    add(target,node("p","note","لطفاً یک پرسش حداقل سه‌حرفی وارد کنید."));return;
+  }
+  add(target,node("p","note","در حال محاسبه گزارش و بررسی منابع ساختگی..."));
+  try{
+    const response=await fetch("/demo-ask",{
+      method:"POST",cache:"no-store",credentials:"omit",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({question:question.trim()})
+    });
+    if(!response.ok)throw Error("کد خطا: "+response.status);
+    const data=await response.json();
+    if(data.synthetic!==true||data.model_used!==false||
+       !Array.isArray(data.items)||!Array.isArray(data.sources))
+      throw Error("پاسخ نمونه معتبر نیست.");
+    if(!$("assistant-result")||$("assistant-result")!==target)return;
+    target.replaceChildren();
+    const out=node("div","result");
+    add(out,node("h2","","پاسخ بر اساس داده‌های ساختگی"),
+      node("p","content-text",data.answer),
+      node("p","note","زمان محاسبه (UTC): "+data.as_of_utc+
+        " · جلسات قابل مشاهده در نمونه: "+numeric(data.meetings_considered)+
+        " · اقدامات: "+numeric(data.actions_considered)));
+    const details=node("div","detail-group");
+    add(details,node("h3","","جلسات و مصوبات مرتبط"));
+    for(const item of data.items){
+      const row=node("div","list-row"),info=node("div");
+      const source=item.source||{},name=source.meeting_no||"شماره نامشخص";
+      add(info,node("strong","content-title",item.text),
+        node("small","",name+(source.action_no?" · "+source.action_no:"")+
+          (item.owner_unit?" · "+item.owner_unit:"")+
+          (item.progress_percent!==undefined?" · پیشرفت "+numeric(item.progress_percent)+"٪":"")));
+      const show=action("مشاهده پرونده",()=>{
+        const meeting=state.cases.find(c=>c.meeting_id===source.meeting_id);
+        if(!meeting){toast("جلسه در این مجموعه نمونه پیدا نشد.");return}
+        state.selectedId=meeting.meeting_id;showTab("meetings");
+      },"text-link");
+      add(row,info,show);add(details,row);
+    }
+    if(!data.items.length)add(details,node("p","note",
+      "برای این پرسش منبعی با شرایط تعیین‌شده در سناریوهای موجود پیدا نشد."));
+    add(out,details);
+    for(const note of data.notes||[])add(out,node("p","note","• "+note));
+    add(out,node("p","note",
+      "منابع این پاسخ فقط ۱۰۰ سناریوی کاملاً ساختگی هستند. «بدون نتیجه» به معنی نبود مسئله در جلسات واقعی شرکت نیست."));
+    add(target,out);
+  }catch(error){
+    if(target.isConnected){
+      target.replaceChildren();
+      add(target,node("p","note","امکان محاسبه پاسخ وجود ندارد: "+error.message));
+    }
+  }
 }
-
 /* Explicitly FICTIONAL screens: demonstrate product navigation and interaction
    without a real IdP, SQL writer, ProcessMaker, signed license, or account. */
 const demoStaff = [
