@@ -20,6 +20,44 @@ BEGIN
  );
 END;
 GO
+/* Deliberately GLOBAL metadata only. Do NOT insert any meeting/doc content.
+   GodAdmin has a platform catalog but does not bypass tenant RLS. */
+IF OBJECT_ID(N'AgentProduct.PlatformTenantCatalog',N'U') IS NULL
+BEGIN
+ CREATE TABLE AgentProduct.PlatformTenantCatalog(
+  TenantID uniqueidentifier NOT NULL CONSTRAINT PK_AP_PlatformTenantCatalog PRIMARY KEY,
+  TenantName nvarchar(200) NOT NULL,
+  IsEnabled bit NOT NULL CONSTRAINT DF_AP_Catalog_Enabled DEFAULT(0),
+  LicenseID uniqueidentifier NULL,
+  UpdatedAtUtc datetime2(0) NOT NULL CONSTRAINT DF_AP_Catalog_Updated DEFAULT SYSUTCDATETIME()
+ );
+END;
+GO
+/* Backfill existing explicit FICTIONAL test tenants only: metadata cannot be
+   blindly SELECTed across tenants because the source Tenant table has RLS.
+   Production backfill must use a separate audited per-tenant migration. */
+DECLARE @labTenant uniqueidentifier;
+DECLARE @labIds TABLE(TenantID uniqueidentifier PRIMARY KEY);
+INSERT @labIds VALUES
+ ('11111111-1111-4111-8111-111111111111'),
+ ('22222222-2222-4222-8222-222222222222');
+DECLARE test_catalog CURSOR LOCAL FAST_FORWARD FOR SELECT TenantID FROM @labIds;
+OPEN test_catalog;
+FETCH NEXT FROM test_catalog INTO @labTenant;
+WHILE @@FETCH_STATUS=0
+BEGIN
+ EXEC sys.sp_set_session_context @key=N'AgentTenantID',@value=@labTenant;
+ INSERT AgentProduct.PlatformTenantCatalog(TenantID,TenantName,IsEnabled)
+ SELECT t.TenantID,t.TenantName,t.IsEnabled
+ FROM AgentProduct.Tenant t
+ WHERE t.TenantID=@labTenant AND NOT EXISTS(
+   SELECT 1 FROM AgentProduct.PlatformTenantCatalog c WHERE c.TenantID=t.TenantID);
+ FETCH NEXT FROM test_catalog INTO @labTenant;
+END;
+CLOSE test_catalog;
+DEALLOCATE test_catalog;
+EXEC sys.sp_set_session_context @key=N'AgentTenantID',@value=NULL;
+GO
 IF OBJECT_ID(N'AgentProduct.TenantBranding',N'U') IS NULL
 BEGIN
  CREATE TABLE AgentProduct.TenantBranding(
@@ -91,11 +129,9 @@ BEGIN
  SET NOCOUNT ON;
  IF NOT EXISTS(SELECT 1 FROM AgentProduct.PlatformOperator WHERE SubjectID=@SubjectID AND IsEnabled=1)
  THROW 60110,'GodAdmin platform operator not registered.',1;
- SELECT t.TenantID,t.TenantName,t.IsEnabled,s.PlanCode,s.IsActive,
-        s.ExpiresAtUtc
- FROM AgentProduct.Tenant t
- LEFT JOIN AgentProduct.Subscription s ON s.TenantID=t.TenantID
- ORDER BY t.CreatedAtUtc,t.TenantID;
+ SELECT c.TenantID,c.TenantName,c.IsEnabled,c.LicenseID,c.UpdatedAtUtc
+ FROM AgentProduct.PlatformTenantCatalog c
+ ORDER BY c.UpdatedAtUtc,c.TenantID;
 END;
 GO
 CREATE OR ALTER PROCEDURE AgentProduct.CreatePlatformTenant
@@ -119,6 +155,8 @@ BEGIN
  VALUES(@TenantID,N'Unlicensed',0,DATEADD(DAY,1,SYSUTCDATETIME()),0);
  INSERT AgentProduct.TenantBranding(TenantID,CompanyDisplayName)
  VALUES(@TenantID,LTRIM(RTRIM(@TenantName)));
+ INSERT AgentProduct.PlatformTenantCatalog(TenantID,TenantName,IsEnabled)
+ VALUES(@TenantID,LTRIM(RTRIM(@TenantName)),0);
  INSERT AgentProduct.AuditEvent(TenantID,SubjectID,RequestID,EventType,ResourceType,ResourceID)
  VALUES(@TenantID,@SubjectID,NEWID(),'TenantCreated','Tenant',CONVERT(nvarchar(36),@TenantID));
  COMMIT TRAN;
@@ -181,6 +219,9 @@ BEGIN
   SET @module=@module+1;
  END;
  UPDATE AgentProduct.Tenant SET IsEnabled=1 WHERE TenantID=@TenantID;
+ UPDATE AgentProduct.PlatformTenantCatalog
+ SET IsEnabled=1,LicenseID=@LicenseID,UpdatedAtUtc=SYSUTCDATETIME()
+ WHERE TenantID=@TenantID;
  UPDATE AgentProduct.Subscription SET PlanCode=N'SignedLicense',IsActive=1,
  ExpiresAtUtc=ISNULL(@ExpiresAtUtc,CONVERT(datetime2(0),'9999-12-31T00:00:00')),
  MonthlyRequestLimit=CASE WHEN MonthlyRequestLimit<100 THEN 100 ELSE MonthlyRequestLimit END
