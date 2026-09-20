@@ -163,6 +163,21 @@ BEGIN
  SELECT @TenantID AS TenantID;
 END;
 GO
+CREATE OR ALTER PROCEDURE AgentProduct.GetTenantLicenseSeatCount
+ @SubjectID nvarchar(180),@TenantID uniqueidentifier
+ WITH EXECUTE AS OWNER
+AS
+BEGIN
+ SET NOCOUNT ON;
+ IF @TenantID IS NULL OR TRY_CONVERT(uniqueidentifier,SESSION_CONTEXT(N'AgentTenantID'))<>@TenantID
+ THROW 60117,'Selected tenant context required.',1;
+ IF NOT EXISTS(SELECT 1 FROM AgentProduct.PlatformOperator
+               WHERE SubjectID=@SubjectID AND IsEnabled=1)
+ THROW 60118,'Registered GodAdmin required.',1;
+ SELECT COUNT_BIG(*) AS ActiveUsers FROM AgentProduct.Membership
+ WHERE TenantID=@TenantID AND IsEnabled=1;
+END;
+GO
 /* Activation input MUST be checked with pinned public signing key BEFORE
    this procedure is called; backend additionally re-verifies at runtime.
    SQL cannot verify ECDSA without a vetted managed crypto implementation.
@@ -242,6 +257,7 @@ BEGIN
  GRANT EXECUTE ON AgentProduct.IsPlatformOperator TO [AI_CommercialPlatformAdmin];
  GRANT EXECUTE ON AgentProduct.GetPlatformTenants TO [AI_CommercialPlatformAdmin];
  GRANT EXECUTE ON AgentProduct.CreatePlatformTenant TO [AI_CommercialPlatformAdmin];
+ GRANT EXECUTE ON AgentProduct.GetTenantLicenseSeatCount TO [AI_CommercialPlatformAdmin];
  GRANT EXECUTE ON AgentProduct.ActivateSignedLicense TO [AI_CommercialPlatformAdmin];
 END;
 GO
