@@ -70,18 +70,6 @@ def script():
     return FileResponse(WEB / "preview.js", media_type="text/javascript; charset=utf-8")
 
 
-@app.get("/assets/{font_name}", include_in_schema=False)
-def font_asset(font_name: str):
-    allowed = {
-        "byekanplus-regular.ttf": WEB / "assets" / "byekanplus-regular.ttf",
-        "byekanplus-bold.ttf": WEB / "assets" / "byekanplus-bold.ttf",
-    }
-    path = allowed.get(font_name)
-    if path is None:
-        raise HTTPException(status_code=404, detail="Asset not found")
-    return FileResponse(path, media_type="font/ttf")
-
-
 @app.get("/demo-data", include_in_schema=False)
 def demo_data():
     source = _fictional_data()
