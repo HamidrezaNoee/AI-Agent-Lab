@@ -8,10 +8,12 @@
    RS256 API ACCESS tokens with aud, iss, sub, iat, exp and trusted tenant_id.
 */
 let accessToken=null, profile=null, modules=[], meetings=[], nextCursor=null;
+let directoryProfile=null, platformAdmin=false, tenantAdmin=false;
 let page="overview", selectedMeeting=null, config=null;
 const $=id=>document.getElementById(id);
 const titles={overview:"نمای کلی",meetings:"جلسات مجاز",assistant:"جست‌وجوی مستندات",
-  secretary:"دبیر هوشمند",analytics:"تحلیل مدیریتی",monitoring:"پایش اقدامات",modules:"ماژول‌های سازمان"};
+  secretary:"دبیر هوشمند",analytics:"تحلیل مدیریتی",monitoring:"پایش اقدامات",modules:"ماژول‌های سازمان",
+  directory:"کاربران و چارت سازمانی",settings:"تنظیمات سازمان",godadmin:"GodAdmin و لایسنس‌ها"};
 function e(tag,cls="",txt){const v=document.createElement(tag);if(cls)v.className=cls;if(txt!==undefined)v.textContent=String(txt);return v}
 function append(parent,...items){items.flat().filter(Boolean).forEach(x=>parent.append(x));return parent}
 function btn(label,cb,cls="button"){const b=e("button",cls,label);b.type="button";b.addEventListener("click",cb);return b}
@@ -73,6 +75,9 @@ async function completeCallback(code,returnedState){
 }
 function logout(){
   accessToken=null;profile=null;modules=[];meetings=[];nextCursor=null;
+  directoryProfile=null;platformAdmin=false;tenantAdmin=false;
+  $("tenant-admin-nav").hidden=true;$("admin-heading").hidden=true;
+  $("platform-admin-nav").hidden=true;$("godadmin-heading").hidden=true;
   clearAttempt();$("logout").hidden=true;$("user-name").textContent="وارد نشده";
   $("user-role").textContent="نشست مرورگر پایان یافت";renderLogin();
 }
@@ -89,8 +94,33 @@ async function api(path,options={}){
   return response.json();
 }
 async function refreshIdentity(){
-  profile=await api("/v1/me");
-  modules=(await api("/v1/modules")).modules;
+  // A verified GodAdmin may administer platform metadata without belonging
+  // to any customer tenant. Never grant meeting access from that global role.
+  try{
+    await api("/v2/godadmin/status");
+    platformAdmin=true;
+  }catch(err){
+    platformAdmin=false;
+  }
+  try{
+    profile=await api("/v1/me");
+    modules=(await api("/v1/modules")).modules;
+    try{
+      directoryProfile=await api("/v2/me/directory");
+      if(directoryProfile.org_role==="SysAdmin"){
+        await api("/v2/admin/system/connections");
+        tenantAdmin=true;
+      }
+    }catch(_){directoryProfile=null;tenantAdmin=false;}
+  }catch(err){
+    if(!platformAdmin)throw err;
+    // Platform-only session: show GodAdmin metadata, not tenant content.
+    profile={subject:"GodAdmin",role:"GodAdmin",plan:"Platform",tenant_id:"—"};
+    modules=[];directoryProfile=null;tenantAdmin=false;
+    document.querySelectorAll("#nav [data-page]").forEach(item=>item.hidden=true);
+  }
+  $("tenant-admin-nav").hidden=!tenantAdmin;$("admin-heading").hidden=!tenantAdmin;
+  $("platform-admin-nav").hidden=!platformAdmin;$("godadmin-heading").hidden=!platformAdmin;
   $("user-name").textContent=profile.subject;
   $("user-role").textContent=profile.role+" · "+profile.plan;
   $("logout").hidden=false;
@@ -125,6 +155,9 @@ function showLocked(main,code){
 }
 async function changePage(target){
   if(!Object.hasOwn(titles,target)||!profile)return;
+  if(target==="godadmin"&&!platformAdmin)return;
+  if(["directory","settings"].includes(target)&&!tenantAdmin)return;
+  if(profile.role==="GodAdmin"&&!directoryProfile&&target!=="godadmin")return;
   page=target;$("where").textContent=titles[target];
   document.querySelectorAll(".nav-item").forEach(x=>x.classList.toggle("active",x.dataset.page===target));
   document.querySelector(".sidebar").classList.remove("open");
@@ -137,6 +170,9 @@ async function changePage(target){
       case "analytics": await showAnalytics();break;
       case "monitoring": await showMonitoring();break;
       case "modules": await showModules();break;
+      case "directory": await showDirectory();break;
+      case "settings": await showSystemSettings();break;
+      case "godadmin": await showGodAdmin();break;
       default: await showOverview();
     }
   }catch(err){showMessage(err.message||"خطا در بارگذاری اطلاعات مجاز.")}
@@ -160,7 +196,7 @@ async function showOverview(){
     append(el,e("div","stat-label",k),e("strong","",String(v)));
   });
   append(grid,p1,p2,p3,p4);append(main,grid);
-  const data=await api("/v1/meetings/page?limit=5");
+  const data=await api((directoryProfile?"/v2":"/v1")+"/meetings/page?limit=5");
   const panel=box("جلسات مجاز اخیر","فقط پنج جلسه آخر مجاز شما");
   data.meetings.forEach(m=>append(panel,meetingRow(m)));
   if(!data.meetings.length)append(panel,e("p","empty","جلسه مجازی برای این کاربر ثبت نشده است."));
@@ -177,7 +213,7 @@ async function showMeetings(){
     const params=new URLSearchParams({limit:"20"});
     if(nextCursor!==null)params.set("cursor",String(nextCursor));
     try{
-      const result=await api("/v1/meetings/page?"+params.toString());
+      const result=await api((directoryProfile?"/v2":"/v1")+"/meetings/page?"+params.toString());
       meetings.push(...result.meetings);nextCursor=result.next_cursor;
       result.meetings.forEach(m=>append(list,meetingRow(m)));
       more.hidden=!result.has_more;
@@ -289,6 +325,139 @@ async function showModules(){
   }
   append(main,grid);
 }
+
+async function showDirectory(){
+  const main=root();title(main,"TENANT SYSADMIN / PROCESSMAKER","مدیریت کاربران و چارت سازمانی",
+    "نمایه کاربران ProcessMaker، نقش‌های سازمانی و مدیر مستقیم؛ بدون کپی رمز عبور.");
+  notice(main,"این صفحه فقط برای SysAdmin دارای نقش امضاشده در Keycloak و عضویت مدیریتی معتبر SQL فعال است. کاربران تازه Syncشده غیرفعال و بدون اتصال خودکار به هویت باقی می‌مانند.");
+  const status=await api("/v2/admin/system/connections");
+  const p=box("وضعیت اتصال‌ها","هیچ رمز یا توکنی به مرورگر ارسال نمی‌شود");
+  append(p,e("p","content-text","ProcessMaker: "+(status.processmaker.configured?"تنظیم شده":"تنظیم نشده")+
+      " · فضای کاری: "+(status.processmaker.workspace||"—")),
+    e("p","content-text","SQL Server آزمایشی: "+(status.commercial_sql.configured?"تنظیم شده":"تنظیم نشده")));
+  const buttons=e("div","flex");
+  append(buttons,btn("پیش‌نمایش کاربران ProcessMaker",async()=>{
+    const output=e("div","result");append(p,output);
+    try{const data=await api("/v2/admin/processmaker/users/preview");
+      append(output,e("p","content-text","کاربران دیده‌شده: "+num(data.count)+" · فعال: "+num(data.active)),
+        e("p","note","این مرحله فقط خواندن API است؛ هیچ داده‌ای ذخیره نشده است."));
+    }catch(err){append(output,e("p","note",err.message))}
+  },"button secondary"));
+  append(buttons,btn("همگام‌سازی کنترل‌شده",async()=>{
+    if(!confirm("پس از دریافت فهرست کامل کاربران ProcessMaker، فقط اطلاعات پروفایل مجاز Sync شود؟ هیچ رمز و هیچ نقش مدیریتی خودکار انتقال نمی‌یابد."))return;
+    const output=e("div","result");append(p,output);
+    try{const d=await api("/v2/admin/processmaker/users/sync",
+      {method:"POST",headers:{"Content-Type":"application/json"},
+       body:JSON.stringify({deactivate_missing:false})});
+      append(output,e("p","content-text","بررسی شد: "+num(d.seen)+
+        " · حساب جدید غیرفعال: "+num(d.new_disabled_unbound)+
+        " · پروفایل به‌روزرسانی‌شده: "+num(d.existing_profiles)));
+    }catch(err){append(output,e("p","note",err.message))}
+  },"button teal"));append(p,buttons);append(main,p);
+  const data=await api("/v2/admin/directory/users");
+  const roster=box("کاربران ثبت‌شده در دایرکتوری",num(data.returned)+" نفر · حداکثر ۵۰۰ رکورد");
+  for(const user of data.users){
+    const row=e("div","detail-group"),name=e("strong","content-title",user.display_name);
+    append(row,name,e("p","note",user.username+" · "+user.pm_status+
+      " · "+user.org_role+" · "+(user.linked_subject?"دارای هویت":"در انتظار اتصال هویت")));
+    const actions=e("div","flex");
+    if(user.org_role!=="SysAdmin"){
+      const roles=e("select","select");
+      [["Expert","کارشناس"],["Manager","مدیر (همه جلسات سازمان)"]].forEach(([value,label])=>{
+        const opt=e("option","",label);opt.value=value;opt.selected=user.org_role===value;append(roles,opt);
+      });
+      const saveRole=btn("ثبت نقش",async()=>{
+        try{await api("/v2/admin/directory/"+encodeURIComponent(user.pm_uid)+"/role",
+          {method:"PUT",headers:{"Content-Type":"application/json"},
+           body:JSON.stringify({role:roles.value})});await showDirectory();
+        }catch(err){append(row,e("p","note",err.message))}
+      },"button secondary");append(actions,roles,saveRole);
+    }
+    const managers=e("select","select");
+    const unlinked=e("option","","بدون مدیر مستقیم");unlinked.value="";append(managers,unlinked);
+    data.users.filter(other=>other.pm_uid!==user.pm_uid).forEach(other=>{
+      const opt=e("option","",other.display_name);opt.value=other.pm_uid;
+      opt.selected=user.manager_pm_uid===other.pm_uid;append(managers,opt);
+    });
+    append(actions,managers,btn("ثبت مدیر مستقیم",async()=>{
+      try{await api("/v2/admin/directory/"+encodeURIComponent(user.pm_uid)+"/manager",
+        {method:"PUT",headers:{"Content-Type":"application/json"},
+         body:JSON.stringify({manager_pm_uid:managers.value||null})});await showDirectory();
+      }catch(err){append(row,e("p","note",err.message))}
+    },"button secondary"));append(row,actions);append(roster,row);
+  }
+  append(main,roster);
+  const future=box("ایجاد حساب و بازنشانی رمز","نیازمند اتصال مدیریت هویت Keycloak");
+  append(future,e("p","content-text","ایجاد حساب و ارسال بازیابی رمز باید از سرویس مدیریت هویت امن Organization Portal انجام شود. در این نسخه هیچ رمز اولیه، هش رمز ProcessMaker یا دکمه بازنشانی بدون اعتبارسنجی فعال نشده است."));
+  append(main,future);
+}
+async function showSystemSettings(){
+  const main=root();title(main,"TENANT SYSADMIN / SETTINGS","تنظیمات سازمان",
+    "نام، رنگ سازمان و وضعیت تنظیمات امن اتصال‌ها.");
+  const [brand,status]=await Promise.all([
+    api("/v2/branding"),api("/v2/admin/system/connections")
+  ]);
+  const form=box("هویت بصری سازمان","ذخیره در SQL با رویداد ممیزی");
+  const name=e("input","search");name.value=brand.company_name;name.maxLength=200;
+  name.setAttribute("aria-label","نام سازمان");
+  const color=e("input","search");color.type="color";color.value=brand.primary_color;
+  color.setAttribute("aria-label","رنگ اصلی سازمان");
+  append(form,e("p","note","نام شرکت"),name,e("p","note","رنگ اصلی"),color,
+    btn("ذخیره نام و رنگ",async()=>{
+      try{const saved=await api("/v2/admin/branding",
+          {method:"PUT",headers:{"Content-Type":"application/json"},
+           body:JSON.stringify({company_name:name.value.trim(),primary_color:color.value})});
+        append(form,e("p","content-text","تنظیمات «"+saved.company_name+"» ذخیره شد."));
+      }catch(err){append(form,e("p","note",err.message))}
+    },"button teal"));
+  append(main,form);
+  const con=box("تنظیمات اتصال","رمزها نمایش یا از مرورگر دریافت نمی‌شوند");
+  append(con,e("p","content-text","SQL Server: "+status.commercial_sql.database+
+    " · کاربر محدود: "+(status.commercial_sql.login_name||"تعریف نشده")),
+    e("p","content-text","ProcessMaker: "+(status.processmaker.workspace||"تعریف نشده")+
+    " · Sync "+(status.processmaker.sync_enabled?"فعال":"خاموش")),
+    e("p","note","تغییر رمز و میزبان SQL، تنظیم OAuth ProcessMaker و بارگذاری لوگو به سرویس امن مدیریت اسرار و فایل نیاز دارد؛ این عملیات در این مرحله غیرفعال‌اند."));
+  append(main,con);
+}
+async function showGodAdmin(){
+  const main=root();title(main,"PLATFORM / GODADMIN","مدیریت کل آوان",
+    "مدیریت فراداده سازمان‌ها، ایجاد سازمان و فعال‌سازی لایسنس دارای امضای لیماک.");
+  notice(main,"نقش GodAdmin به‌تنهایی مجوز خواندن صورت‌جلسات و نامه‌های مشتریان نیست. حساب باید در Keycloak و فهرست اپراتورهای پلتفرم هم تأیید شده باشد.");
+  const status=await api("/v2/godadmin/status");
+  const meta=box("مرز دسترسی پلتفرم",status.scope);
+  append(meta,e("p","content-text","دسترسی مستقیم به محتوای جلسات مشتریان: "+(status.customer_meetings_access?"دارد":"ندارد")),
+    e("p","note","مدیریت لایسنس امضاشده با کلید عمومی انجام می‌شود؛ کلید خصوصی فقط روی سیستم صادرکننده لیماک باقی می‌ماند."));
+  append(main,meta);
+  const tenants=(await api("/v2/godadmin/tenants")).tenants;
+  const p=box("سازمان‌های ثبت‌شده",num(tenants.length)+" سازمان");
+  for(const t of tenants){
+    const row=e("div","detail-group");
+    append(row,e("strong","content-title",t.company_name),
+      e("p","note","Tenant ID: "+t.tenant_id+" · "+(t.enabled?"فعال":"غیرفعال")+
+        " · مجوز: "+(t.license_id||"صادر نشده")));
+    const input=e("textarea","textarea");
+    input.placeholder="توکن لایسنس امضاشده از LIMAK License Studio برای همین سازمان...";
+    input.maxLength=16000;input.setAttribute("aria-label","کد لایسنس سازمان "+t.company_name);
+    append(row,input,btn("اعتبارسنجی و فعال‌سازی لایسنس",async()=>{
+      if(!confirm("لایسنس امضاشده برای این سازمان بررسی و فعال شود؟"))return;
+      try{const result=await api("/v2/godadmin/tenants/"+encodeURIComponent(t.tenant_id)+"/license",
+         {method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({token:input.value.trim()})});
+        input.value="";append(row,e("p","content-text","مجوز "+result.license_id+" فعال شد."));
+      }catch(err){append(row,e("p","note",err.message))}
+    },"button teal"));append(p,row);
+  }
+  append(main,p);
+  const create=box("ایجاد سازمان جدید","در ابتدا غیرفعال و فاقد لایسنس خواهد بود");
+  const name=e("input","search");name.placeholder="نام سازمان";name.maxLength=200;
+  append(create,name,btn("ایجاد سازمان غیرفعال",async()=>{
+    if(!confirm("سازمان جدید بدون عضویت و لایسنس ساخته شود؟"))return;
+    try{await api("/v2/godadmin/tenants",
+      {method:"POST",headers:{"Content-Type":"application/json"},
+       body:JSON.stringify({company_name:name.value.trim()})});await showGodAdmin();
+    }catch(err){append(create,e("p","note",err.message))}
+  }));append(main,create);
+}
 async function init(){
   document.querySelectorAll("[data-page]").forEach(b=>b.addEventListener("click",()=>changePage(b.dataset.page)));
   $("logout").addEventListener("click",logout);
@@ -305,7 +474,7 @@ async function init(){
     if(code||returnedState){
       if(!code||!returnedState)throw Error("بازگشت ورود ناقص است.");
       await completeCallback(code,returnedState);
-      await refreshIdentity();await changePage("overview");return;
+      await refreshIdentity();await changePage(profile.role==="GodAdmin"&&!directoryProfile?"godadmin":"overview");return;
     }
     renderLogin();
   }catch(err){
