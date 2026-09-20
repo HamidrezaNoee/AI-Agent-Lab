@@ -260,6 +260,10 @@ def toggle_optional_module(module_code: int, body: ModuleSetting,
             membership = authorization_snapshot(con, principal)
             if membership["role"] not in ("Owner", "Admin"):
                 raise HTTPException(status_code=403, detail="Tenant administrator required")
+            current = next(m for m in modules_snapshot(con, principal)
+                           if m["module_code"] == module_code)
+            if not current["licensed"]:
+                raise HTTPException(status_code=403, detail="Module license missing or expired")
             # SQL procedure repeats active tenant/member/license checks and writes AuditEvent.
             changed = set_module_enabled(con, principal, module_code, body.enabled)
             return {"tenant_id": str(principal.tenant_id), "module": changed,
