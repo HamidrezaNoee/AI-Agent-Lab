@@ -74,7 +74,9 @@ def _meeting_number(question: str) -> str | None:
 
 def _intent(question: str) -> str:
     q = question.strip().replace("ي", "ی").replace("ك", "ک")
-    if _meeting_number(q) or ("همین جلسه" in q and "اقدام" in q):
+    if (_meeting_number(q) or
+        ("اقدام" in q and "جلسه" in q and
+         any(part in q for part in ("وضعیت", "شماره", "همین جلسه")))):
         return "meeting_status"
     if any(s in q for s in ("دستور جلسه", "جلسه آینده", "جلسه بعد", "جلسه آتی")):
         return "next_agenda"
@@ -171,7 +173,7 @@ def answer_question(question: str, meetings: Iterable[dict], *,
                                 f"{len(monthly)} جلسه تاریخ‌دارِ قابل مشاهده یافت شد."
                                 if ranked else
                                 "در جلسات تاریخ‌دار این ماه که قابل مشاهده‌اند، اقدام باز ثبت نشده است.")
-            notes.append("«مهم‌ترین» در این گزارش فقط ترتیب بر اساس تعداد اقدامات تأخیردار و سپس باز است؛ ارزیابی اهمیت تجاری انجام نشده است.")
+            notes.append("«این ماه» در این نسخه به ماه میلادی UTC اشاره دارد، نه ماه شمسی سازمان. «مهم‌ترین» فقط ترتیب بر اساس تعداد اقدامات تأخیردار و سپس باز است؛ اهمیت تجاری ارزیابی نشده است.")
             if missing_dates:
                 notes.append(f"{missing_dates} جلسه به علت نداشتن تاریخ تشکیل، در نتیجه ماه جاری قابل طبقه‌بندی نبود.")
 
