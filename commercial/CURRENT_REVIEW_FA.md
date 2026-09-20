@@ -45,3 +45,30 @@ cd $repo
 - استقرار تولیدی، اعلان زمان‌بندی‌شده، voice و پرداخت بانکی.
 
 به‌همین دلیل پنل متصل `/portal/` را نباید در محیط عمومی اجرا کرد و `COMMERCIAL_CHAT_ENABLED=0` باید باقی بماند. این مرحله برای بازبینی پیش‌نمایش و بررسی امنیت کد قابل استفاده است، نه تحویل یک نرم‌افزار عملیاتی.
+
+
+## رفع خطاهای گزارش‌شده در اجرای محلی
+
+- مسیر قدیمی `/v1/meetings/page` اکنون به تابع واردشده `visible_meetings_page` برمی‌گردد؛ خطای `NameError: visible_meetings_v2 is not defined` نباید دوباره رخ دهد. مسیر جدید و مستقل چارت همچنان `/v2/meetings/page` است.
+- مسیرهای ناقص `/v1/organization/tree` و `/v1/admin/processmaker/sync-users` حذف شدند؛ نسخه معتبر فقط زیر `/v2` است.
+- فونت BYekanPlus اختیاری است؛ فقط وقتی فایل‌های شخصی شما در `commercial/web/fonts/byekanplus-regular.ttf` و `byekanplus-bold.ttf` موجود باشند، CSS درخواست آن‌ها را می‌دهد. در غیر این صورت مرورگر بدون ۴۰۴های تکراری از Tahoma استفاده می‌کند. فایل فونت در GitHub قرار نگرفته است.
+- `commercial/Start-Preview.ps1` مسیر venv شما را در کنار `AI-Agent-Lab-GitHub` پیدا می‌کند و پیش از اجرای Preview، تست‌های آفلاین را اجرا می‌کند. اگر تست شکست بخورد، Preview را اجرا نمی‌کند.
+
+دستورات Windows PowerShell (اگر سرور پورت ۸۰۹۰ باز است، ابتدا در همان پنجره Ctrl+C):
+
+```powershell
+$repo = "D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab-GitHub"
+git -C $repo pull --ff-only origin main
+cd $repo
+powershell -ExecutionPolicy Bypass -File .\commercial\Start-Preview.ps1
+```
+
+پیش‌نمایش: http://127.0.0.1:8090 . برای خروج Ctrl+C. خطاهای جدید تست یا uvicorn را با نام فایل و خط مربوطه نگه دارید؛ هیچ پاکسازی/reset مخرب در repository لازم نیست.
+
+## درخواست امن تغییر رمز کاربر (کد اضافه شده؛ نیازمند IdP واقعی)
+
+پنل SysAdmin اکنون برای کاربر معمولیِ فعال و لینک‌شده، دکمه درخواست ارسال ایمیل تغییر رمز را دارد: `POST /v2/admin/directory/{pm_uid}/send-password-update`. ابتدا نقش امضاشده SysAdmin و حق مدیریت در SQL تأیید می‌شود، سپس Keycloak با سرویس‌توکن **صرفاً روی سرور** ایمیل `UPDATE_PASSWORD` را ایجاد می‌کند؛ API هیچ رمز اولیه، لینک بازیابی یا توکن ورود به مرورگر تحویل نمی‌دهد. مقدار `SubjectID` مقصد باید UUID واقعی Keycloak باشد؛ شناسه‌های `lab-alice` و مشابه رد می‌شوند.
+
+این عملکرد پیش‌فرض خاموش است. فقط مسئول IT می‌تواند در محیط ایزوله و پس از تنظیم realm HTTPS همسان با issuer، سرویس‌توکن محدود و مجوزهای لازم، `COMMERCIAL_KEYCLOAK_ADMIN_ENABLED=1` و `COMMERCIAL_KEYCLOAK_ADMIN_REALM_URL` را تنظیم کند. `COMMERCIAL_KEYCLOAK_ADMIN_TOKEN` نباید در GitHub، مرورگر، لاگ یا گفتگو قرار گیرد. بازیابی رمز واقعی، ارسال ایمیل و سیاست ممیزی/نرخ درخواست باید با Keycloak/IT آزموده شود؛ افزودن این endpoint به معنی ورود سازمانی آماده یا امکان مدیریت کامل هویت نیست.
+
+**نتیجه اجرایی:** اکنون رابط ساختگی برای بررسی قابل استفاده است؛ سامانه عملیاتی چندشرکتی با ProcessMaker و Keycloak تا زمان اجرای تست‌ها و تنظیم منبع‌های واقعی آماده نیست.
