@@ -23,10 +23,25 @@ class Cursor:
 
 
 class Connection:
-    def __init__(self, rows):
+    def __init__(self, rows, role="Expert"):
         self.cur = Cursor(rows)
+        self.role = role
     def cursor(self):
-        return self.cur
+        parent = self
+        class RoleAwareCursor(Cursor):
+            def execute(self, sql, *params):
+                if "FROM AgentProduct.Membership m" in sql and "LEFT JOIN AgentProduct.UserDirectory" in sql:
+                    self.rows = [(parent.role, "Lab User", "pm-uid", "lab-user", 1)]
+                else:
+                    self.rows = parent.cur.rows
+                parent.cur.sql, parent.cur.params = sql, params
+                self.sql, self.params = sql, params
+                return self
+            def fetchone(self):
+                return self.rows[0] if self.rows else None
+            def fetchall(self):
+                return self.rows
+        return RoleAwareCursor(parent.cur.rows)
 
 
 class PaginationTests(unittest.TestCase):
@@ -40,12 +55,12 @@ class PaginationTests(unittest.TestCase):
         self.assertEqual(len(data["meetings"]), 10)
         self.assertEqual(data["next_cursor"], 900001)
         self.assertTrue(data["has_more"])
-        self.assertIn("AgentProduct.MeetingGrant", conn.cur.sql)
-        self.assertIn("g.SubjectID=?", conn.cur.sql)
+        self.assertIn("AgentProduct.fn_can_view_meeting", conn.cur.sql)
+        self.assertIn("x.Allowed=1", conn.cur.sql)
         self.assertIn("m.TenantID=?", conn.cur.sql)
         self.assertIn("m.MeetingID<?", conn.cur.sql)
         self.assertEqual(conn.cur.params,
-                         (str(self.principal.tenant_id), 910000, "lab-alice"))
+                         (str(self.principal.tenant_id), 910000, str(self.principal.tenant_id), "lab-alice"))
         self.assertNotIn("910000", conn.cur.sql)  # values must be bound, not interpolated
 
     def test_first_page_has_no_cursor_predicate(self):
@@ -56,7 +71,7 @@ class PaginationTests(unittest.TestCase):
         self.assertFalse(data["has_more"])
         self.assertNotIn("m.MeetingID<?", conn.cur.sql)
         self.assertEqual(conn.cur.params,
-                         (str(self.principal.tenant_id), "lab-alice"))
+                         (str(self.principal.tenant_id), str(self.principal.tenant_id), "lab-alice"))
 
     def test_out_of_range_rejected_before_sql(self):
         for n in (0, 51, -1):
