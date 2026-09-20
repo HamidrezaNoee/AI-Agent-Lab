@@ -46,7 +46,8 @@ def visible_directory_meetings(con, principal: Principal, *, before_id=None, lim
             FROM AgentProduct.DirectoryUser child
             JOIN Subtree parent
               ON child.ManagerPMUserUID=parent.PMUserUID
-            WHERE child.TenantID=? AND parent.Depth<32
+            WHERE child.TenantID=? AND child.IsEnabled=1
+              AND child.PMStatus='ACTIVE' AND parent.Depth<32
               AND CHARINDEX(N'/' + child.PMUserUID + N'/',parent.Trail)=0
         )
         SELECT TOP (51) m.MeetingID,m.MeetingNo,m.MeetingTitle,m.MeetingStatus
@@ -162,3 +163,128 @@ def visible_hierarchy_letters(con, principal: Principal, *, before_id=None, limi
             "scope":"self/nonconfidential-subtree/explicit-confidential-grants",
             "content_available":False,
             "source_status":"NO_REAL_LETTERS_IMPORTED"}
+
+
+def directory_meeting_access(con, principal: Principal, meeting_id: int) -> dict | None:
+    """Read meeting only when the verified user has a tenant or subtree grant.
+
+    This authority check does NOT rely on the old v1 MeetingGrant-only view.
+    It is deliberately SQL-side; does not cache permissions across requests.
+    """
+    if type(meeting_id) is not int or meeting_id <= 0:
+        return None
+    role=directory_role(con,principal)
+    cur=con.cursor()
+    if role in ("Manager","SysAdmin"):
+        cur.execute("""
+            SELECT TOP (1) MeetingID,MeetingNo,MeetingTitle,MeetingStatus
+            FROM AgentProduct.MeetingIndex
+            WHERE TenantID=? AND MeetingID=?
+        """,str(principal.tenant_id),meeting_id)
+    else:
+        cur.execute("""
+        ;WITH Subtree(PMUserUID,Depth,Trail) AS (
+          SELECT d.PMUserUID,CAST(0 AS int),
+                 CAST(N'/'+d.PMUserUID+N'/' AS nvarchar(max))
+          FROM AgentProduct.DirectoryUser d
+          WHERE d.TenantID=? AND d.SubjectID=?
+                AND d.IsEnabled=1 AND d.PMStatus='ACTIVE'
+          UNION ALL
+          SELECT child.PMUserUID,parent.Depth+1,
+                 CAST(parent.Trail+child.PMUserUID+N'/' AS nvarchar(max))
+          FROM AgentProduct.DirectoryUser child JOIN Subtree parent
+            ON child.ManagerPMUserUID=parent.PMUserUID
+          WHERE child.TenantID=? AND child.IsEnabled=1 AND child.PMStatus='ACTIVE'
+            AND parent.Depth<32
+            AND CHARINDEX(N'/'+child.PMUserUID+N'/',parent.Trail)=0
+        )
+        SELECT TOP (1) m.MeetingID,m.MeetingNo,m.MeetingTitle,m.MeetingStatus
+        FROM AgentProduct.MeetingIndex m
+        WHERE m.TenantID=? AND m.MeetingID=?
+          AND (
+            EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
+             WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID AND g.SubjectID=?)
+            OR EXISTS(SELECT 1 FROM AgentProduct.MeetingActor a
+             JOIN Subtree s ON s.PMUserUID=a.PMUserUID
+             WHERE a.TenantID=m.TenantID AND a.MeetingID=m.MeetingID)
+          )
+        OPTION (MAXRECURSION 32)
+        """,str(principal.tenant_id),principal.subject,
+            str(principal.tenant_id),str(principal.tenant_id),meeting_id,
+            principal.subject)
+    r=cur.fetchone()
+    return ({"meeting_id":int(r[0]),"meeting_no":str(r[1]),
+             "title":str(r[2]),"status":str(r[3])} if r else None)
+
+
+def directory_action_report(con, principal: Principal, *,
+                            overdue_only: bool = False, limit: int = 50) -> dict:
+    """Authorized action rollup or overdue rows; exact user/scope each query."""
+    role=directory_role(con,principal)
+    if type(limit) is not int or not 1<=limit<=50:
+        raise ValueError("Invalid action report limit")
+    if role=="Expert":
+        cte="""
+        ;WITH Subtree(PMUserUID,Depth,Trail) AS (
+          SELECT d.PMUserUID,CAST(0 AS int),
+                 CAST(N'/'+d.PMUserUID+N'/' AS nvarchar(max))
+          FROM AgentProduct.DirectoryUser d
+          WHERE d.TenantID=? AND d.SubjectID=?
+            AND d.IsEnabled=1 AND d.PMStatus='ACTIVE'
+          UNION ALL
+          SELECT child.PMUserUID,parent.Depth+1,
+                 CAST(parent.Trail+child.PMUserUID+N'/' AS nvarchar(max))
+          FROM AgentProduct.DirectoryUser child JOIN Subtree parent
+            ON child.ManagerPMUserUID=parent.PMUserUID
+          WHERE child.TenantID=? AND child.IsEnabled=1 AND child.PMStatus='ACTIVE'
+            AND parent.Depth<32
+            AND CHARINDEX(N'/'+child.PMUserUID+N'/',parent.Trail)=0
+        )
+        """
+        inputs=[str(principal.tenant_id),principal.subject,str(principal.tenant_id)]
+        acl="""
+        AND (
+          EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
+            WHERE g.TenantID=a.TenantID AND g.MeetingID=a.MeetingID AND g.SubjectID=?)
+          OR EXISTS(SELECT 1 FROM AgentProduct.MeetingActor ma JOIN Subtree s
+            ON s.PMUserUID=ma.PMUserUID
+            WHERE ma.TenantID=a.TenantID AND ma.MeetingID=a.MeetingID)
+        )
+        """
+    else:
+        cte=""
+        inputs=[]
+        acl=""
+    base=" FROM AgentProduct.ActionIndex a WHERE a.TenantID=? "+acl
+    params=inputs+[str(principal.tenant_id)]+([principal.subject] if role=="Expert" else [])
+    cursor=con.cursor()
+    if overdue_only:
+        sql=cte+"""
+          SELECT TOP (50) a.MeetingID,a.ActionNo,a.ActionTitle,a.OwnerUnit,
+                          a.DueAtUtc,a.ProgressPercent
+        """+base+"""
+        AND a.IsClosed=0 AND a.ProgressPercent<100
+        AND a.DueAtUtc<SYSUTCDATETIME()
+        ORDER BY a.DueAtUtc,a.MeetingID,a.ActionNo
+        """+(" OPTION (MAXRECURSION 32)" if role=="Expert" else "")
+        cursor.execute(sql,*params)
+        rows=cursor.fetchall()[:limit]
+        return {"scope":"tenant" if role!="Expert" else "self-and-org-subtree",
+                "alerts":[{"meeting_id":int(r[0]),"action_no":str(r[1]),
+                           "title":str(r[2]),"owner_unit":str(r[3]),
+                           "due_at_utc":str(r[4]),
+                           "progress_percent":int(r[5])} for r in rows],
+                "returned":len(rows),"max_returned":limit}
+    sql=cte+"""
+      SELECT COUNT_BIG(*),
+       COALESCE(SUM(CASE WHEN a.IsClosed=0 AND a.ProgressPercent<100 THEN
+         CAST(1 AS bigint) ELSE CAST(0 AS bigint) END),0),
+       COALESCE(SUM(CASE WHEN a.IsClosed=0 AND a.ProgressPercent<100
+         AND a.DueAtUtc<SYSUTCDATETIME() THEN
+         CAST(1 AS bigint) ELSE CAST(0 AS bigint) END),0)
+    """+base+(" OPTION (MAXRECURSION 32)" if role=="Expert" else "")
+    cursor.execute(sql,*params)
+    r=cursor.fetchone()
+    return {"scope":"tenant" if role!="Expert" else "self-and-org-subtree",
+            "actions":{"total":int(r[0]),"open":int(r[1]),"overdue":int(r[2])},
+            "data_scope":"only authorized test action indexes"}
