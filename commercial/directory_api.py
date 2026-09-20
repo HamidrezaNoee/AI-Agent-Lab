@@ -15,7 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .admin_store import directory_admin_connection
 from .directory_access import (directory_role, visible_directory_meetings,
-    visible_hierarchy_letters, directory_meeting_access, directory_action_report)
+    visible_hierarchy_letters, directory_meeting_access, directory_action_report,
+    directory_meeting_status_report)
 from .processmaker_directory import PMSyncUnavailable, fetch_users, safe_preview
 from .security import Principal
 from .modules import require_module
@@ -128,7 +129,10 @@ def make_router(principal_dependency):
             with scoped_connection(principal) as con:
                 authorization_snapshot(con,principal)
                 require_module(con,principal,3)
-                return directory_action_report(con,principal)
+                meetings=directory_meeting_status_report(con,principal)
+                actions=directory_action_report(con,principal)
+                return {**meetings,"actions":actions["actions"],
+                        "data_scope":"authorized synthetic tenant/directory indexes"}
         except AccessDenied:
             raise HTTPException(status_code=403,detail="Module or hierarchy access denied")
         except StoreUnavailable:
