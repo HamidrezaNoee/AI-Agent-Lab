@@ -5,5 +5,4 @@ pyodbc>=5,<6
 httpx>=0.27,<1
 openai>=3.0,<4
 
-PyMySQL>=1.1,<2
 cryptography>=44,<47
