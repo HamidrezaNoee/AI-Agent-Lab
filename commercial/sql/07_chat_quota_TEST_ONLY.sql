@@ -34,15 +34,26 @@ BEGIN
  ON AgentProduct.ChatRequest(TenantID,ReservedAtUtc) INCLUDE(Status);
 END;
 GO
+/* Idempotent RLS migration: dynamic ALTER compiles only when missing.
+   Never accidentally accept an incompatible or disabled existing filter. */
+IF EXISTS(
+ SELECT 1 FROM sys.security_predicates sp
+ LEFT JOIN sys.security_policies p ON p.object_id=sp.object_id
+ WHERE sp.target_object_id=OBJECT_ID(N'AgentProduct.ChatRequest')
+ AND sp.predicate_type_desc=N'FILTER'
+ AND (p.object_id IS NULL OR
+      p.object_id<>OBJECT_ID(N'AgentProduct.AgentProductTenantPolicy') OR
+      p.is_enabled<>1)
+)
+ THROW 56820,'Unexpected or disabled RLS FILTER on AgentProduct.ChatRequest.',1;
 IF NOT EXISTS(
  SELECT 1 FROM sys.security_predicates sp
- JOIN sys.security_policies p ON p.object_id=sp.object_id
- WHERE p.name=N'AgentProductTenantPolicy'
- AND sp.target_object_id=OBJECT_ID(N'AgentProduct.ChatRequest')
+ WHERE sp.target_object_id=OBJECT_ID(N'AgentProduct.ChatRequest')
+ AND sp.predicate_type_desc=N'FILTER'
 )
- ALTER SECURITY POLICY AgentProduct.AgentProductTenantPolicy
+ EXEC sys.sp_executesql N'ALTER SECURITY POLICY AgentProduct.AgentProductTenantPolicy
  ADD FILTER PREDICATE AgentProduct.fn_tenant_filter(TenantID)
- ON AgentProduct.ChatRequest;
+ ON AgentProduct.ChatRequest;';
 GO
 CREATE OR ALTER PROCEDURE AgentProduct.ReserveChatRequest
  @TenantID uniqueidentifier, @SubjectID nvarchar(180),
