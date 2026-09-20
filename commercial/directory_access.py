@@ -288,3 +288,55 @@ def directory_action_report(con, principal: Principal, *,
     return {"scope":"tenant" if role!="Expert" else "self-and-org-subtree",
             "actions":{"total":int(r[0]),"open":int(r[1]),"overdue":int(r[2])},
             "data_scope":"only authorized test action indexes"}
+
+
+def directory_meeting_status_report(con, principal: Principal) -> dict:
+    """Counts ALL meetings visible via current tenant hierarchy, not TOP(20)."""
+    role=directory_role(con,principal)
+    if role=="Expert":
+        sql="""
+        ;WITH Subtree(PMUserUID,Depth,Trail) AS (
+          SELECT d.PMUserUID,CAST(0 AS int),
+                 CAST(N'/'+d.PMUserUID+N'/' AS nvarchar(max))
+          FROM AgentProduct.DirectoryUser d
+          WHERE d.TenantID=? AND d.SubjectID=?
+            AND d.IsEnabled=1 AND d.PMStatus='ACTIVE'
+          UNION ALL
+          SELECT child.PMUserUID,parent.Depth+1,
+                 CAST(parent.Trail+child.PMUserUID+N'/' AS nvarchar(max))
+          FROM AgentProduct.DirectoryUser child JOIN Subtree parent
+            ON child.ManagerPMUserUID=parent.PMUserUID
+          WHERE child.TenantID=? AND child.IsEnabled=1 AND child.PMStatus='ACTIVE'
+            AND parent.Depth<32
+            AND CHARINDEX(N'/'+child.PMUserUID+N'/',parent.Trail)=0
+        )
+        SELECT m.MeetingStatus,COUNT_BIG(*) FROM AgentProduct.MeetingIndex m
+        WHERE m.TenantID=?
+        AND (
+         EXISTS(SELECT 1 FROM AgentProduct.MeetingGrant g
+          WHERE g.TenantID=m.TenantID AND g.MeetingID=m.MeetingID
+          AND g.SubjectID=?)
+         OR EXISTS(SELECT 1 FROM AgentProduct.MeetingActor a
+          JOIN Subtree s ON s.PMUserUID=a.PMUserUID
+          WHERE a.TenantID=m.TenantID AND a.MeetingID=m.MeetingID)
+        )
+        GROUP BY m.MeetingStatus ORDER BY m.MeetingStatus
+        OPTION (MAXRECURSION 32)
+        """
+        params=(str(principal.tenant_id),principal.subject,
+                str(principal.tenant_id),str(principal.tenant_id),
+                principal.subject)
+    else:
+        sql="""
+          SELECT m.MeetingStatus,COUNT_BIG(*)
+          FROM AgentProduct.MeetingIndex m
+          WHERE m.TenantID=?
+          GROUP BY m.MeetingStatus ORDER BY m.MeetingStatus
+        """
+        params=(str(principal.tenant_id),)
+    cur=con.cursor()
+    cur.execute(sql,*params)
+    breakdown=[{"status":str(r[0]),"count":int(r[1])} for r in cur.fetchall()]
+    return {"total_visible_meetings":sum(r["count"] for r in breakdown),
+            "status_breakdown":breakdown,
+            "scope":"tenant" if role!="Expert" else "self-and-org-subtree"}
