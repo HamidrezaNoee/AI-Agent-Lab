@@ -140,27 +140,32 @@ def main(argv=None):
         result.update(database_checks())
     if args.processmaker:
         result.update(processmaker_checks())
-    # Never claim readiness until a real browser login, per-role tenant ACL and
-    # signed license have been tested by the operator on this installation.
+    # Configuration can be checked offline, but these three facts cannot be
+    # claimed true automatically. They require approved, real operator tests.
     result["real_idp_login_end_to_end_verified"] = False
     result["processmaker_meeting_actor_import_verified"] = False
     result["customer_deployment_approved"] = False
-    report = {"status": "REVIEW_PREVIEW_ONLY", "checks": result,
-              "note": "Configuration checks only. No production readiness assertion."}
+    mandatory = ("isolated_database", "hierarchy_content_gate",
+                 "external_chat_disabled", "restricted_reader_configured",
+                 "separate_directory_admin_configured",
+                 "separate_platform_admin_configured",
+                 "protected_portal_opt_in", "oidc_https_metadata_configured",
+                 "processmaker_sync_opt_in", "processmaker_source_configured")
+    configured = all(result[k] is True for k in mandatory)
+    if args.database:
+        configured = configured and all(result.get(k) is True for k in (
+            "verified_test_identity_configured",
+            "sql_reader_active_membership",
+            "sql_directory_subject_linked",
+            "sql_schema_objects_available"))
+    if args.processmaker:
+        configured = configured and result.get("processmaker_user_source_reachable") is True
+    report = {"status": "LAB_CONFIGURATION_CHECKED_NOT_CUSTOMER_READY"
+              if configured else "LAB_CONFIGURATION_INCOMPLETE",
+              "lab_configuration_checked": configured, "checks": result,
+              "note": "An OK configuration check is NOT an actual OIDC login, real PM meeting import, or customer deployment approval."}
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 0 if all(value is True for key, value in result.items()
-                    if key not in (
-                        "real_idp_login_end_to_end_verified",
-                        "processmaker_meeting_actor_import_verified",
-                        "customer_deployment_approved",
-                        "byekanplus_fonts_local",
-                        "processmaker_sync_opt_in",
-                        "processmaker_source_configured",
-                        "separate_directory_admin_configured",
-                        "separate_platform_admin_configured",
-                        "protected_portal_opt_in",
-                        "oidc_https_metadata_configured",
-                    ) and isinstance(value, bool)) else 1
+    return 0 if configured else 2
 
 
 if __name__ == "__main__":
