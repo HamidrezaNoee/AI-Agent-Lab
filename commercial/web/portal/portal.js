@@ -404,11 +404,26 @@ async function showDirectory(){
         {method:"PUT",headers:{"Content-Type":"application/json"},
          body:JSON.stringify({manager_pm_uid:managers.value||null})});await showDirectory();
       }catch(err){append(row,e("p","note",err.message))}
-    },"button secondary"));append(row,actions);append(roster,row);
+    },"button secondary"));
+    if(user.linked_subject && user.enabled && user.pm_status==="ACTIVE" &&
+       ["Expert","Manager"].includes(user.org_role)){
+      append(actions,btn("ارسال لینک تغییر رمز",async()=>{
+        if(!confirm("درخواست ارسال ایمیل تغییر رمز توسط Keycloak برای این کاربر ثبت شود؟ هیچ رمزی نمایش داده نمی‌شود."))return;
+        try{
+          const receipt=await api("/v2/admin/directory/"+encodeURIComponent(user.pm_uid)+
+            "/send-password-update",{method:"POST"});
+          append(row,e("p","content-text",
+            receipt.status==="sent_to_identity_provider"?
+            "درخواست ایمیل تغییر رمز به سامانه هویت ارسال شد.":"نتیجه درخواست نامشخص است."));
+        }catch(err){append(row,e("p","note",err.message))}
+      },"button secondary"));
+    }
+    append(row,actions);append(roster,row);
   }
   append(main,roster);
-  const future=box("ایجاد حساب و بازنشانی رمز","نیازمند اتصال مدیریت هویت Keycloak");
-  append(future,e("p","content-text","ایجاد حساب و ارسال بازیابی رمز باید از سرویس مدیریت هویت امن Organization Portal انجام شود. در این نسخه هیچ رمز اولیه، هش رمز ProcessMaker یا دکمه بازنشانی بدون اعتبارسنجی فعال نشده است."));
+  const future=box("ایجاد حساب و تغییر رمز","نیازمند سرویس هویت سازمانی");
+  append(future,e("p","content-text",
+    "برای کاربر فعال و لینک‌شده، مدیر سیستم می‌تواند درخواست ارسال ایمیل تغییر رمز را به Keycloak بفرستد؛ این قابلیت فقط پس از تنظیم امن سرویس مدیریتی توسط IT فعال می‌شود. هیچ رمز یا توکن بازیابی در این پنل تولید یا نمایش داده نمی‌شود. ایجاد حساب تازه و اتصال UID پروسس‌میکر به هویت تأییدشده همچنان نیازمند فرایند رسمی مدیریت هویت است."));
   append(main,future);
 }
 async function showSystemSettings(){
