@@ -10,6 +10,8 @@ import json
 from ipaddress import ip_address
 
 from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
+from .meeting_questions import QUESTIONS, answer_question
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .local_font_css import installed_font_css
@@ -84,6 +86,27 @@ def demo_data():
         "count": source["count"],
         "scenarios": source["scenarios"],
     }
+
+
+class DemoQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=3, max_length=350)
+
+
+@app.get("/demo-questions", include_in_schema=False)
+def demo_questions():
+    return {"synthetic": True, "questions": list(QUESTIONS),
+            "model_used": False, "source": "fictional-100-case-json-only"}
+
+
+@app.post("/demo-ask", include_in_schema=False)
+def demo_ask(body: DemoQuestion):
+    source = _fictional_data()
+    answer = answer_question(
+        body.question, source["scenarios"],
+        data_scope="fictional-100-case-json-only"
+    )
+    return {"synthetic": True, **answer}
 
 
 @app.get("/health", include_in_schema=False)
