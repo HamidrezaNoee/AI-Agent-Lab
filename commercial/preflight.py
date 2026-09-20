@@ -48,12 +48,12 @@ def assess_settings(environ=None, *, font_root=None):
         and values.get("COMMERCIAL_SQL_PASSWORD")
     )
     checks["separate_directory_admin_configured"] = bool(
-        values.get("COMMERCIAL_SQL_DIRECTORY_ADMIN_USER") == "AI_CommercialDirectoryAdmin"
-        and values.get("COMMERCIAL_SQL_DIRECTORY_ADMIN_PASSWORD")
+        values.get("COMMERCIAL_DIRECTORY_SQL_USER") == "AI_CommercialDirectoryAdmin"
+        and values.get("COMMERCIAL_DIRECTORY_SQL_PASSWORD")
     )
     checks["separate_platform_admin_configured"] = bool(
-        values.get("COMMERCIAL_SQL_PLATFORM_ADMIN_USER") == "AI_CommercialPlatformAdmin"
-        and values.get("COMMERCIAL_SQL_PLATFORM_ADMIN_PASSWORD")
+        values.get("COMMERCIAL_PLATFORM_SQL_USER") == "AI_CommercialPlatformAdmin"
+        and values.get("COMMERCIAL_PLATFORM_SQL_PASSWORD")
     )
     try:
         VerifiedTokenAuthenticator(
