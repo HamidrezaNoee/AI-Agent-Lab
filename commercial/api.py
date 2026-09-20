@@ -417,3 +417,10 @@ app.include_router(connected_portal_router)
 # Every v2 request still uses the SAME verified JWT dependency and real SQL.
 from .directory_api import make_router as make_directory_router
 app.include_router(make_directory_router(_authenticated_principal))
+
+
+
+# GodAdmin is a SEPARATE, narrowly authorized platform metadata/licensing
+# control plane; its SQL account never receives customer meeting/doc SELECT.
+from .godadmin_api import make_router as make_godadmin_router
+app.include_router(make_godadmin_router(_authenticated_principal))
