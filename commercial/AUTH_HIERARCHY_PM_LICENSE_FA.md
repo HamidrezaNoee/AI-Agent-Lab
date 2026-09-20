@@ -30,14 +30,9 @@ commercial/license_studio.py الگوی Organization Portal را دنبال می
 
 برای محصول نهایی، License Studio مستقل ویندوزی مثل Limak.LicenseStudio.exe در Organization Portal ساخته می‌شود؛ codec فعلی پایه مشترک و تست‌پذیر آن است.
 
-## ترتیب تست SQL
+## ترتیب نصب SQL (فقط بانک آزمایشی)
 
-فقط در EnterpriseProcess2_AI_Test و بعد از migrations قبلی:
-
-1. 15_identity_hierarchy_authorization_TEST_ONLY.sql
-2. 16_test_hierarchy_authorization_TEST_ONLY.sql
-
-فایل 16 تمام fixtureهای خودش را داخل transaction می‌سازد و ROLLBACK می‌کند. تا PASS شدن آن، این schema روی production ProcessMaker یا EnterpriseProcess اجرا نشود.
+**مسیر ۱۵/۱۶ آزمایشی قدیمی بازنشسته شده و نباید اجرا شود.** آن فایل‌ها با نقش‌های قبلی و ساختار جدید DirectoryUser تداخل داشتند. مسیر پشتیبانی‌شده جدید در commercial/PROCESSMAKER_ORGPORTAL_INTEGRATION_FA.md شرح داده شده و از 19_directory_hierarchy_TEST_ONLY.sql آغاز می‌شود. مراحل ۱۹ تا ۲۷ فقط در EnterpriseProcess2_AI_Test و بعد از تأیید وابستگی‌ها، با حساب TEST DBA قابل اجرا هستند. Migrationها، شناسه‌های PM واقعی یا حساب‌های مدیریتی را به‌صورت خودکار ایجاد نمی‌کنند. بانک عملیاتی ProcessMaker/EnterpriseProcess نباید تغییر کند.
 
 ## Font
 
