@@ -256,7 +256,7 @@ async function showSecretary(){
   const id=selectedMeeting;
   if(!id){append(main,e("p","empty","ابتدا از فهرست جلسات یک پرونده را انتخاب کنید."),
     btn("رفتن به جلسات",()=>changePage("meetings")));return;}
-  const data=await api("/v1/secretary/preparation/"+encodeURIComponent(id));
+  const data=await api((directoryProfile?"/v2":"/v1")+"/secretary/preparation/"+encodeURIComponent(id));
   const panel=box("پیش‌نویس دستور جلسه",data.meeting?.meeting_no||"");
   data.draft_agenda.forEach((x,i)=>append(panel,e("p","content-text",num(i+1)+". "+x)));
   append(panel,e("p","note","برای ثبت یا تغییر در ProcessMaker، تأیید و اتصال کنترل‌شده جداگانه لازم است."));
@@ -269,7 +269,7 @@ async function showAnalytics(){
   const main=root();title(main,"MODULE 03 / ANALYTICS","تحلیل و گزارش",
     "شمارش جلسات و اقدامات مجاز شما، نه اطلاعات همه کاربران سازمان.");
   if(!moduleActive(3))return showLocked(main,3);
-  const data=await api("/v1/analytics/status-overview");
+  const data=await api(directoryProfile?"/v2/analytics/action-overview":"/v1/analytics/status-overview");
   const grid=e("div","stats");
   [["جلسات مجاز",data.total_visible_meetings],["کل اقدامات مجاز",data.actions.total],
    ["اقدامات باز",data.actions.open],["اقدامات تأخیردار",data.actions.overdue]]
@@ -284,7 +284,7 @@ async function showMonitoring(){
   const main=root();title(main,"MODULE 04 / MONITORING","هشدار و پیگیری اقدامات",
     "نمای درخواستی حداکثر ۵۰ اقدام تأخیردار در جلسات مجاز شما.");
   if(!moduleActive(4))return showLocked(main,4);
-  const data=await api("/v1/monitoring/overdue");
+  const data=await api(directoryProfile?"/v2/monitoring/overdue":"/v1/monitoring/overdue");
   const panel=box("اقدامات دارای تأخیر",num(data.returned)+" مورد");
   data.alerts.forEach(a=>{
     const row=e("div","list-row"),left=e("div");
