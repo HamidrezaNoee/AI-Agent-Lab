@@ -123,6 +123,8 @@ def portal_config(request: Request):
                                       "reason": "Real HTTPS identity provider is not configured"},
                                      status_code=503))
     config.pop("token_origin")
+    # Public UI signal only; the server, not the browser, enforces the gate.
+    config["hierarchy_only"] = os.getenv("COMMERCIAL_V2_ONLY", "0") == "1"
     return _headers(JSONResponse({"ready": True, **config}))
 
 
