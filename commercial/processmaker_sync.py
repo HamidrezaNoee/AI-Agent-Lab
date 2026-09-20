@@ -60,11 +60,12 @@ def sync_users(sql_con, principal: Principal, source_users: list[ProcessMakerUse
     if ctx["role"]!="SysAdmin":
         raise AccessDenied("Only SysAdmin can synchronize ProcessMaker users")
     cur=sql_con.cursor()
-    cur.execute("""INSERT AgentProduct.SyncRun(TenantID,SourceSystem,Status)
-                   OUTPUT inserted.SyncRunID VALUES(?,N'ProcessMaker',N'Running')""",
-                str(principal.tenant_id))
-    run_id=int(cur.fetchone()[0]);upserts=0
+    run_id=None;upserts=0
     try:
+        cur.execute("""INSERT AgentProduct.SyncRun(TenantID,SourceSystem,Status)
+                       OUTPUT inserted.SyncRunID VALUES(?,N'ProcessMaker',N'Running')""",
+                    str(principal.tenant_id))
+        run_id=int(cur.fetchone()[0])
         for u in source_users:
             enabled=u.status.upper() in {"ACTIVE","1"}
             # Existing subject mapping is preserved. New PM users are shadow entries
@@ -92,4 +93,17 @@ def sync_users(sql_con, principal: Principal, source_users: list[ProcessMakerUse
                 "new_unprovisioned":len(source_users)-upserts}
     except Exception as exc:
         sql_con.rollback()
+        # Best-effort failure audit in a fresh transaction. Do not include source
+        # credentials or raw database exception text in persisted/user-facing data.
+        if run_id is not None:
+            try:
+                cur=sql_con.cursor()
+                cur.execute("""UPDATE AgentProduct.SyncRun
+                  SET CompletedAtUtc=SYSUTCDATETIME(),Status=N'Failed',
+                      ErrorMessage=N'ProcessMaker user synchronization failed'
+                  WHERE SyncRunID=? AND TenantID=?""",
+                  run_id,str(principal.tenant_id))
+                sql_con.commit()
+            except Exception:
+                sql_con.rollback()
         raise RuntimeError("ProcessMaker user sync failed") from exc
