@@ -4,7 +4,7 @@ Font binaries are never bundled in GitHub or the downloadable preview. A
 missing font uses the browser fallback without causing repeated 404 requests.
 """
 from pathlib import Path
-from .demo_preview import ROOT
+ROOT = Path(__file__).resolve().parent
 
 def installed_font_css(endpoint_prefix: str) -> str:
     if endpoint_prefix not in ("/preview-font-", "/portal/font/"):
