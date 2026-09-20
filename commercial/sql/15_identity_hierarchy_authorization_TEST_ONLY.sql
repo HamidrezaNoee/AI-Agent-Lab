@@ -214,7 +214,7 @@ GO
 CREATE OR ALTER FUNCTION AgentProduct.fn_can_view_meeting(
  @TenantID uniqueidentifier,@SubjectID nvarchar(180),@MeetingID bigint
 )
-RETURNS TABLE WITH SCHEMABINDING AS RETURN
+RETURNS TABLE AS RETURN
 (
  SELECT CAST(CASE WHEN
    EXISTS(SELECT 1 FROM AgentProduct.Membership m
