@@ -40,25 +40,50 @@ BEGIN
    ON AgentProduct.DocumentGrant(TenantID,SubjectID,DocumentID);
 END;
 GO
+/* Dynamic DDL avoids premature duplicate predicate compilation on a rerun.
+   Check by target table and FILTER type rather than matching a policy name.
+   Another policy's FILTER must never be silently accepted as ours. */
+IF EXISTS(
+ SELECT 1 FROM sys.security_predicates sp
+ LEFT JOIN sys.security_policies p ON p.object_id=sp.object_id
+ WHERE sp.target_object_id=OBJECT_ID(N'AgentProduct.MeetingGrant')
+ AND sp.predicate_type_desc=N'FILTER'
+ AND (p.object_id IS NULL OR
+      p.object_id<>OBJECT_ID(N'AgentProduct.AgentProductTenantPolicy') OR
+      p.is_enabled<>1)
+)
+ THROW 56410, 'Unexpected or disabled RLS FILTER on AgentProduct.MeetingGrant.',1;
 IF NOT EXISTS(
  SELECT 1 FROM sys.security_predicates sp
- JOIN sys.security_policies p ON p.object_id=sp.object_id
- WHERE p.name=N'AgentProductTenantPolicy'
-   AND sp.target_object_id=OBJECT_ID(N'AgentProduct.MeetingGrant')
+ WHERE sp.target_object_id=OBJECT_ID(N'AgentProduct.MeetingGrant')
+ AND sp.predicate_type_desc=N'FILTER'
 )
- ALTER SECURITY POLICY AgentProduct.AgentProductTenantPolicy
+ EXEC sys.sp_executesql N'ALTER SECURITY POLICY AgentProduct.AgentProductTenantPolicy
  ADD FILTER PREDICATE AgentProduct.fn_tenant_filter(TenantID)
- ON AgentProduct.MeetingGrant;
+ ON AgentProduct.MeetingGrant;';
 GO
+
+/* Dynamic DDL avoids premature duplicate predicate compilation on a rerun.
+   Check by target table and FILTER type rather than matching a policy name.
+   Another policy's FILTER must never be silently accepted as ours. */
+IF EXISTS(
+ SELECT 1 FROM sys.security_predicates sp
+ LEFT JOIN sys.security_policies p ON p.object_id=sp.object_id
+ WHERE sp.target_object_id=OBJECT_ID(N'AgentProduct.DocumentGrant')
+ AND sp.predicate_type_desc=N'FILTER'
+ AND (p.object_id IS NULL OR
+      p.object_id<>OBJECT_ID(N'AgentProduct.AgentProductTenantPolicy') OR
+      p.is_enabled<>1)
+)
+ THROW 56410, 'Unexpected or disabled RLS FILTER on AgentProduct.DocumentGrant.',1;
 IF NOT EXISTS(
  SELECT 1 FROM sys.security_predicates sp
- JOIN sys.security_policies p ON p.object_id=sp.object_id
- WHERE p.name=N'AgentProductTenantPolicy'
-   AND sp.target_object_id=OBJECT_ID(N'AgentProduct.DocumentGrant')
+ WHERE sp.target_object_id=OBJECT_ID(N'AgentProduct.DocumentGrant')
+ AND sp.predicate_type_desc=N'FILTER'
 )
- ALTER SECURITY POLICY AgentProduct.AgentProductTenantPolicy
+ EXEC sys.sp_executesql N'ALTER SECURITY POLICY AgentProduct.AgentProductTenantPolicy
  ADD FILTER PREDICATE AgentProduct.fn_tenant_filter(TenantID)
- ON AgentProduct.DocumentGrant;
+ ON AgentProduct.DocumentGrant;';
 GO
 IF USER_ID(N'AI_CommercialReader') IS NOT NULL
 BEGIN
