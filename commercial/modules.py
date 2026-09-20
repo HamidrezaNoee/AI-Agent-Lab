@@ -58,11 +58,16 @@ def set_module_enabled(con, principal: Principal, code: int, enabled: bool) -> d
     cursor = con.cursor()
     # Stored procedure repeats verified DB Owner/Admin and license/tenant checks,
     # audits each change and refuses activation without a purchased license.
-    cursor.execute(
-        "EXEC AgentProduct.SetTenantModuleEnabled "
-        "@TenantID=?,@SubjectID=?,@ModuleCode=?,@Enabled=?",
-        str(principal.tenant_id), principal.subject, code, int(enabled),
-    )
-    row = cursor.fetchone()
+    try:
+        cursor.execute(
+            "EXEC AgentProduct.SetTenantModuleEnabled "
+            "@TenantID=?,@SubjectID=?,@ModuleCode=?,@Enabled=?",
+            str(principal.tenant_id), principal.subject, code, int(enabled),
+        )
+        row = cursor.fetchone()
+    except Exception as exc:
+        # A raced expiry/revocation or unavailable SQL procedure must fail closed.
+        # Never echo SQL exception details or silently activate an unlicensed module.
+        raise AccessDenied("Module activation denied by database") from exc
     return {"module_code": code, "licensed": bool(row[1]),
             "enabled": bool(row[2]), "license_until_utc": str(row[3])}
