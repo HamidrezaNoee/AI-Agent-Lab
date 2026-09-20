@@ -74,7 +74,7 @@ class KeycloakPasswordActionTests(unittest.TestCase):
         self.assertTrue(req.full_url.endswith(
             "/users/"+TARGET+"/execute-actions-email"))
         self.assertEqual(req.data,b'["UPDATE_PASSWORD"]')
-        self.assertNotIn(b"password",req.data.lower())
+        self.assertNotIn(b'"password":', req.data.lower())  # Only required-action name; no password value.
         self.assertEqual(timeout,8)
         self.assertEqual(req.get_header("Authorization"),
                          "Bearer synthetic-private-value")
