@@ -171,7 +171,13 @@ def javascript():
 
 
 @app.get("/auth/login")
-def login():
+def login(request:Request):
+    # OIDC state cookie is host-only. Normalize localhost to the configured
+    # 127.0.0.1 redirect origin BEFORE setting it, otherwise the callback
+    # cannot receive the cookie and valid authorization is rejected.
+    if (_public_origin()=="http://127.0.0.1:8188"
+        and request.url.hostname=="localhost"):
+        return RedirectResponse("http://127.0.0.1:8188/auth/login",status_code=303)
     try:
         origin=_public_origin()
         authorization,_,client_id,_,_= _oidc_config()
