@@ -50,7 +50,7 @@ jobs:
         run: python -m pip install -r commercial/requirements-production.txt
       - name: Check source and authenticated installation lifecycle
         run: |
-          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/setup_console.py commercial/setup_routes.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py
           python -m unittest commercial.tests.test_operational_bootstrap -v
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
