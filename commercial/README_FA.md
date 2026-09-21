@@ -1,5 +1,8 @@
 # Commercial Agent | Milestones 1–3: identity, ACL, cited chat and request quotas (LAB ONLY)
 
+
+> **Docker Desktop / اجرای برنامه:** [`commercial/DOCKER_SETUP_FA.md`](DOCKER_SETUP_FA.md) — اجرای فوری پیش‌نمایش فارسی در `http://127.0.0.1:8090` با `docker compose up -d --build --wait`؛ محیط متصل SQL/Keycloak صرفاً به‌صورت جداگانه و فقط برای LAB قابل پیکربندی است.
+
 > **راهنمای وضعیت فعلی:** [commercial/CURRENT_REVIEW_FA.md](CURRENT_REVIEW_FA.md). برای اجرای مسیر نقش/چارت سازمانی فقط از SQL آزمایشی ۱۹ تا ۲۷ و API امن /v2 استفاده کنید. فایل‌های متداخل `15_identity_hierarchy_authorization_TEST_ONLY.sql` و `16_test_hierarchy_authorization_TEST_ONLY.sql` بازنشسته شده‌اند و نباید اجرا شوند. برای نصب سازمانی، `COMMERCIAL_V2_ONLY=1` مسیرهای محتوایی قدیمی را می‌بندد. اتصال واقعی Keycloak/ProcessMaker/SQL جدید هنوز محلی تأیید نشده است.\n\n
 **Current status: isolated commercial prototype with an optionally enabled cited chat endpoint; NOT a production-ready or sellable AI service.**
 The existing `06_meeting_ai_agent.py` and `knowledge_tools.py` remain synthetic research tools; **do not expose them directly to customers**. Their shared SQL login is NOT a user-by-user authorization system.
