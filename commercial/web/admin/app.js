@@ -127,7 +127,9 @@ function renderInstall(m,config){
  append(backup,checked,node("span","","تهیه نسخه پشتیبان قابل بازیابی از بانک اصلی توسط DBA تأیید شده است."));
  append(f,backup,field("برای تأیید نهایی نام بانک را عیناً وارد کن","confirmation","",
    {placeholder:"EnterpriseProcess2"}),field(
-   "رمز حساب AVAN_Reader (فقط اگر این حساب قبلاً ساخته شده است)","existing_reader_password","",{secret:true,required:false}));
+   "رمز حساب AVAN_Reader (فقط اگر این حساب قبلاً ساخته شده است)","existing_reader_password","",{secret:true,required:false}),
+   field("رمز حساب AVAN_ConfigWriter (فقط اگر این حساب قبلاً ساخته شده است)",
+     "existing_writer_password","",{secret:true,required:false}));
  const actions=node("div","actions full"),result=node("div","full");
  let inventoryDone=false;
  function data(){
@@ -159,7 +161,8 @@ function renderInstall(m,config){
   try{
    const body={...data(),backup_confirmed:true,
       confirmation:formValue(f,"confirmation"),
-      existing_reader_password:formValue(f,"existing_reader_password")||null};
+      existing_reader_password:formValue(f,"existing_reader_password")||null,
+      existing_writer_password:formValue(f,"existing_writer_password")||null};
    const output=await api("sql/prepare",body);
    f.reset();inventoryDone=false;
    append(result,info(output.dedicated_reader_ready?
