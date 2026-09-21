@@ -334,7 +334,61 @@ class PublicKey(BaseModel):
 
 @router.post("/api/license/public-key")
 def public_key(body:PublicKey,session=Depends(_ready)):
-    try:setup.install_public_pem(body.pem.encode("ascii"))
-    except (setup.SetupError,UnicodeEncodeError):
+    # The trusted publisher fingerprint is provisioned by the software
+    # PUBLISHER, outside the customer-admin UI. Otherwise a customer GodAdmin
+    # could replace the verifier key and self-issue arbitrary licenses.
+    import hashlib
+    pin_file=Path("/app/commercial/licensing/publisher-key.sha256")
+    if not pin_file.is_file():
+        raise HTTPException(503,"کلید مرجع ناشر باید در نسخه معتبر نرم‌افزار نصب شود.")
+    pin=pin_file.read_text(encoding="ascii").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}",pin):
+        raise HTTPException(503,"اثر انگشت کلید مرجع ناشر معتبر نیست.")
+    try:raw=body.pem.encode("ascii")
+    except UnicodeEncodeError:raise HTTPException(400,"کلید عمومی ناشر معتبر نیست.")
+    if not hmac.compare_digest(hashlib.sha256(raw).hexdigest(),pin):
+        raise HTTPException(403,"کلید عمومی با امضای مرجع ناشر این نسخه تطبیق ندارد.")
+    try:setup.install_public_pem(raw)
+    except setup.SetupError:
         raise HTTPException(400,"کلید عمومی ناشر باید ECDSA P-256 و معتبر باشد.")
     return {"saved":True,"private_key_imported":False}
+
+class LicenseActivation(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    tenant_id:str=Field(min_length=36,max_length=36)
+    token:str=Field(min_length=100,max_length=20000)
+
+@router.post("/api/license/activate")
+def activate_license(body:LicenseActivation,session=Depends(_ready)):
+    from uuid import UUID
+    from .licensing.codec import LicenseInvalid,verify_license
+    from .production_store import open_production,ProductionUnavailable
+    try:tenant_id=str(UUID(body.tenant_id))
+    except (ValueError,TypeError):
+        raise HTTPException(422,"شناسه UUID سازمان معتبر نیست.")
+    if not setup.PUBLIC.is_file():
+        raise HTTPException(503,"ابتدا کلید عمومی معتبر ناشر باید نصب شود.")
+    installation=(setup.get_setting("installation") or {}).get("installation_id","")
+    try:
+        with open_production() as con:
+            cur=con.cursor()
+            cur.execute("SELECT CompanyName FROM AVAN.Tenant WHERE TenantID=? AND IsEnabled=1",tenant_id)
+            tenant=cur.fetchone()
+            if tenant is None:raise HTTPException(404,"سازمان فعال با این شناسه ثبت نشده است.")
+            cur.execute("""SELECT COUNT_BIG(*) FROM AVAN.UserAccess
+                           WHERE TenantID=? AND IsEnabled=1 AND PMIsActive=1""",tenant_id)
+            used=int(cur.fetchone()[0])
+        payload=verify_license(body.token,setup.PUBLIC.read_bytes(),
+            tenant_id=tenant_id,installation_id=installation,
+            active_users=used)
+        if payload["customer"].strip()!=str(tenant[0]).strip():
+            raise HTTPException(403,"نام مشتری در لایسنس با سازمان ثبت‌شده یکسان نیست.")
+        setup.put_setting("license",{"tenant_id":tenant_id,"token":body.token})
+        return {"activated":True,"license_id":payload["license_id"],
+                "active_users":used,"max_users":payload["max_users"],
+                "modules":payload["modules"],"expires_at":payload["expires_at"]}
+    except LicenseInvalid:
+        raise HTTPException(403,"امضای لایسنس، شناسه نصب، سقف کاربران یا تاریخ اعتبار مجاز نیست.")
+    except ProductionUnavailable:
+        raise HTTPException(503,"اتصال امن به بانک عملیاتی برقرار نیست.")
+
