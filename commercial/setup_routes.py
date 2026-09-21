@@ -188,6 +188,42 @@ def settings(session=Depends(_ready)):
     return setup.masked_settings()
 
 
+class DbaConnection(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    server:str=Field(min_length=1,max_length=250)
+    dba_username:str=Field(min_length=1,max_length=128)
+    dba_password:str=Field(min_length=1,max_length=512)
+    trust_server_certificate:bool=False
+
+class MigrationRequest(DbaConnection):
+    backup_confirmed:bool=False
+    confirmation:str=Field(max_length=100)
+    existing_reader_password:str|None=Field(default=None,max_length=255)
+
+@router.post("/api/sql/inventory")
+def sql_inventory(body:DbaConnection,session=Depends(_ready)):
+    from .production_install import InstallationDenied,inspect
+    try:return inspect(body.server,body.dba_username,body.dba_password,
+                       body.trust_server_certificate)
+    except InstallationDenied:
+        raise HTTPException(503,"بررسی ساختار SQL ناموفق بود؛ اطلاعات DBA، شبکه یا ساختار بانک را بررسی کنید.")
+
+@router.post("/api/sql/prepare")
+def sql_prepare(body:MigrationRequest,session=Depends(_ready)):
+    from .production_install import InstallationDenied,apply
+    try:
+        return apply(server=body.server,username=body.dba_username,
+            password=body.dba_password,
+            trust_certificate=body.trust_server_certificate,
+            backup_confirmed=body.backup_confirmed,
+            confirmation=body.confirmation,
+            reader_existing_password=body.existing_reader_password)
+    except InstallationDenied as exc:
+        # Only safe, predefined error messages (never driver strings, SQL
+        # credentials, connection strings, user SQL or raw stack traces).
+        raise HTTPException(409,str(exc))
+
+
 class SqlConfig(BaseModel):
     model_config=ConfigDict(extra="forbid")
     server:str=Field(min_length=1,max_length=250)
