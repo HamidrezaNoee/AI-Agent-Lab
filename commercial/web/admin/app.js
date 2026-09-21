@@ -92,7 +92,7 @@ function showTotpEnroll(){
  });
 }
 const menu=[
- ["sql","اتصال SQL Server"],["oidc","هویت سازمانی"],["processmaker","ProcessMaker"],
+ ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["oidc","هویت سازمانی"],["processmaker","ProcessMaker"],
  ["license","لایسنس و شناسه نصب"],["company","اطلاعات سازمان"]
 ];
 async function showSettings(page=state.page){
@@ -105,11 +105,71 @@ async function showSettings(page=state.page){
  append(tabs,btn("خروج امن",async()=>{
    try{await api("logout",{})}catch{}state.csrf=null;await start()
  },"secondary"));append(m,tabs);
- if(page==="sql")renderSql(m,settings.sql||{});
+ if(page==="install")renderInstall(m,settings.sql||{});
+ else if(page==="sql")renderSql(m,settings.sql||{});
  else if(page==="oidc")renderOidc(m,settings.oidc||{});
  else if(page==="processmaker")renderPm(m,settings.processmaker||{});
  else if(page==="license")renderLicense(m,settings);
  else renderCompany(m,settings.company||{});
+}
+function renderInstall(m,config){
+ const p=panel("راه‌اندازی کنترل‌شده بانک اصلی",
+   "این مرحله جداول جدید AVAN و حساب SQL فقط‌خواندنی را در EnterpriseProcess2 اضافه می‌کند؛ جداول MTG و داده‌های جلسات تغییر نمی‌کنند.");
+ append(p,info("قبل از اجرا از بانک EnterpriseProcess2 نسخه پشتیبان سالم و قابل بازیابی تهیه و توسط DBA تأیید کن. اگر ساختار MTG با انتظار برنامه تفاوت دارد، اجرای مهاجرت متوقف خواهد شد."));
+ const f=node("form","grid");
+ append(f,field("نشانی و پورت SQL Server","server",config.server||"host.docker.internal,1433"),
+   field("حساب DBA با مجوز اجرای مهاجرت","dba_username",""),
+   field("رمز موقت اتصال DBA؛ ذخیره نمی‌شود","dba_password","",{secret:true}),
+   field("اعتماد به گواهی داخلی SQL Server: yes یا no","trust_server_certificate",
+      config.trust_server_certificate?"yes":"no"));
+ const backup=node("label","full"),checked=node("input");
+ checked.type="checkbox";checked.name="backup_confirmed";checked.required=true;
+ append(backup,checked,node("span","","تهیه نسخه پشتیبان قابل بازیابی از بانک اصلی توسط DBA تأیید شده است."));
+ append(f,backup,field("برای تأیید نهایی نام بانک را عیناً وارد کن","confirmation","",
+   {placeholder:"EnterpriseProcess2"}),field(
+   "رمز حساب AVAN_Reader (فقط اگر این حساب قبلاً ساخته شده است)","existing_reader_password","",{secret:true,required:false}));
+ const actions=node("div","actions full"),result=node("div","full");
+ let inventoryDone=false;
+ function data(){
+  return {server:formValue(f,"server"),dba_username:formValue(f,"dba_username"),
+   dba_password:formValue(f,"dba_password"),
+   trust_server_certificate:formValue(f,"trust_server_certificate").toLowerCase()==="yes"};
+ }
+ async function inventory(){
+  busy(f,true);result.replaceChildren();inventoryDone=false;
+  try{
+   const report=await api("sql/inventory",data());
+   inventoryDone=report.required_columns_missing.length===0 && report.has_server_dba_permission;
+   append(result,info("بانک: "+report.database+" · ساختار AVAN: "+
+      (report.avan_tables_present?"ایجاد شده":"نیازمند نصب")+
+      " · مجوز DBA: "+(report.has_server_dba_permission?"تأیید شده":"کافی نیست")));
+   if(report.required_columns_missing.length)append(result,info(
+       "اختلاف ساختار MTG: "+report.required_columns_missing.join("، "),true));
+   else append(result,info("ستون‌های الزامی MTG موجودند؛ پس از تأیید نسخه پشتیبان می‌توان مهاجرت افزودنی را اجرا کرد."));
+  }catch(err){showError(result,err)}finally{busy(f,false)}
+ }
+ async function install(){
+  result.replaceChildren();
+  if(!inventoryDone){append(result,info("ابتدا ساختار بانک و سطح دسترسی DBA را بررسی کن.",true));return}
+  if(!checked.checked||formValue(f,"confirmation")!=="EnterpriseProcess2"){
+   append(result,info("تأیید نسخه پشتیبان و ورود نام دقیق بانک الزامی است.",true));return
+  }
+  if(!confirm("مهاجرت افزودنی AVAN و ایجاد یا اعطای مجوز حساب AVAN_Reader روی EnterpriseProcess2 اجرا شود؟"))return;
+  busy(f,true);
+  try{
+   const body={...data(),backup_confirmed:true,
+      confirmation:formValue(f,"confirmation"),
+      existing_reader_password:formValue(f,"existing_reader_password")||null};
+   const output=await api("sql/prepare",body);
+   f.reset();inventoryDone=false;
+   append(result,info(output.dedicated_reader_ready?
+      "ساختار AVAN و حساب صرفاً خواندنی ایجاد/تأیید شد و اطلاعات اتصال به شکل رمزگذاری‌شده داخل آوان ذخیره شد.":
+      "نتیجه مهاجرت قطعی نیست؛ جزییات سرور را بررسی کن."));
+  }catch(err){showError(result,err)}finally{busy(f,false)}
+ }
+ append(actions,btn("۱. بررسی اختلاف بانک",inventory,"secondary"),
+   btn("۲. اجرای نصب بعد از تأیید پشتیبان",install));
+ append(f,actions,result);append(p,f);append(m,p);
 }
 function renderSql(m,config){
  const p=panel("اتصال بانک اطلاعاتی جلسات",
