@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .meeting_questions import answer_question
+from .meeting_questions import answer_question, _intent
 from .production_store import (
     ProductionAccessDenied, ProductionUnavailable, authorized_meetings_page,
     authorized_meeting_snapshot, open_production, verified_scope,
@@ -274,9 +274,12 @@ def _store_response(action, principal):
 def current_user(value=Depends(_authorized)):
     _,session,principal=value
     scope=_store_response(lambda con,scope:scope,principal)
+    license_data=scope["license"]
     return {"name":scope["name"],"company":scope["company"],
             "role":scope["role"],"department":scope["department"],
-            "csrf":session["csrf"],"subject":principal.subject}
+            "csrf":session["csrf"],"subject":principal.subject,
+            "modules":sorted(license_data["modules"]),
+            "license_expires_at":license_data["expires_at"]}
 
 
 @app.get("/api/questions")
@@ -334,6 +337,14 @@ def _normalise_dates(records:list[dict])->None:
 def ask(body:Question,value=Depends(_csrf)):
     _,_,principal=value
     def compute(con,scope):
+        intent=_intent(body.question)
+        required={
+            "overdue_actions":4,"next_agenda":2,
+            "monthly_unresolved":3,"unit_performance":3,
+            "owner_backlog":3,"risks":3,"recurring":3,
+        }.get(intent,1)
+        if required not in scope["license"]["modules"]:
+            raise ProductionAccessDenied("Purchased module not enabled")
         rows,complete=authorized_meeting_snapshot(con,scope)
         _normalise_dates(rows)
         now=datetime.now(timezone.utc)
