@@ -74,23 +74,49 @@ function showChangePassword(){
 }
 function showTotpEnroll(){
  const m=main(),p=panel("فعال‌سازی تأیید دومرحله‌ای",
-  "کلید زیر را در برنامه Authenticator وارد کنید و کد شش‌رقمی جدید را برای تأیید بفرستید. این کلید را در اختیار دیگران قرار ندهید.");
- const secret=node("div","secret","در حال آماده‌سازی کلید...");
- append(p,secret);
+  "کد QR را با Google Authenticator یا Microsoft Authenticator اسکن کنید، سپس کد شش‌رقمی برنامه را وارد کنید.");
+ const qrCard=node("div","totp-qr-card");
+ const qr=node("img","totp-qr");
+ qr.alt="کد QR راه‌اندازی تأیید دومرحله‌ای آوان";
+ qr.width=224;qr.height=224;
+ const qrHint=node("p","hint","در برنامه Authenticator گزینه افزودن حساب و سپس اسکن QR Code را انتخاب کنید.");
+ append(qrCard,qr,qrHint);
+ const manual=node("details","totp-manual");
+ const summary=node("summary","","در صورت عدم امکان اسکن، ورود دستی کلید");
+ const secret=node("div","secret","در حال آماده‌سازی...");
+ append(manual,summary,secret);
  const f=node("form"),out=node("div");
- append(f,field("کد شش‌رقمی Authenticator","code"),
-   node("button","","تأیید و فعال‌سازی"),out);
- append(p,f);append(m,p);
- api("totp/enrollment",{}).then(result=>{
-   secret.textContent=result.secret;
- }).catch(err=>showError(out,err));
+ const code=field("کد شش‌رقمی Authenticator","code");
+ const otp=code.querySelector("input");
+ otp.inputMode="numeric";otp.pattern="[0-9]{6}";otp.maxLength=6;
+ otp.autocomplete="one-time-code";otp.placeholder="000000";
+ append(f,code,node("button","","تأیید و فعال‌سازی"),out);
+ function renderEnrollment(result){
+  if(!result.qr_data_uri?.startsWith("data:image/svg+xml;base64,") || !result.secret)
+   throw Error("کد QR قابل دریافت نیست.");
+  qr.src=result.qr_data_uri;
+  secret.textContent=result.secret;
+ }
+ const rotate=btn("ایجاد QR و کلید جدید",async()=>{
+  if(!confirm("با تولید کلید جدید، QR و کلید قبلی نامعتبر می‌شوند. ادامه می‌دهید؟"))return;
+  rotate.disabled=true;out.replaceChildren();
+  try{
+   const result=await api("totp/rotate",{});
+   renderEnrollment(result);
+   append(out,info("کلید قبلی نامعتبر شد. حساب جدید را در Authenticator اسکن کنید."));
+  }catch(err){showError(out,err)}finally{rotate.disabled=false}
+ },"secondary");
+ append(p,qrCard,manual,info("اگر کلید قبلی را در اختیار دیگران قرار داده‌اید، قبل از اسکن یا تأیید کد روی «ایجاد QR و کلید جدید» بزنید."),rotate,f);
+ append(m,p);
+ api("totp/enrollment",{}).then(renderEnrollment).catch(err=>showError(out,err));
  f.addEventListener("submit",async e=>{
-   e.preventDefault();busy(f,true);
+   e.preventDefault();busy(f,true);out.replaceChildren();
    try{await api("totp/confirm",{code:formValue(f,"code")});
      state.csrf=null;await start()
    }catch(err){showError(out,err)}finally{busy(f,false)}
  });
 }
+
 const menu=[
  ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["company","اطلاعات سازمان"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
  ["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
