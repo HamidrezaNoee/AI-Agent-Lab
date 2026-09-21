@@ -7,6 +7,7 @@ the separate AVAN_ConfigWriter credential, which has NO MTG rights.
 """
 from contextlib import contextmanager
 import re
+import os
 from urllib.parse import urlsplit
 
 import httpx
@@ -26,11 +27,15 @@ def _directory():
     space=str(config.get("workspace",""))
     bearer=str(config.get("bearer_token",""))
     origin=urlsplit(base)
-    if (origin.scheme!="https" or origin.username or origin.password or
-        origin.query or origin.fragment or
+    local_lab_http=(os.getenv("AVAN_PM_ALLOW_LOCAL_HTTP")=="1" and
+                    origin.scheme=="http" and
+                    origin.hostname=="host.docker.internal" and origin.port==84)
+    if (not (origin.scheme=="https" or local_lab_http) or
+        origin.username or origin.password or origin.query or origin.fragment or
+        origin.path not in ("","/") or not origin.hostname or
         not re.fullmatch(r"[A-Za-z0-9_-]{1,48}",space) or
         not 8<=len(bearer)<=8192 or any(x in bearer for x in ("\r","\n"))):
-        raise ProvisioningDenied("Secure ProcessMaker directory not configured")
+        raise ProvisioningDenied("ProcessMaker directory is not configured or token is missing")
     result=[]
     seen=set()
     try:
