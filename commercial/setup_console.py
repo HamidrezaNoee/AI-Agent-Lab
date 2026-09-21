@@ -1,0 +1,217 @@
+"""Local, encrypted installation control-plane for AVAN.
+
+First-run GodAdmin is generated ONLY on the host's persistent Docker volume,
+never in source, .env, Docker image or default SQL database. Initial password
+is retrieved via a Docker exec command and immediately removed from disk.
+The setup control-plane is restricted to localhost-published deployments and
+has separate HttpOnly sessions, CSRF, rate limits and TOTP MFA.
+"""
+from __future__ import annotations
+
+from base64 import b32encode, b32decode
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlsplit
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import sqlite3
+import struct
+import sys
+import time
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+ROOT=Path(os.getenv("AVAN_STATE_DIR","/var/lib/avan")).resolve()
+SQLITE=ROOT/"setup.sqlite3"
+KEYFILE=ROOT/"setup.key"
+INITIAL=ROOT/"initial-godadmin-password"
+PUBLIC=ROOT/"license-public.pem"
+
+class SetupError(Exception): pass
+
+def _write_private(path:Path, data:bytes):
+    fd=os.open(str(path),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    try:
+        with os.fdopen(fd,"wb") as file:file.write(data)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+
+def _db():
+    con=sqlite3.connect(str(SQLITE),timeout=8,isolation_level=None)
+    con.execute("PRAGMA busy_timeout=8000")
+    return con
+
+def _hash(password:str,salt:bytes)->bytes:
+    return hashlib.scrypt(password.encode("utf-8"),salt=salt,n=2**15,r=8,p=1,dklen=32)
+
+def initialize():
+    ROOT.mkdir(parents=True,exist_ok=True,mode=0o700)
+    os.chmod(ROOT,0o700)
+    if not KEYFILE.is_file():_write_private(KEYFILE,secrets.token_bytes(32))
+    os.chmod(KEYFILE,0o600)
+    with _db() as con:
+        con.execute("""CREATE TABLE IF NOT EXISTS godadmin(
+            username TEXT PRIMARY KEY,password_hash BLOB NOT NULL,
+            salt BLOB NOT NULL, password_changed INTEGER NOT NULL,
+            totp_secret TEXT,totp_verified INTEGER NOT NULL DEFAULT 0
+        )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS settings(
+            name TEXT PRIMARY KEY,ciphertext BLOB NOT NULL,
+            modified_utc TEXT NOT NULL
+        )""")
+        con.execute("""CREATE TABLE IF NOT EXISTS audit(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            happened_utc TEXT NOT NULL,code TEXT NOT NULL
+        )""")
+        row=con.execute("SELECT COUNT(*) FROM godadmin").fetchone()
+        if not row or row[0]==0:
+            temporary=secrets.token_urlsafe(24)
+            salt=secrets.token_bytes(16)
+            _write_private(INITIAL,(temporary+"\n").encode("utf-8"))
+            try:
+                con.execute("INSERT INTO godadmin(username,password_hash,salt,password_changed) VALUES (?,?,?,0)",
+                            ("godadmin",_hash(temporary,salt),salt))
+            except Exception:
+                INITIAL.unlink(missing_ok=True)
+                raise
+            con.execute("INSERT INTO audit(happened_utc,code) VALUES (?,?)",
+                        (datetime.now(timezone.utc).isoformat(),"GODADMIN_INITIALIZED"))
+    # Stable cryptographically random installation ID; never tied to a Docker
+    # container id or regenerated when updating the application image.
+    if get_setting("installation") is None:
+        put_setting("installation",{"installation_id":secrets.token_hex(32).upper()})
+
+def _seal(name:str,obj:dict)->bytes:
+    nonce=secrets.token_bytes(12)
+    body=json.dumps(obj,ensure_ascii=False,separators=(",",":")).encode("utf-8")
+    return nonce+AESGCM(KEYFILE.read_bytes()).encrypt(nonce,body,name.encode())
+
+def _unseal(name:str,blob:bytes)->dict:
+    return json.loads(AESGCM(KEYFILE.read_bytes()).decrypt(blob[:12],blob[12:],name.encode()).decode())
+
+def put_setting(name:str,value:dict):
+    if name not in ("installation","sql","oidc","processmaker","company","license"):
+        raise SetupError("Unsupported setup setting")
+    enc=_seal(name,value)
+    with _db() as con:
+        con.execute("""INSERT INTO settings(name,ciphertext,modified_utc) VALUES(?,?,?)
+            ON CONFLICT(name) DO UPDATE SET ciphertext=excluded.ciphertext,
+            modified_utc=excluded.modified_utc""",
+            (name,enc,datetime.now(timezone.utc).isoformat()))
+    audit("SETTING_CHANGED_"+name.upper())
+
+def get_setting(name:str)->dict|None:
+    if not SQLITE.is_file() or not KEYFILE.is_file():return None
+    with _db() as con:
+        try:row=con.execute("SELECT ciphertext FROM settings WHERE name=?",(name,)).fetchone()
+        except sqlite3.OperationalError:return None
+    if row is None:return None
+    try:return _unseal(name,row[0])
+    except Exception as exc:raise SetupError("Encrypted configuration unreadable; restore the original state volume") from exc
+
+def audit(code:str):
+    if not SQLITE.is_file():return
+    with _db() as con:
+        con.execute("INSERT INTO audit(happened_utc,code) VALUES (?,?)",
+                    (datetime.now(timezone.utc).isoformat(),code[:100]))
+
+def password_state()->dict:
+    with _db() as con:
+        row=con.execute("SELECT password_changed,totp_verified FROM godadmin WHERE username='godadmin'").fetchone()
+    if not row:raise SetupError("GodAdmin not initialized")
+    return {"changed":bool(row[0]),"totp":bool(row[1])}
+
+def password_ok(password:str)->bool:
+    if len(password)>512:return False
+    with _db() as con:
+        row=con.execute("SELECT password_hash,salt FROM godadmin WHERE username='godadmin'").fetchone()
+    return bool(row and hmac.compare_digest(row[0],_hash(password,row[1])))
+
+def change_password(current:str,new:str):
+    if not password_ok(current):raise SetupError("Current password invalid")
+    if len(new)<16 or len(new)>128 or new==current or new.lower() in ("password","godadmin"):
+        raise SetupError("New password must be distinct and at least 16 characters")
+    salt=secrets.token_bytes(16)
+    with _db() as con:
+        con.execute("UPDATE godadmin SET password_hash=?,salt=?,password_changed=1 WHERE username='godadmin'",
+                    (_hash(new,salt),salt))
+    INITIAL.unlink(missing_ok=True)
+    audit("GODADMIN_PASSWORD_ROTATED")
+
+def _totp(secret:str,when:int)->str:
+    key=b32decode(secret,casefold=True)
+    packet=struct.pack(">Q",when//30)
+    mac=hmac.new(key,packet,hashlib.sha1).digest()
+    offset=mac[-1]&15
+    return str((struct.unpack(">I",mac[offset:offset+4])[0]&0x7fffffff)%1000000).zfill(6)
+
+def totp_enrollment()->str:
+    with _db() as con:
+        row=con.execute("SELECT password_changed,totp_verified,totp_secret FROM godadmin WHERE username='godadmin'").fetchone()
+        if not row or not row[0]:raise SetupError("Change temporary password first")
+        if row[1]:raise SetupError("TOTP is already configured")
+        if row[2]:return row[2]
+        secret=b32encode(secrets.token_bytes(20)).decode().rstrip("=")
+        con.execute("UPDATE godadmin SET totp_secret=? WHERE username='godadmin' AND totp_verified=0",(secret,))
+    return secret
+
+def totp_ok(code:str)->bool:
+    if not isinstance(code,str) or len(code)!=6 or not code.isdigit():return False
+    with _db() as con:
+        row=con.execute("SELECT totp_secret FROM godadmin WHERE username='godadmin'").fetchone()
+    if not row or not row[0]:return False
+    now=int(time.time())
+    return any(hmac.compare_digest(_totp(row[0],now+30*i),code) for i in (-1,0,1))
+
+def confirm_totp(code:str):
+    if not totp_ok(code):raise SetupError("Authenticator code invalid")
+    with _db() as con:
+        con.execute("UPDATE godadmin SET totp_verified=1 WHERE username='godadmin'")
+    audit("GODADMIN_MFA_ENABLED")
+
+def masked_settings()->dict:
+    result={}
+    for name in ("sql","oidc","processmaker","company"):
+        data=get_setting(name) or {}
+        result[name]={k:("********" if k in ("password","client_secret","bearer_token") and v else v)
+                      for k,v in data.items()}
+    result["installation_id"]=(get_setting("installation") or {}).get("installation_id")
+    result["publisher_public_key_installed"]=PUBLIC.is_file()
+    result["password_state"]=password_state()
+    return result
+
+def install_public_pem(raw:bytes):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    if len(raw)>10000 or b"PRIVATE KEY" in raw:raise SetupError("Publisher public key only")
+    try:
+        key=serialization.load_pem_public_key(raw)
+        if not isinstance(key,ec.EllipticCurvePublicKey) or not isinstance(key.curve,ec.SECP256R1):
+            raise ValueError("Not ECDSA P-256")
+    except (ValueError,TypeError) as exc:raise SetupError("Invalid publisher public P-256 key") from exc
+    tmp=ROOT/("public-"+secrets.token_hex(8))
+    _write_private(tmp,raw)
+    os.replace(tmp,PUBLIC)
+    audit("PUBLISHER_PUBLIC_KEY_INSTALLED")
+
+def take_bootstrap():
+    initialize()
+    try:
+        fd=os.open(INITIAL,os.O_RDONLY|os.O_NOFOLLOW)
+        with os.fdopen(fd,"r",encoding="utf-8") as file:initial=file.read().strip()
+    except FileNotFoundError:
+        print("Bootstrap password has already been collected or changed.")
+        return
+    INITIAL.unlink()
+    print("GodAdmin username: godadmin")
+    print("ONE-TIME temporary password: "+initial)
+    print("Store securely. First login requires password rotation and authenticator MFA.")
+
+if __name__=="__main__":
+    if len(sys.argv)==2 and sys.argv[1]=="--take-bootstrap":take_bootstrap()
+    else:raise SystemExit("Usage: python -m commercial.setup_console --take-bootstrap")
