@@ -11,7 +11,7 @@ import os
 import re
 from typing import Any
 from .security import Principal
-from .product_state import get_setting
+from . import setup_console as setup
 
 DATABASE="EnterpriseProcess2"
 LOGIN="AVAN_Reader"
@@ -32,26 +32,25 @@ def open_production():
     # Runtime SQL connection is configured from the GodAdmin UI and stored
     # encrypted in AVAN's own state volume. No customer SQL secret is required
     # in .env / Compose.
-    host=get_setting("sql","server","") or ""
-    port=get_setting("sql","port","1433") or "1433"
-    database=get_setting("sql","database","") or ""
-    username=get_setting("sql","username","") or ""
-    password=get_setting("sql","password","") or ""
-    encrypt=(get_setting("sql","encrypt","true") or "true").lower()=="true"
-    trust=(get_setting("sql","trust_server_certificate","false") or "false").lower()=="true"
+    # GodAdmin persists SQL settings in setup_console, not product_state.
+    # Always use the SAME verified configuration that /admin/api/sql/save wrote.
+    config=setup.get_setting("sql") or {}
+    host=str(config.get("server") or "").strip()
+    database=str(config.get("database") or "")
+    username=str(config.get("username") or "")
+    password=str(config.get("password") or "")
+    trust=config.get("trust_server_certificate") is True
     if database!=DATABASE:
         raise ProductionUnavailable("Expected operational EnterpriseProcess2")
     if username.casefold()!=LOGIN.casefold():
         raise ProductionUnavailable("Dedicated read-only AVAN_Reader is required")
     if not host or not password:
         raise ProductionUnavailable("SQL Server connection is not configured")
-    try:
-        port_i=int(port)
-    except ValueError as exc:
-        raise ProductionUnavailable("Invalid SQL port") from exc
-    if not 1<=port_i<=65535:
-        raise ProductionUnavailable("Invalid SQL port")
-    server=host if "\\" in host else f"{host},{port_i}"
+    # The setup form accepts 'hostname,1433' OR 'host\\instance' OR a bare
+    # hostname. Do not append a second port to a user-provided SQL endpoint.
+    if any(c in host for c in ";{}\\x00\\r\\n"):
+        raise ProductionUnavailable("Invalid SQL Server endpoint")
+    server=host if ("," in host or "\\\\" in host) else host+",1433"
     try:
         import pyodbc
         pyodbc.pooling=False
@@ -59,7 +58,7 @@ def open_production():
             "DRIVER={ODBC Driver 17 for SQL Server};"+
             "SERVER="+_value(server)+";DATABASE="+DATABASE+";"+
             "UID="+_value(LOGIN)+";PWD="+_value(password)+";"+
-            ("Encrypt=yes;" if encrypt else "Encrypt=no;")+
+            "Encrypt=yes;"+
             ("TrustServerCertificate=yes;" if trust else "TrustServerCertificate=no;")+
             "Connection Timeout=8;",
             timeout=8,autocommit=True
