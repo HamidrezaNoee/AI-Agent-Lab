@@ -92,7 +92,7 @@ function showTotpEnroll(){
  });
 }
 const menu=[
- ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
+ ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["company","اطلاعات سازمان"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
  ["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
 ];
 async function showSettings(page=state.page){
@@ -107,11 +107,12 @@ async function showSettings(page=state.page){
  },"secondary"));append(m,tabs);
  if(page==="install")renderInstall(m,settings.sql||{});
  else if(page==="sql")renderSql(m,settings.sql||{});
+ else if(page==="company")await renderCompany(m);
  else if(page==="identity")await renderIdentity(m);
  else if(page==="processmaker")renderPm(m,settings.processmaker||{});
  else if(page==="license")renderLicense(m,settings);
  else if(page==="users")await renderUsers(m);
- else renderCompany(m,settings.company||{});
+ else await renderCompany(m);
 }
 function renderInstall(m,config){
  const p=panel("راه‌اندازی کنترل‌شده بانک اصلی",
@@ -365,10 +366,22 @@ async function renderUsers(m){
    append(section,form);append(p,section);
  }
 }
-function renderCompany(m,config){
+async function renderCompany(m){
  const p=panel("اطلاعات سازمان",
-  "نام و هویت بصری سازمان بعد از تأیید ارتباط پایگاه داده و مجوزها قابل ثبت است.");
- append(p,info("نمایش نام سازمان در بخش کارکنان از بانک EnterpriseProcess2 و مجوز سازمانی تأییدشده خوانده می‌شود. تنظیمات هویتی که داده‌های مشتری را تغییر دهند، بدون مجوز مستقل اعمال نمی‌شوند."));
- append(m,p);
+  "نام سازمان و شناسه Tenant از داخل آوان مدیریت می‌شوند. شناسه سازمان در اولین ذخیره توسط خود سیستم ساخته و ثابت می‌شود.");
+ const current=await api("company");
+ const form=node("form"),out=node("div");
+ append(form,field("نام رسمی سازمان","company_name",current.company_name||""),
+   node("button","","ذخیره اطلاعات سازمان"),out);
+ if(current.tenant_id)append(p,info("شناسه ثابت سازمان: "+current.tenant_id));
+ form.addEventListener("submit",async e=>{
+   e.preventDefault();busy(form,true);out.replaceChildren();
+   try{
+     const saved=await api("company/save",{company_name:formValue(form,"company_name")});
+     append(out,info("اطلاعات سازمان ذخیره شد · Tenant ID: "+saved.tenant_id));
+   }catch(err){showError(out,err)}finally{busy(form,false)}
+ });
+ append(p,form);append(m,p);
 }
+
 document.addEventListener("DOMContentLoaded",start);
