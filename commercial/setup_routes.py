@@ -47,7 +47,10 @@ def _local(request:Request):
 def _origin(request:Request):
     origin=request.headers.get("origin")
     expected=os.getenv("AVAN_PUBLIC_ORIGIN","http://127.0.0.1:8188").rstrip("/")
-    if origin and origin.rstrip("/")!=expected:
+    allowed={expected}
+    if expected=="http://127.0.0.1:8188":
+        allowed.add("http://localhost:8188")
+    if origin and origin.rstrip("/") not in allowed:
         raise HTTPException(403,"منشأ درخواست معتبر نیست.")
 
 def _prune():
