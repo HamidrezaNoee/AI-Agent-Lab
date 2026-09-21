@@ -66,6 +66,9 @@ services:
       AVAN_BFF_CLIENT_SECRET_PATH: /run/secrets/avan_bff_client_secret
       AVAN_PROVISIONER_CLIENT_SECRET_PATH: /run/secrets/avan_provisioner_client_secret
       AVAN_DATA_TIMEZONE: Asia/Tehran
+      # Opt-in ONLY for the laptop lab's local ProcessMaker on Windows port 84.
+      # Disable/remove for any networked or production deployment.
+      AVAN_PM_ALLOW_LOCAL_HTTP: "1"
     secrets:
       - avan_bff_client_secret
       - avan_provisioner_client_secret
