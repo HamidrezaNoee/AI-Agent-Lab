@@ -109,7 +109,7 @@ def _oidc_config():
         config.get("jwks_url")!=issuer+"/protocol/openid-connect/certs" or
         not client_id or len(client_id)>256 or
         not 16<=len(client_secret)<=4096 or
-        any(c in client_secret for c in "\\r\\n")):
+        any(c in client_secret for c in (chr(13),chr(10)))):
         raise ConfigurationFailed("Secure OIDC realm settings not configured")
     verifier=_verifier(issuer,audience,jwks)
     return (issuer+"/protocol/openid-connect/auth",
