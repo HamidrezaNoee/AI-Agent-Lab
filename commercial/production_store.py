@@ -11,6 +11,7 @@ import os
 import re
 from typing import Any
 from .security import Principal
+from .product_state import get_setting
 
 DATABASE="EnterpriseProcess2"
 LOGIN="AVAN_Reader"
@@ -28,25 +29,39 @@ def _value(value: str) -> str:
 
 @contextmanager
 def open_production():
-    from .setup_console import get_setting
-    config=get_setting("sql") or {}
-    if config.get("database") != DATABASE:
+    # Runtime SQL connection is configured from the GodAdmin UI and stored
+    # encrypted in AVAN's own state volume. No customer SQL secret is required
+    # in .env / Compose.
+    host=get_setting("sql","server","") or ""
+    port=get_setting("sql","port","1433") or "1433"
+    database=get_setting("sql","database","") or ""
+    username=get_setting("sql","username","") or ""
+    password=get_setting("sql","password","") or ""
+    encrypt=(get_setting("sql","encrypt","true") or "true").lower()=="true"
+    trust=(get_setting("sql","trust_server_certificate","false") or "false").lower()=="true"
+    if database!=DATABASE:
         raise ProductionUnavailable("Expected operational EnterpriseProcess2")
-    if str(config.get("username","")).casefold()!=LOGIN.casefold():
+    if username.casefold()!=LOGIN.casefold():
         raise ProductionUnavailable("Dedicated read-only AVAN_Reader is required")
-    host=str(config.get("server",""))
-    password=str(config.get("password",""))
-    trust="yes" if config.get("trust_server_certificate") is True else "no"
-    if any(c in host for c in ";{}\\x00\\r\\n"):
-        raise ProductionUnavailable("Invalid SQL Server address")
+    if not host or not password:
+        raise ProductionUnavailable("SQL Server connection is not configured")
+    try:
+        port_i=int(port)
+    except ValueError as exc:
+        raise ProductionUnavailable("Invalid SQL port") from exc
+    if not 1<=port_i<=65535:
+        raise ProductionUnavailable("Invalid SQL port")
+    server=host if "\\" in host else f"{host},{port_i}"
     try:
         import pyodbc
         pyodbc.pooling=False
         conn=pyodbc.connect(
             "DRIVER={ODBC Driver 17 for SQL Server};"+
-            "SERVER="+_value(host)+";DATABASE="+DATABASE+";"+
+            "SERVER="+_value(server)+";DATABASE="+DATABASE+";"+
             "UID="+_value(LOGIN)+";PWD="+_value(password)+";"+
-            "Encrypt=yes;TrustServerCertificate="+trust+";Connection Timeout=8;",
+            ("Encrypt=yes;" if encrypt else "Encrypt=no;")+
+            ("TrustServerCertificate=yes;" if trust else "TrustServerCertificate=no;")+
+            "Connection Timeout=8;",
             timeout=8,autocommit=True
         )
     except Exception as exc:
