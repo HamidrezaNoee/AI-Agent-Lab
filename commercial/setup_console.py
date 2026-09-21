@@ -81,6 +81,7 @@ def initialize():
                 raise
             con.execute("INSERT INTO audit(happened_utc,code) VALUES (?,?)",
                         (datetime.now(timezone.utc).isoformat(),"GODADMIN_INITIALIZED"))
+    os.chmod(SQLITE,0o600)
     # Stable cryptographically random installation ID; never tied to a Docker
     # container id or regenerated when updating the application image.
     if get_setting("installation") is None:
@@ -212,6 +213,30 @@ def take_bootstrap():
     print("ONE-TIME temporary password: "+initial)
     print("Store securely. First login requires password rotation and authenticator MFA.")
 
+def reset_from_docker_host():
+    # Deliberate host-only disaster recovery for a LOST account. No HTTP
+    # endpoint, email reset or alternate built-in account is exposed.
+    initialize()
+    replacement=secrets.token_urlsafe(28)
+    salt=secrets.token_bytes(16)
+    with _db() as con:
+        con.execute("""UPDATE godadmin SET password_hash=?,salt=?,password_changed=0,
+                       totp_secret=NULL,totp_verified=0 WHERE username='godadmin'""",
+                    (_hash(replacement,salt),salt))
+    INITIAL.unlink(missing_ok=True)
+    _write_private(INITIAL,(replacement+"\n").encode("utf-8"))
+    audit("GODADMIN_HOST_RECOVERY")
+    print("GodAdmin recovery completed. Collect new password through --take-bootstrap.")
+    print("All existing HTTP sessions should be terminated by restarting the AVAN container.")
+
+
 if __name__=="__main__":
-    if len(sys.argv)==2 and sys.argv[1]=="--take-bootstrap":take_bootstrap()
-    else:raise SystemExit("Usage: python -m commercial.setup_console --take-bootstrap")
+    if len(sys.argv)==2 and sys.argv[1]=="--take-bootstrap":
+        take_bootstrap()
+    elif len(sys.argv)==3 and sys.argv[1]=="--reset-godadmin" and (
+        sys.argv[2]=="CONFIRM_LOCAL_HOST_RECOVERY"
+    ):
+        reset_from_docker_host()
+    else:
+        raise SystemExit("Usage: python -m commercial.setup_console --take-bootstrap")
+
