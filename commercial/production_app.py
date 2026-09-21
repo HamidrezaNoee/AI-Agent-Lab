@@ -219,12 +219,24 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         data=token_response.json()
         access=data.get("access_token","")
         principal=authenticator.authenticate("Bearer "+access)
-        # A valid IdP subject is not enough: linked and recently verified
-        # ProcessMaker user, tenant and organization role must be active.
-        with open_production() as con:
-            verified_scope(con,principal)
-        exp=jwt.decode(access,options={"verify_signature":False},
-                       algorithms=["RS256"])["exp"]
+        # A genuine signed IdP identity which is not yet mapped to an active
+        # PM employee is kept PENDING for the local GodAdmin to review. It
+        # receives NO customer session and NO meeting content.
+        claims=jwt.decode(access,options={"verify_signature":False},
+                          algorithms=["RS256"])
+        try:
+            with open_production() as con:
+                verified_scope(con,principal)
+        except ProductionAccessDenied:
+            from .pending_identities import stage
+            stage(principal,name=str(claims.get("name") or claims.get(
+                  "preferred_username") or principal.subject),
+                  email=claims.get("email") if isinstance(claims.get("email"),str) else None,
+                  email_verified=claims.get("email_verified") is True)
+            response=RedirectResponse("/auth/pending",status_code=303)
+            response.delete_cookie("avan_login_state",path="/")
+            return response
+        exp=claims["exp"]
     except (httpx.HTTPError,ValueError,KeyError,TypeError,
             AuthenticationFailed,ConfigurationFailed,
             ProductionUnavailable,ProductionAccessDenied) as exc:
@@ -241,6 +253,21 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     response.set_cookie("avan_session",session_id,max_age=3600,**_cookie_options())
     response.delete_cookie("avan_login_state",path="/")
     return response
+
+
+@app.get("/auth/pending")
+def pending_approval():
+    # No sensitive identity fields or access tokens are sent back to the user.
+    return Response("""<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8">
+    <title>آوان | تأیید دسترسی سازمانی</title>
+    <body style="font-family:Tahoma,sans-serif;background:#f4f7fa;color:#153853;
+                 max-width:650px;margin:12vh auto;padding:24px;line-height:2.2">
+    <h1>درخواست دسترسی ثبت شد</h1>
+    <p>هویت شما توسط سامانه سازمانی تأیید شد. پیش از مشاهده جلسات،
+    مدیر سامانه باید ارتباط حساب شما با کاربر فعال ProcessMaker و
+    مجوزهای سازمانی را تأیید کند.</p>
+    <a href="/">بازگشت به آوان</a></body></html>""",
+                    media_type="text/html; charset=utf-8")
 
 
 @app.post("/auth/logout")
