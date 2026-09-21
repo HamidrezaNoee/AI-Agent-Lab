@@ -75,7 +75,8 @@ def inspect(server:str,username:str,password:str,trust_certificate:bool):
 
 def _batches(filename:str):
     if filename not in ("PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql",
-                        "PRODUCTION_EnterpriseProcess2_02_reader_grants.sql"):
+                        "PRODUCTION_EnterpriseProcess2_02_reader_grants.sql",
+                        "PRODUCTION_EnterpriseProcess2_05_config_writer_grants.sql"):
         raise InstallationDenied("Unapproved migration name")
     code=(SQL_ROOT/filename).read_text(encoding="utf-8")
     if "USE [EnterpriseProcess2]" not in code or "DROP TABLE" in code.upper():
@@ -87,23 +88,26 @@ def _execute_script(con,filename:str):
     for batch in _batches(filename):
         con.cursor().execute(batch)
 
-def _create_reader(con):
+def _create_login(con,name:str):
+    if name not in ("AVAN_Reader","AVAN_ConfigWriter"):
+        raise InstallationDenied("Unapproved SQL login")
     cur=con.cursor()
-    cur.execute("SELECT SUSER_ID(N'AVAN_Reader')")
+    cur.execute("SELECT SUSER_ID(?)",name)
     if cur.fetchone()[0] is not None:
         return None
     password=secrets.token_urlsafe(40)
-    # The value is produced by Python's CSPRNG (ASCII URL-safe), not supplied
-    # by the HTTP caller; never interpolate user-controlled SQL identifiers.
+    # Only internal fixed identifier and cryptographic ASCII, no caller SQL.
     if not re.fullmatch(r"[A-Za-z0-9_-]{40,80}",password):
-        raise InstallationDenied("Unable to create restricted SQL credential")
+        raise InstallationDenied("Unable to provision restricted SQL login")
     cur.execute("USE [master]")
-    cur.execute("CREATE LOGIN [AVAN_Reader] WITH PASSWORD='"+password+"', CHECK_POLICY=ON")
+    cur.execute("CREATE LOGIN ["+name+"] WITH PASSWORD='"+password+"', CHECK_POLICY=ON")
     cur.execute("USE [EnterpriseProcess2]")
     return password
 
+
 def apply(*,server:str,username:str,password:str,trust_certificate:bool,
-          backup_confirmed:bool,confirmation:str,reader_existing_password:str|None):
+          backup_confirmed:bool,confirmation:str,reader_existing_password:str|None,
+          writer_existing_password:str|None):
     if not backup_confirmed or confirmation!="EnterpriseProcess2":
         raise InstallationDenied("Verified backup and exact database confirmation required")
     con=_dba_connect(server,username,password,trust_certificate)
@@ -116,11 +120,14 @@ def apply(*,server:str,username:str,password:str,trust_certificate:bool,
         if not inventory["has_server_dba_permission"]:
             raise InstallationDenied("DBA sysadmin privilege is required for initial SQL login provisioning")
         _execute_script(con,"PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql")
-        generated=_create_reader(con)
+        generated=_create_login(con,"AVAN_Reader")
+        generated_writer=_create_login(con,"AVAN_ConfigWriter")
         _execute_script(con,"PRODUCTION_EnterpriseProcess2_02_reader_grants.sql")
+        _execute_script(con,"PRODUCTION_EnterpriseProcess2_05_config_writer_grants.sql")
         reader_password=generated or reader_existing_password
-        if not reader_password:
-            raise InstallationDenied("Existing AVAN_Reader login requires its own approved password")
+        writer_password=generated_writer or writer_existing_password
+        if not reader_password or not writer_password:
+            raise InstallationDenied("Existing Reader/ConfigWriter login requires its own approved password")
         # Verify actual low-privilege login before persisting its secret.
         import pyodbc
         read_con=pyodbc.connect(
@@ -138,14 +145,35 @@ def apply(*,server:str,username:str,password:str,trust_certificate:bool,
             if not checked or str(checked[0])!="EnterpriseProcess2" or checked[1] is None:
                 raise InstallationDenied("Reader cannot access operational AVAN objects")
         finally:read_con.close()
+        # Validate actual writer rights without inserting a customer, user,
+        # role, process instance or any real meeting data.
+        admin_con=pyodbc.connect(
+            "DRIVER={ODBC Driver 17 for SQL Server};"+
+            "SERVER="+_value(server)+";DATABASE=EnterpriseProcess2;"+
+            "UID={AVAN_ConfigWriter};PWD="+_value(writer_password)+";"+
+            "Encrypt=yes;TrustServerCertificate="+
+            ("yes" if trust_certificate else "no")+";Connection Timeout=8;",
+            timeout=8,autocommit=True,
+        )
+        try:
+            admin_cur=admin_con.cursor()
+            admin_cur.execute("""SELECT
+               HAS_PERMS_BY_NAME(N'AVAN.UserAccess',N'OBJECT',N'INSERT'),
+               HAS_PERMS_BY_NAME(N'MTG.Meeting',N'OBJECT',N'UPDATE')""")
+            privileges=admin_cur.fetchone()
+            if not privileges or privileges[0]!=1 or privileges[1] not in (0,None):
+                raise InstallationDenied("SQL config writer privileges are incorrect")
+        finally:admin_con.close()
         setup.put_setting("sql",{
             "server":server,"database":"EnterpriseProcess2",
             "username":"AVAN_Reader","password":reader_password,
+            "writer_username":"AVAN_ConfigWriter","writer_password":writer_password,
             "trust_server_certificate":trust_certificate,
         })
         setup.audit("ADDITIVE_AVAN_SQL_MIGRATION_APPLIED")
         return {"database":"EnterpriseProcess2","migration_applied":True,
-                "dedicated_reader_ready":True,"reader_password_stored_encrypted":True}
+                "dedicated_reader_ready":True,"dedicated_config_writer_ready":True,
+                "sql_credentials_stored_encrypted":True}
     except InstallationDenied:
         raise
     except Exception as exc:
