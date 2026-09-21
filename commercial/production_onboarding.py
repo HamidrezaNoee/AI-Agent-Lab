@@ -162,3 +162,42 @@ def approve_employee(*,tenant_id:str,subject:str,company_name:str,
     setup.audit("VERIFIED_STAFF_MAPPED_"+role.upper())
     return {"mapped":True,"company_name":company_name.strip(),
             "name":staff.display_name,"role":role,"tenant_id":tenant_id}
+
+
+def refresh_employee_statuses()->dict:
+    """Conservative, full-snapshot PM reconciliation initiated by GodAdmin.
+
+    Refresh verification time for currently approved ACTIVE accounts. Any PM
+    user removed/deactivated since the last COMPLETE read-only snapshot is
+    disabled in AVAN immediately. Never auto-reactivate a disabled account.
+    A failed/incomplete PM API call cannot alter any database user.
+    """
+    directory={u.pm_uid:u for u in _directory()}
+    refreshed=0
+    disabled=0
+    with writer_connection() as con:
+        cur=con.cursor()
+        cur.execute("""SELECT TenantID,PMUserUID,IsEnabled,PMIsActive
+                       FROM AVAN.UserAccess""")
+        rows=cur.fetchall()
+        for row in rows:
+            tenant=str(row[0])
+            pm_uid=str(row[1]).strip().lower()
+            active=directory.get(pm_uid)
+            if active is not None and active.status=="ACTIVE":
+                if bool(row[2]):
+                    cur.execute("""UPDATE AVAN.UserAccess
+                         SET PMIsActive=1,PMVerifiedAtUTC=SYSUTCDATETIME()
+                         WHERE TenantID=? AND PMUserUID=? AND IsEnabled=1""",
+                         tenant,pm_uid)
+                    refreshed+=1
+            else:
+                if bool(row[2]) or bool(row[3]):
+                    cur.execute("""UPDATE AVAN.UserAccess
+                         SET PMIsActive=0,IsEnabled=0
+                         WHERE TenantID=? AND PMUserUID=?""",tenant,pm_uid)
+                    disabled+=1
+    setup.audit("PM_STATUS_RECONCILED")
+    return {"refreshed_active_users":refreshed,
+            "disabled_unverified_users":disabled,
+            "source":"complete_read_only_processmaker_directory"}
