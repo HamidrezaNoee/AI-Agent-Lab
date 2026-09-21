@@ -380,7 +380,7 @@ def public_key(body:PublicKey,session=Depends(_ready)):
     pin=pin_file.read_text(encoding="ascii").strip().lower()
     if not re.fullmatch(r"[0-9a-f]{64}",pin):
         raise HTTPException(503,"اثر انگشت کلید مرجع ناشر معتبر نیست.")
-    try:raw=body.pem.encode("ascii")
+    try:raw=body.pem.replace("\r\n","\n").strip().encode("ascii")
     except UnicodeEncodeError:raise HTTPException(400,"کلید عمومی ناشر معتبر نیست.")
     if not hmac.compare_digest(hashlib.sha256(raw).hexdigest(),pin):
         raise HTTPException(403,"کلید عمومی با امضای مرجع ناشر این نسخه تطبیق ندارد.")
