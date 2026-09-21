@@ -22,8 +22,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .meeting_questions import answer_question, _intent
 from .production_store import (
-    ProductionAccessDenied, ProductionUnavailable, authorized_meetings_page,
-    authorized_meeting_snapshot, open_production, verified_scope,
+    EmployeeMappingRequired, ProductionAccessDenied, ProductionUnavailable,
+    authorized_meetings_page, authorized_meeting_snapshot, open_production,
+    verified_scope,
 )
 from .security import (
     AuthenticationFailed, ConfigurationFailed, VerifiedTokenAuthenticator,
@@ -214,9 +215,16 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     item=pending.pop(state,None)
     if item is None or item["expires"]<time.time():
         raise HTTPException(status_code=401,detail="مهلت ورود به پایان رسیده است.")
+    # Distinct, safe failures are important here: an authorized Keycloak
+    # identity can be pending enrollment, while a missing tenant claim, SQL
+    # outage, or license problem must NOT masquerade as a wrong password.
     try:
         origin=_public_origin()
         _,token_url,client_id,client_secret,authenticator=_oidc_config()
+    except ConfigurationFailed:
+        raise HTTPException(status_code=503,
+            detail="تنظیمات ورود سازمانی آوان کامل نیست؛ اتصال Keycloak در GodAdmin بررسی شود.")
+    try:
         with httpx.Client(timeout=8,follow_redirects=False,trust_env=False) as client:
             token_response=client.post(token_url,data={
                 "grant_type":"authorization_code","code":code,
@@ -228,56 +236,84 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         data=token_response.json()
         access=data.get("access_token","")
         principal=authenticator.authenticate("Bearer "+access)
-        # A genuine signed IdP identity which is not yet mapped to an active
-        # PM employee is kept PENDING for the local GodAdmin to review. It
-        # receives NO customer session and NO meeting content.
+        # Read claims only after the SAME token has passed signature, issuer,
+        # audience, lifetime and tenant verification by the authenticator.
         claims=jwt.decode(access,options={"verify_signature":False},
                           algorithms=["RS256"])
-        try:
-            with open_production() as con:
-                verified_scope(con,principal)
-        except ProductionAccessDenied:
-            # UserInfo is called ONLY on the already trusted HTTPS issuer
-            # with this user's RS256-verified access token. The subject must
-            # match exactly before a verified email may support PM matching.
-            from .pending_identities import stage
-            user_claims=claims
-            from .setup_console import get_setting
-            issuer=(get_setting("oidc") or {}).get("issuer","").rstrip("/")
-            try:
-                with httpx.Client(timeout=7,follow_redirects=False,
-                                  trust_env=False) as http:
-                    userinfo_response=http.get(
-                       issuer+"/protocol/openid-connect/userinfo",
-                       headers={"Authorization":"Bearer "+access,
-                                "Accept":"application/json"})
-                    userinfo_response.raise_for_status()
-                    if len(userinfo_response.content)>20000:
-                        raise ValueError("OIDC UserInfo too large")
-                    received=userinfo_response.json()
-                    if received.get("sub")!=principal.subject:
-                        raise AuthenticationFailed("UserInfo subject mismatch")
-                    user_claims=received
-            except AuthenticationFailed:
-                raise
-            except (httpx.HTTPError,ValueError,TypeError):
-                # Signed access-token email claims are a safe fallback only
-                # when email_verified is itself part of the signed token.
-                user_claims=claims
-            stage(principal,name=str(user_claims.get("name") or
-                  claims.get("preferred_username") or principal.subject),
-                  email=user_claims.get("email")
-                      if isinstance(user_claims.get("email"),str) else None,
-                  email_verified=user_claims.get("email_verified") is True)
-            response=RedirectResponse("/auth/pending",status_code=303)
-            response.delete_cookie("avan_login_state",path="/")
-            return response
         exp=claims["exp"]
-    except (httpx.HTTPError,ValueError,KeyError,TypeError,
-            AuthenticationFailed,ConfigurationFailed,
-            ProductionUnavailable,ProductionAccessDenied) as exc:
+    except AuthenticationFailed:
         raise HTTPException(status_code=403,
-            detail="ورود به پنل مجاز نیست؛ ارتباط هویت و کاربر فعال سازمان بررسی شود.") from exc
+            detail="ورود Keycloak انجام شد، اما توکن سازمانی معتبر نیست. در Realm avan ویژگی tenant_id کاربر، نگاشت آن در توکن، Issuer و Audience را بررسی کنید.")
+    except httpx.HTTPStatusError:
+        raise HTTPException(status_code=502,
+            detail="Keycloak درخواست تبادل کد ورود را رد کرد؛ تنظیمات Client avan-bff و آدرس بازگشت بررسی شود.")
+    except (httpx.RequestError,ConfigurationFailed):
+        raise HTTPException(status_code=503,
+            detail="اتصال داخلی آوان به سرویس هویت Keycloak برقرار نیست.")
+    except (ValueError,KeyError,TypeError):
+        raise HTTPException(status_code=502,
+            detail="پاسخ سرویس هویت Keycloak معتبر نیست.")
+
+    from .setup_console import get_setting
+    configured_company=get_setting("company") or {}
+    configured_tenant=configured_company.get("tenant_id")
+    if not configured_tenant:
+        raise HTTPException(status_code=503,
+            detail="شناسه سازمان در پنل GodAdmin ذخیره نشده است؛ ابتدا مشخصات سازمان را ثبت کنید.")
+    if str(principal.tenant_id)!=str(configured_tenant).lower():
+        raise HTTPException(status_code=403,
+            detail="شناسه سازمان امضاشده حساب Keycloak با سازمان ثبت‌شده در GodAdmin برابر نیست؛ ویژگی tenant_id حساب ardalan را بررسی کنید.")
+
+    try:
+        with open_production() as con:
+            verified_scope(con,principal)
+    except EmployeeMappingRequired:
+        # No meeting read or organizational role is granted here. A verified
+        # identity is staged for explicit GodAdmin + active PM user approval.
+        from .pending_identities import stage
+        user_claims=claims
+        issuer=(get_setting("oidc") or {}).get("issuer","").rstrip("/")
+        try:
+            with httpx.Client(timeout=7,follow_redirects=False,
+                              trust_env=False) as http:
+                userinfo_response=http.get(
+                   issuer+"/protocol/openid-connect/userinfo",
+                   headers={"Authorization":"Bearer "+access,
+                            "Accept":"application/json"})
+                userinfo_response.raise_for_status()
+                if len(userinfo_response.content)>20000:
+                    raise ValueError("OIDC UserInfo too large")
+                received=userinfo_response.json()
+                if received.get("sub")!=principal.subject:
+                    raise AuthenticationFailed("UserInfo subject mismatch")
+                user_claims=received
+        except AuthenticationFailed:
+            raise HTTPException(status_code=403,
+                detail="شناسه حساب در پاسخ سرویس هویت با حساب امضاشده برابر نیست.")
+        except (httpx.HTTPError,ValueError,TypeError):
+            # Signed access-token claims are a fallback only after successful
+            # signature verification; never accept browser-submitted email.
+            user_claims=claims
+        stage(principal,name=str(user_claims.get("name") or
+              claims.get("preferred_username") or principal.subject),
+              email=user_claims.get("email")
+                  if isinstance(user_claims.get("email"),str) else None,
+              email_verified=user_claims.get("email_verified") is True)
+        response=RedirectResponse("/auth/pending",status_code=303)
+        response.delete_cookie("avan_login_state",path="/")
+        return response
+    except ProductionUnavailable:
+        raise HTTPException(status_code=503,
+            detail="حساب Keycloak تأیید شد اما اتصال عملیاتی SQL آوان برقرار نیست؛ تنظیمات SQL و ساختار AVAN در GodAdmin بررسی شود.")
+    except ProductionAccessDenied:
+        raise HTTPException(status_code=403,
+            detail="هویت سازمانی تأیید شد اما دسترسی اطلاعات جلسات هنوز فعال نیست؛ وضعیت سازمان، نقش کاربر و لایسنس امضاشده آوان در GodAdmin بررسی شود.")
+    except Exception:
+        # Do not expose SQL exception strings, bearer tokens, user information
+        # or operational table names through public identity endpoints.
+        raise HTTPException(status_code=503,
+            detail="در بررسی دسترسی SQL آوان خطای داخلی رخ داد؛ وضعیت ساختار بانک و مجوز AVAN_Reader را در GodAdmin بررسی کنید.")
+
     _purge()
     if len(sessions)>5000:
         raise HTTPException(status_code=503,detail="ظرفیت نشست‌ها تکمیل است.")
