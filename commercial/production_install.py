@@ -119,6 +119,18 @@ def apply(*,server:str,username:str,password:str,trust_certificate:bool,
                 inventory["required_columns_missing"][:12]))
         if not inventory["has_server_dba_permission"]:
             raise InstallationDenied("DBA sysadmin privilege is required for initial SQL login provisioning")
+        # Never create a second login or migrate data if an existing account
+        # has an unknown password; otherwise a partial install might strand
+        # freshly generated credentials after the request fails.
+        cur=con.cursor()
+        cur.execute("""SELECT SUSER_ID(N'AVAN_Reader'),
+                              SUSER_ID(N'AVAN_ConfigWriter')""")
+        existing=cur.fetchone()
+        if (existing and ((existing[0] is not None and not reader_existing_password)
+              or (existing[1] is not None and not writer_existing_password))):
+            raise InstallationDenied(
+                "Provide approved passwords for BOTH existing AVAN SQL accounts before applying changes"
+            )
         _execute_script(con,"PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql")
         generated=_create_login(con,"AVAN_Reader")
         generated_writer=_create_login(con,"AVAN_ConfigWriter")
