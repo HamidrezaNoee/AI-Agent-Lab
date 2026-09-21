@@ -395,6 +395,7 @@ class StaffApproval(BaseModel):
     pm_uid:str=Field(min_length=32,max_length=32)
     role:str=Field(min_length=6,max_length=8)
     manager_pm_uid:str|None=Field(default=None,max_length=32)
+    department_name:str|None=Field(default=None,max_length=160)
 
 @router.post("/api/users/approve")
 def approve_staff(body:StaffApproval,session=Depends(_ready)):
@@ -402,7 +403,8 @@ def approve_staff(body:StaffApproval,session=Depends(_ready)):
     try:return approve_employee(
         tenant_id=body.tenant_id,subject=body.subject,
         company_name=body.company_name,pm_uid=body.pm_uid,
-        role=body.role,manager_pm_uid=body.manager_pm_uid)
+        role=body.role,manager_pm_uid=body.manager_pm_uid,
+        department_name=body.department_name)
     except ProvisioningDenied as exc:
         # The exception contains only server-defined validation messages; no
         # SQL driver errors, passwords, PM tokens or raw IdP access token.
