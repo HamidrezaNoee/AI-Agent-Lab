@@ -341,7 +341,9 @@ async function renderUsers(m){
      const opt=node("option","",label);opt.value=value;append(roleSelect,opt);
    }
    append(roleLabel,roleSelect);
-   append(form,roleLabel,field("شناسه PM مدیر مستقیم (در صورت وجود)","manager_pm_uid","",
+   append(form,roleLabel,
+     field("نام واحد سازمانی تأییدشده","department_name","",{required:false}),
+     field("شناسه PM مدیر مستقیم (در صورت وجود)","manager_pm_uid","",
        {required:false}));
    const result=node("div","full");
    const submit=node("button","","تأیید و اتصال امن کاربر");submit.type="submit";
@@ -354,7 +356,8 @@ async function renderUsers(m){
          company_name:formValue(form,"company_name"),
          pm_uid:formValue(form,"pm_uid"),
          role:formValue(form,"role"),
-         manager_pm_uid:formValue(form,"manager_pm_uid")||null
+         manager_pm_uid:formValue(form,"manager_pm_uid")||null,
+         department_name:formValue(form,"department_name")||null
        });
        append(result,info("کاربر "+mapped.name+" به سازمان "+mapped.company_name+
            " متصل شد. برای استفاده از ماژول‌های سازمان، لایسنس امضاشده نیز لازم است."));
