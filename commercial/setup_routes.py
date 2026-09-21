@@ -383,28 +383,43 @@ class PMConfig(BaseModel):
     bearer_token:str=Field(min_length=8,max_length=8192)
 
 def _pm_check(config:PMConfig)->int:
+    # This is a GET-only directory check. Admin tokens work too: user role
+    # is not constrained or changed by AVAN.
     base=config.base_url.rstrip("/")
     parsed=urlsplit(base)
-    if (parsed.scheme!="https" or not parsed.hostname or
-        parsed.username or parsed.password or parsed.query or parsed.fragment or
-        not re.fullmatch("[A-Za-z0-9_-]{1,48}",config.workspace)):
-        raise HTTPException(422,"اتصال ProcessMaker باید HTTPS و Workspace معتبر داشته باشد.")
-    url=base+"/api/1.0/"+config.workspace+"/users?status=all&start=0&limit=1"
+    if (not parsed.hostname or parsed.username or parsed.password or
+        parsed.query or parsed.fragment or parsed.path not in ("","/") or
+        not re.fullmatch(r"[A-Za-z0-9_-]{1,48}",config.workspace)):
+        raise HTTPException(422,"نشانی اصلی ProcessMaker یا Workspace معتبر نیست.")
+    local_lab_http=(os.getenv("AVAN_PM_ALLOW_LOCAL_HTTP")=="1" and
+                    parsed.scheme=="http" and
+                    parsed.hostname.lower()=="host.docker.internal" and
+                    parsed.port==84)
+    if parsed.scheme!="https" and not local_lab_http:
+        raise HTTPException(422,"در نصب آزمایشی آدرس http://host.docker.internal:84 را وارد کنید؛ در نصب عملیاتی HTTPS الزامی است.")
+    url=base+"/api/1.0/"+config.workspace+"/users"
     try:
         with httpx.Client(timeout=8,follow_redirects=False,trust_env=False) as http:
-            response=http.get(url,headers={"Authorization":"Bearer "+config.bearer_token,
-                                           "Accept":"application/json"})
-            response.raise_for_status()
+            response=http.get(url,params={"status":"all","start":0,"limit":1},
+                              headers={"Authorization":"Bearer "+config.bearer_token,
+                                       "Accept":"application/json"})
+            if response.status_code in (401,403):
+                raise HTTPException(401,"توکن ProcessMaker نامعتبر، منقضی یا فاقد مجوز مشاهده کاربران است؛ توکن تازه دریافت کنید.")
+            if response.status_code!=200:
+                raise HTTPException(503,"API کاربران ProcessMaker پاسخ HTTP "+str(response.status_code)+" داد؛ آدرس و Workspace را بررسی کنید.")
             if len(response.content)>20000 or not isinstance(response.json(),(list,dict)):
-                raise ValueError("Unexpected ProcessMaker directory response")
+                raise HTTPException(502,"پاسخ API کاربران ProcessMaker معتبر نیست.")
         return response.status_code
-    except Exception:
-        raise HTTPException(503,"دسترسی فقط‌خواندنی به کاربران ProcessMaker تأیید نشد.")
+    except httpx.RequestError:
+        raise HTTPException(503,"اتصال شبکه یا گواهی TLS ProcessMaker قابل تأیید نیست؛ نشانی سرویس را بررسی کنید.")
+    except ValueError:
+        raise HTTPException(502,"پاسخ JSON کاربران ProcessMaker نامعتبر است.")
+
 
 @router.post("/api/processmaker/check")
 def pm_check(body:PMConfig,session=Depends(_ready)):
     _pm_check(body)
-    return {"connected":True,"read_only":True}
+    return {"connected":True,"directory_request":"GET","account_role_not_restricted":True}
 
 @router.post("/api/processmaker/save")
 def pm_save(body:PMConfig,session=Depends(_ready)):
