@@ -1,39 +1,106 @@
-# AVAN enterprise application: first-run GodAdmin bootstraps without .env.
-# No production SQL credentials, identity secrets or issuer private key in Compose.
 name: avan-production
+
 services:
+  keycloak-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: avan_keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD_FILE: /run/secrets/keycloak_db_password
+    secrets:
+      - keycloak_db_password
+    volumes:
+      - avan-keycloak-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U keycloak -d avan_keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.3
+    restart: unless-stopped
+    entrypoint: ["/bin/bash","-ec"]
+    command:
+      - |
+        export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
+        export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
+        export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
+        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/avan_keycloak
+      KC_DB_USERNAME: keycloak
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+    secrets:
+      - keycloak_db_password
+      - avan_bff_client_secret
+      - avan_provisioner_client_secret
+    volumes:
+      - ./infra/keycloak/avan-realm.json:/opt/keycloak/data/import/avan-realm.json:ro
+    ports:
+      - "127.0.0.1:8181:8080"
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+
   avan:
     image: avan-enterprise:local
     build:
       context: .
       dockerfile: commercial/Dockerfile.production
-    init: true
     restart: unless-stopped
+    init: true
     ports:
       - "127.0.0.1:8188:8188"
     environment:
       AVAN_STATE_DIR: /var/lib/avan
       AVAN_PUBLIC_ORIGIN: http://127.0.0.1:8188
       AVAN_ALLOWED_HOSTS: 127.0.0.1,localhost
+      AVAN_BUNDLED_IDP: "1"
+      AVAN_OIDC_ISSUER: http://auth.localhost:8181/realms/avan
+      AVAN_OIDC_JWKS_URL: http://auth.localhost:8181/realms/avan/protocol/openid-connect/certs
+      AVAN_BFF_CLIENT_SECRET_PATH: /run/secrets/avan_bff_client_secret
+      AVAN_PROVISIONER_CLIENT_SECRET_PATH: /run/secrets/avan_provisioner_client_secret
       AVAN_DATA_TIMEZONE: Asia/Tehran
+    secrets:
+      - avan_bff_client_secret
+      - avan_provisioner_client_secret
+    volumes:
+      - avan-state:/var/lib/avan
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    volumes:
-      - avan-control-data:/var/lib/avan
+      - "auth.localhost:host-gateway"
     read_only: true
     tmpfs:
-      - /tmp:rw,nosuid,noexec,size=16m
+      - /tmp:rw,nosuid,noexec,size=32m
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    pids_limit: 160
+    pids_limit: 192
     mem_limit: 768m
+    depends_on:
+      keycloak:
+        condition: service_started
     healthcheck:
       test: ["CMD","python","-c","import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8188/health',timeout=3).status==200"]
       interval: 30s
       timeout: 5s
       start_period: 20s
       retries: 3
+
+secrets:
+  keycloak_db_password:
+    file: ./.secrets/keycloak-db-password
+  avan_bff_client_secret:
+    file: ./.secrets/avan-bff-client-secret
+  avan_provisioner_client_secret:
+    file: ./.secrets/avan-provisioner-client-secret
+
 volumes:
-  avan-control-data:
+  avan-state:
+  avan-keycloak-db:
