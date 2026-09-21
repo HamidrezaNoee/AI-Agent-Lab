@@ -183,7 +183,9 @@ def masked_settings()->dict:
     result={}
     for name in ("sql","oidc","processmaker","company"):
         data=get_setting(name) or {}
-        result[name]={k:("********" if k in ("password","client_secret","bearer_token") and v else v)
+        result[name]={k:("********" if (k in ("password","client_secret","bearer_token")
+                                       or k.endswith("_password") or k.endswith("_secret"))
+                                  and v else v)
                       for k,v in data.items()}
     result["installation_id"]=(get_setting("installation") or {}).get("installation_id")
     result["publisher_public_key_installed"]=PUBLIC.is_file()
