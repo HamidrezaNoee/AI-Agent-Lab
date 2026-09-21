@@ -6,6 +6,7 @@ param(
     [string]$Workspace = "workflow"
 )
 $ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Net.Http
 $client = $null
 $clientSecretPlain = $null
 $passwordPlain = $null
