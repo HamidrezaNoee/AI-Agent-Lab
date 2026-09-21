@@ -28,15 +28,17 @@ def _value(value: str) -> str:
 
 @contextmanager
 def open_production():
-    if os.getenv("AVAN_SQL_DATABASE") != DATABASE:
+    from .setup_console import get_setting
+    config=get_setting("sql") or {}
+    if config.get("database") != DATABASE:
         raise ProductionUnavailable("Expected operational EnterpriseProcess2")
-    if os.getenv("AVAN_SQL_USER","").casefold()!=LOGIN.casefold():
+    if str(config.get("username","")).casefold()!=LOGIN.casefold():
         raise ProductionUnavailable("Dedicated read-only AVAN_Reader is required")
-    host=os.getenv("AVAN_SQL_SERVER","")
-    password=os.getenv("AVAN_SQL_PASSWORD","")
-    trust=os.getenv("AVAN_SQL_TRUST_SERVER_CERTIFICATE","no").lower()
-    if trust not in ("yes","no"):
-        raise ProductionUnavailable("Invalid TLS trust mode")
+    host=str(config.get("server",""))
+    password=str(config.get("password",""))
+    trust="yes" if config.get("trust_server_certificate") is True else "no"
+    if any(c in host for c in ";{}\\x00\\r\\n"):
+        raise ProductionUnavailable("Invalid SQL Server address")
     try:
         import pyodbc
         pyodbc.pooling=False
