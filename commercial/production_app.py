@@ -189,7 +189,7 @@ def login():
     redirect_url=authorization+"?"+urlencode({
         "response_type":"code","client_id":client_id,
         "redirect_uri":origin+"/auth/callback",
-        "scope":"openid profile","state":state,
+        "scope":"openid profile email","state":state,
         "code_challenge":challenge,"code_challenge_method":"S256",
     })
     response=RedirectResponse(redirect_url,status_code=302)
