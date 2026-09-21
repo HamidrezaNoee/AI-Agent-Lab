@@ -264,6 +264,27 @@ function renderLicense(m,settings){
   }catch(err){showError(result,err)}finally{busy(form,false)}
  });
  append(p,form);
+ const licenseForm=node("form");
+ const licenseResult=node("div");
+ append(licenseForm,
+   field("شناسه UUID سازمانِ تأییدشده در EnterpriseProcess2","tenant_id",""),
+   field("متن لایسنس امضاشده ناشر","token","",{multiline:true}),
+   node("button","","بررسی و فعال‌سازی لایسنس"),licenseResult);
+ licenseForm.addEventListener("submit",async e=>{
+   e.preventDefault();busy(licenseForm,true);
+   try{
+     const answer=await api("license/activate",{
+       tenant_id:formValue(licenseForm,"tenant_id"),
+       token:formValue(licenseForm,"token")
+     });
+     licenseForm.reset();
+     licenseResult.replaceChildren();
+     append(licenseResult,info("لایسنس امضاشده فعال شد. شناسه: "+answer.license_id+
+       " · کاربران فعال: "+answer.active_users+" از "+answer.max_users+
+       " · ماژول‌ها: "+answer.modules.join("، ")));
+   }catch(err){showError(licenseResult,err)}finally{busy(licenseForm,false)}
+ });
+ append(p,node("h2","","فعالسازی مجوز سازمان"),licenseForm);
  append(m,p);
 }
 function renderCompany(m,config){
