@@ -1,100 +1,65 @@
-name: Commercial UI + offline security regression
+name: AVAN operational source and container validation
 
 on:
   push:
     paths:
-      - "commercial/**"
+      - "commercial/production_*.py"
+      - "commercial/meeting_questions.py"
+      - "commercial/security.py"
+      - "commercial/licensing/codec.py"
+      - "commercial/web/production/**"
+      - "commercial/sql/PRODUCTION_EnterpriseProcess2_*"
+      - "commercial/Dockerfile.production"
+      - "commercial/requirements-production.txt"
       - "compose.yaml"
-      - "compose.connected-lab.yaml"
-      - ".dockerignore"
+      - "compose.production.yaml"
       - ".github/workflows/commercial-preview-ci.yml"
   pull_request:
     paths:
-      - "commercial/**"
+      - "commercial/production_*.py"
+      - "commercial/meeting_questions.py"
+      - "commercial/security.py"
+      - "commercial/licensing/codec.py"
+      - "commercial/web/production/**"
+      - "commercial/sql/PRODUCTION_EnterpriseProcess2_*"
+      - "commercial/Dockerfile.production"
+      - "commercial/requirements-production.txt"
       - "compose.yaml"
-      - "compose.connected-lab.yaml"
-      - ".dockerignore"
-      - ".github/workflows/commercial-preview-ci.yml"
+      - "compose.production.yaml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  offline-tests:
+  operational-source:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      COMMERCIAL_CHAT_ENABLED: "0"
-      COMMERCIAL_MODE: "lab"
-      COMMERCIAL_SQL_DATABASE: "EnterpriseProcess2_AI_Test"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: pip
-          cache-dependency-path: commercial/requirements.txt
-      - name: Install isolated commercial requirements
+      - name: Install production dependencies
+        run: python -m pip install -r commercial/requirements-production.txt
+      - name: Validate production Python imports and source syntax
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r commercial/requirements.txt
-      - name: Check Python syntax and offline unit tests
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py
+          python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
+      - name: Validate customer-facing JavaScript
+        run: node --check commercial/web/production/app.js
+      - name: Verify production Compose points exclusively to EnterpriseProcess2
         run: |
-          python -m compileall -q commercial
-          python -m unittest discover -s commercial/tests -v
-      - name: Check browser preview and connected portal JavaScript syntax
-        run: |
-          node --check commercial/web/preview/preview.js
-          node --check commercial/web/portal/portal.js
-      - name: Confirm dataset and scripts remain fictional-only
-        run: |
+          cp .env.production.example .env.production
+          docker compose -f compose.production.yaml config --quiet
           python - <<'PY'
-          import json
           from pathlib import Path
-          data=json.loads(Path("commercial/datasets/100_automotive_meeting_scenarios_FA.json").read_text(encoding="utf-8"))
-          assert data["synthetic"] is True and len(data["scenarios"])==100
-          assert sum(len(c["actions"]) for c in data["scenarios"])==300
-          print("PASS: exactly 100 fictional meeting scenarios and 300 synthetic actions")
+          compose=Path("compose.yaml").read_text()
+          image=Path("commercial/Dockerfile.production").read_text()
+          assert "EnterpriseProcess2" in compose
+          assert "EnterpriseProcess2_AI_Test" not in compose
+          assert "demo_preview" not in image
+          assert "commercial.production_app:app" in image
+          assert "commercial/datasets" not in image
+          print("Operational image excludes fictional-data runtime")
           PY
-
-  docker-preview-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify local-only Compose config and container build
-        run: |
-          docker compose config --quiet
-          docker compose up --build -d --wait --wait-timeout 120
-      - name: Verify health, 100 fictional meetings and all eight questions
-        run: |
-          python3 - <<'PY'
-          import json
-          import urllib.request
-          base="http://127.0.0.1:8090"
-          with urllib.request.urlopen(base+"/health",timeout=8) as r:
-              health=json.load(r)
-          assert health["status"]=="up" and health["real_login"] is False
-          assert health["production_data"] is False
-          with urllib.request.urlopen(base+"/demo-data",timeout=8) as r:
-              data=json.load(r)
-          assert data["synthetic"] is True and data["count"]==100
-          assert sum(len(m["actions"]) for m in data["scenarios"])==300
-          with urllib.request.urlopen(base+"/demo-questions",timeout=8) as r:
-              questions=json.load(r)["questions"]
-          assert len(questions)==8
-          for question in questions:
-              req=urllib.request.Request(base+"/demo-ask",
-                  data=json.dumps({"question":question},ensure_ascii=False).encode(),
-                  headers={"Content-Type":"application/json"},method="POST")
-              with urllib.request.urlopen(req,timeout=8) as r:
-                  result=json.load(r)
-              assert result["synthetic"] is True and result["model_used"] is False
-              assert result["meetings_considered"]==100
-              assert result["sources"]==[item["source"] for item in result["items"]]
-          print("PASS: Docker preview health, 100 meetings, 300 actions, all eight questions")
-          PY
-      - name: Stop isolated Docker services
-        if: always()
-        run: docker compose down --volumes --remove-orphans
