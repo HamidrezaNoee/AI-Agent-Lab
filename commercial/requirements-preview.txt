@@ -1,0 +1,3 @@
+# Isolated UI + synthetic analysis only: no SQL, credentials, model or OAuth.
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
