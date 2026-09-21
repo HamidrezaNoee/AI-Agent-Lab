@@ -36,7 +36,9 @@ def _date(value):
 
 
 def _open(action: dict) -> bool:
-    return not bool(action.get("is_closed")) and int(action.get("progress_percent") or 0) < 100
+    # Secretary sign-off/closure is authoritative: 100% submitted by an owner
+    # is still OPEN until the approved workflow actually closes the action.
+    return not bool(action.get("is_closed"))
 
 
 def _source(meeting: dict, action: dict | None = None) -> dict:
@@ -102,7 +104,9 @@ def _line(caption, amount, unit="") -> str:
 def answer_question(question: str, meetings: Iterable[dict], *,
                     now: datetime | None = None,
                     data_scope: str = "fictional-local-preview",
-                    coverage_complete: bool = True) -> dict:
+                    coverage_complete: bool = True,
+                    month_start_utc: datetime | None = None,
+                    calendar_label: str = "میلادی UTC") -> dict:
     """Return grounded answer and at most ten clickable/inspectable sources.
 
     Caller MUST fetch only already authorized meetings. This function does not
@@ -149,10 +153,12 @@ def answer_question(question: str, meetings: Iterable[dict], *,
             "جلسه موجود در دامنه داده قابل مشاهده است."
             if overdue else "در داده‌های قابل مشاهده، اقدام باز با موعد گذشته پیدا نشد."
         )
-        notes.append("عقب‌افتادگی = موعد گذشته + پیشرفت کمتر از ۱۰۰٪ + بسته‌نبودن؛ موعدها برحسب UTC سنجیده شده‌اند.")
+        notes.append("عقب‌افتادگی = موعد گذشته + بسته‌نبودن در فرایند؛ پیشرفت ۱۰۰٪ به‌تنهایی معادل بستن مصوبه نیست. موعدها برحسب UTC سنجیده شده‌اند.")
 
     elif intent == "monthly_unresolved":
-        start = instant.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start = _date(month_start_utc) if month_start_utc is not None else instant.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
         monthly = [m for m in records if _date(m.get("meeting_date_utc"))
                    and start <= _date(m["meeting_date_utc"]) <= instant]
         missing_dates = sum(not _date(m.get("meeting_date_utc")) for m in records)
@@ -174,7 +180,7 @@ def answer_question(question: str, meetings: Iterable[dict], *,
                                 f"{len(monthly)} جلسه تاریخ‌دارِ قابل مشاهده یافت شد."
                                 if ranked else
                                 "در جلسات تاریخ‌دار این ماه که قابل مشاهده‌اند، اقدام باز ثبت نشده است.")
-            notes.append("«این ماه» در این نسخه به ماه میلادی UTC اشاره دارد، نه ماه شمسی سازمان. «مهم‌ترین» فقط ترتیب بر اساس تعداد اقدامات تأخیردار و سپس باز است؛ اهمیت تجاری ارزیابی نشده است.")
+            notes.append(f"«این ماه» بر اساس تقویم {calendar_label} محاسبه شده است. «مهم‌ترین» فقط ترتیب بر اساس تعداد اقدامات تأخیردار و سپس باز است؛ اهمیت تجاری ارزیابی نشده است.")
             if missing_dates:
                 notes.append(f"{missing_dates} جلسه به علت نداشتن تاریخ تشکیل، در نتیجه ماه جاری قابل طبقه‌بندی نبود.")
 
@@ -199,7 +205,7 @@ def answer_question(question: str, meetings: Iterable[dict], *,
         result["answer"] = (f"خلاصه وضعیت اجرای {len(actions)} اقدام در {len(groups)} واحد "
                              "در دامنه جلسات قابل مشاهده آماده شد." if groups else
                              "اقدامی با واحد مسئول در دامنه داده قابل مشاهده ثبت نشده است.")
-        notes.append("پیشرفت ۱۰۰٪ یا بسته‌شدن به‌عنوان «غیرباز» شمرده شده؛ تأیید کیفیت یا انجام واقعی از داده‌ها قابل نتیجه‌گیری نیست.")
+        notes.append("صرفاً وضعیت بسته‌شدنِ ثبت‌شده ملاک «غیرباز» است؛ پیشرفت ۱۰۰٪ بدون تأیید بستن هنوز باز است. کیفیت اجرای کار از این داده‌ها قابل نتیجه‌گیری نیست.")
 
     elif intent == "owner_backlog":
         counts = Counter(str(a.get("owner_unit") or "واحد نامشخص") for m, a in open_actions)
