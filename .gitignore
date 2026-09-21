@@ -30,3 +30,6 @@ commercial/web/fonts/
 
 # Local public verification material and any operator-managed secrets.
 private/
+
+# Docker-generated AVAN identity secrets (ACL-protected, never commit).
+.secrets/
