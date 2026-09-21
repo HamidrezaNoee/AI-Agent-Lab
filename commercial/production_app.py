@@ -228,11 +228,38 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
             with open_production() as con:
                 verified_scope(con,principal)
         except ProductionAccessDenied:
+            # UserInfo is called ONLY on the already trusted HTTPS issuer
+            # with this user's RS256-verified access token. The subject must
+            # match exactly before a verified email may support PM matching.
             from .pending_identities import stage
-            stage(principal,name=str(claims.get("name") or claims.get(
-                  "preferred_username") or principal.subject),
-                  email=claims.get("email") if isinstance(claims.get("email"),str) else None,
-                  email_verified=claims.get("email_verified") is True)
+            user_claims=claims
+            from .setup_console import get_setting
+            issuer=(get_setting("oidc") or {}).get("issuer","").rstrip("/")
+            try:
+                with httpx.Client(timeout=7,follow_redirects=False,
+                                  trust_env=False) as http:
+                    userinfo_response=http.get(
+                       issuer+"/protocol/openid-connect/userinfo",
+                       headers={"Authorization":"Bearer "+access,
+                                "Accept":"application/json"})
+                    userinfo_response.raise_for_status()
+                    if len(userinfo_response.content)>20000:
+                        raise ValueError("OIDC UserInfo too large")
+                    received=userinfo_response.json()
+                    if received.get("sub")!=principal.subject:
+                        raise AuthenticationFailed("UserInfo subject mismatch")
+                    user_claims=received
+            except AuthenticationFailed:
+                raise
+            except (httpx.HTTPError,ValueError,TypeError):
+                # Signed access-token email claims are a safe fallback only
+                # when email_verified is itself part of the signed token.
+                user_claims=claims
+            stage(principal,name=str(user_claims.get("name") or
+                  claims.get("preferred_username") or principal.subject),
+                  email=user_claims.get("email")
+                      if isinstance(user_claims.get("email"),str) else None,
+                  email_verified=user_claims.get("email_verified") is True)
             response=RedirectResponse("/auth/pending",status_code=303)
             response.delete_cookie("avan_login_state",path="/")
             return response
