@@ -28,6 +28,11 @@ from .security import (
     AuthenticationFailed, ConfigurationFailed, VerifiedTokenAuthenticator,
 )
 
+@lru_cache(maxsize=1)
+def _verifier():
+    return VerifiedTokenAuthenticator.from_environment()
+
+
 ROOT=Path(__file__).resolve().parent/"web"/"production"
 PROD_QUESTIONS=(
     "کدام اقدامات مصوب جلسات عقب‌افتاده‌اند؟",
@@ -80,10 +85,7 @@ def _oidc_config():
     token=os.getenv("COMMERCIAL_OIDC_TOKEN_URL","")
     client_id=os.getenv("COMMERCIAL_OIDC_CLIENT_ID","")
     client_secret=os.getenv("AVAN_OIDC_CLIENT_SECRET","")
-    @lru_cache(maxsize=1)
-    def _verified():
-        return VerifiedTokenAuthenticator.from_environment()
-    verifier=_verified()
+    verifier=_verifier()
     origin=urlsplit(issuer)
     if (origin.scheme!="https" or
         auth!=issuer+"/protocol/openid-connect/auth" or
@@ -126,8 +128,8 @@ def _principal_for_request(request:Request):
 @app.get("/health")
 def health():
     # Process liveness only; never claim a live DB/IdP/license based on /health.
-    return {"status":"up","service":"avan","database_ready":False,
-            "identity_ready":False}
+    return {"status":"up","service":"avan",
+            "database_checked":False,"identity_checked":False}
 
 
 @app.get("/")
@@ -221,6 +223,12 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
 @app.post("/auth/logout")
 def logout(request:Request):
     sid=request.cookies.get("avan_session","")
+    current=sessions.get(sid)
+    origin=request.headers.get("origin")
+    csrf=request.headers.get("X-AVAN-CSRF","")
+    if current and (not csrf or not hmac.compare_digest(csrf,current["csrf"])
+                    or (origin and origin!=_public_origin())):
+        raise HTTPException(status_code=403,detail="درخواست خروج معتبر نیست.")
     if sid:sessions.pop(sid,None)
     response=JSONResponse({"signed_out":True})
     response.delete_cookie("avan_session",path="/")
@@ -253,6 +261,13 @@ def _store_response(action, principal):
         raise HTTPException(status_code=403,detail="مجوز مشاهده این اطلاعات وجود ندارد.")
     except ProductionUnavailable:
         raise HTTPException(status_code=503,detail="ارتباط امن با اطلاعات سازمان برقرار نیست.")
+    except HTTPException:
+        raise
+    except Exception:
+        # DB schema drift, driver exceptions or locale configuration errors
+        # must never echo SQL / identity / secrets back to the browser.
+        raise HTTPException(status_code=503,
+                            detail="داده‌های سازمانی قابل بازیابی نیستند؛ تنظیمات سرور بررسی شود.")
 
 
 @app.get("/api/me")
