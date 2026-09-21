@@ -17,6 +17,14 @@ services:
     environment:
       AVAN_SQL_DATABASE: EnterpriseProcess2
       AVAN_SQL_USER: AVAN_Reader
+      AVAN_LICENSE_PUBLIC_KEY_PATH: /run/avan/license-public.pem
+    volumes:
+      - type: bind
+        source: ./private/license-public.pem
+        target: /run/avan/license-public.pem
+        read_only: true
+        bind:
+          create_host_path: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     read_only: true
