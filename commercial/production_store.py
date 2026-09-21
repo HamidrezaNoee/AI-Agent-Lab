@@ -60,6 +60,13 @@ def verified_scope(con, principal: Principal)->dict:
     if not isinstance(principal,Principal):
         raise ProductionAccessDenied("Verified identity required")
     cursor=con.cursor()
+    # MTG source tables have NO TenantID column. This adapter deliberately
+    # supports exactly ONE active company per EnterpriseProcess2 database.
+    # Without this guard, two AVAN tenants could both see the same MTG rows.
+    cursor.execute("SELECT COUNT_BIG(*) FROM AVAN.Tenant WHERE IsEnabled=1")
+    row_count=cursor.fetchone()
+    if row_count is None or int(row_count[0])!=1:
+        raise ProductionAccessDenied("Operational MTG requires one active tenant per database")
     cursor.execute("""
         SELECT TOP (1) u.PMUserUID,u.DisplayName,u.DepartmentName,u.RoleCode,
                t.CompanyName
