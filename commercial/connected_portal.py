@@ -35,7 +35,20 @@ def _localhost(request: Request):
         loopback = ip_address(remote).is_loopback
     except ValueError:
         loopback = remote == "testclient"  # Starlette's in-process TestClient ONLY
-    if not loopback or request.url.hostname not in ("127.0.0.1", "localhost", "testserver"):
+    # Docker Desktop rewrites localhost-published connections as a private
+    # bridge-gateway client. Explicitly opt into that route ONLY for the
+    # isolated test DB and a localhost Host header. Compose must bind the
+    # host port on 127.0.0.1; never deploy this lab portal publicly.
+    docker_local = False
+    if (not loopback and os.getenv("COMMERCIAL_PORTAL_DOCKER") == "1"
+            and request.url.hostname in ("127.0.0.1", "localhost")):
+        try:
+            docker_local = ip_address(remote).is_private
+        except ValueError:
+            docker_local = False
+    if not (loopback or docker_local) or request.url.hostname not in (
+        "127.0.0.1", "localhost", "testserver"
+    ):
         raise HTTPException(status_code=403, detail="Connected lab portal is loopback only")
 
 
