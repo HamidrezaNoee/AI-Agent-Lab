@@ -27,3 +27,6 @@ commercial/web/fonts/
 .env.connected-lab
 .env.connected-lab.*
 !.env.connected-lab.example
+
+# Local public verification material and any operator-managed secrets.
+private/
