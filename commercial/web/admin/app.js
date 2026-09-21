@@ -297,6 +297,16 @@ async function renderUsers(m){
  append(m,p);
  const refresh=btn("به‌روزرسانی درخواست‌های دسترسی",()=>showSettings("users"),"secondary");
  append(p,refresh);
+ const syncResult=node("div");
+ append(p,btn("تازه‌سازی وضعیت کاربران از ProcessMaker",async()=>{
+   syncResult.replaceChildren();
+   if(!confirm("فهرست کامل کاربران ProcessMaker دریافت شود و دسترسی کاربران غیرفعال/حذف‌شده در آوان مسدود گردد؟"))return;
+   try{
+     const r=await api("processmaker/refresh-users",{});
+     append(syncResult,info("کاربران فعال بازبینی‌شده: "+r.refreshed_active_users+
+         " · حساب‌های غیرفعال‌شده: "+r.disabled_unverified_users));
+   }catch(err){showError(syncResult,err)}
+ },"secondary"),syncResult);
  let pending=[];
  try{
    const response=await api("users/pending");
