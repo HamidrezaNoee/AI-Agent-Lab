@@ -1,0 +1,45 @@
+# Start the reviewable product preview with:
+# docker compose up -d --build
+# Browse ONLY http://127.0.0.1:8090 (fictional 100-case meeting dataset).
+# No SQL Server, ProcessMaker, IdP, OpenAI, payment, or admin side effects.
+name: avan-meeting-lab
+services:
+  meeting-preview:
+    image: avan-meeting-preview:local
+    build:
+      context: .
+      dockerfile: commercial/Dockerfile.preview
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      COMMERCIAL_PREVIEW_DOCKER: "1"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 512m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=3)); assert d['status']=='up' and d['production_data'] is False"
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    # Optional: copy YOUR licensed fonts into commercial/web/fonts locally.
+    # This bind mount is read-only and is never included in the image.
+    volumes:
+      - type: bind
+        source: ./commercial/web/fonts
+        target: /app/commercial/web/fonts
+        read_only: true
+        bind:
+          create_host_path: true
