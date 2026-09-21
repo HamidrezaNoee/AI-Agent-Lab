@@ -48,9 +48,9 @@ def open_production():
         raise ProductionUnavailable("SQL Server connection is not configured")
     # The setup form accepts 'hostname,1433' OR 'host\\instance' OR a bare
     # hostname. Do not append a second port to a user-provided SQL endpoint.
-    if any(c in host for c in ";{}\\x00\\r\\n"):
+    if any(c in host for c in (";", "{", "}", chr(0), chr(13), chr(10))):
         raise ProductionUnavailable("Invalid SQL Server endpoint")
-    server=host if ("," in host or "\\\\" in host) else host+",1433"
+    server=host if ("," in host or chr(92) in host) else host+",1433"
     try:
         import pyodbc
         pyodbc.pooling=False
