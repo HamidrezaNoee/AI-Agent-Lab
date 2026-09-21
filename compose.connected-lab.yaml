@@ -1,0 +1,58 @@
+# OPTIONAL isolated connected lab. NEVER use production SQL/PM instances.
+# Requires an operator-created gitignored .env.connected-lab and real HTTPS IdP.
+# Run: docker compose --env-file .env.connected-lab -f compose.connected-lab.yaml up -d --build
+name: avan-meeting-connected-lab
+services:
+  meeting-connected-lab:
+    image: avan-meeting-connected-lab:local
+    build:
+      context: .
+      dockerfile: commercial/Dockerfile.connected-lab
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:8088"
+    env_file:
+      - path: ./.env.connected-lab
+        required: true
+    environment:
+      COMMERCIAL_MODE: lab
+      COMMERCIAL_SQL_DATABASE: EnterpriseProcess2_AI_Test
+      COMMERCIAL_WEB_PORTAL_ENABLED: "1"
+      COMMERCIAL_V2_ONLY: "1"
+      COMMERCIAL_PORTAL_DOCKER: "1"
+      COMMERCIAL_CHAT_ENABLED: "0"
+      COMMERCIAL_LOGO_STORAGE_DIR: /var/lib/avan/logos
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - type: volume
+        source: avan-private-logos
+        target: /var/lib/avan/logos
+      - type: bind
+        source: ./commercial/web/fonts
+        target: /app/commercial/web/fonts
+        read_only: true
+        bind:
+          create_host_path: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,noexec,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 160
+    mem_limit: 768m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8088/health',timeout=3)); assert d['status']=='up'"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+volumes:
+  avan-private-logos:
