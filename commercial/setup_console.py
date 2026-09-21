@@ -41,10 +41,14 @@ def _write_private(path:Path, data:bytes):
         path.unlink(missing_ok=True)
         raise
 
+@contextmanager
 def _db():
     con=sqlite3.connect(str(SQLITE),timeout=8,isolation_level=None)
-    con.execute("PRAGMA busy_timeout=8000")
-    return con
+    try:
+        con.execute("PRAGMA busy_timeout=8000")
+        yield con
+    finally:
+        con.close()
 
 def _hash(password:str,salt:bytes)->bytes:
     return hashlib.scrypt(password.encode("utf-8"),salt=salt,n=2**15,r=8,p=1,dklen=32)
