@@ -4,7 +4,8 @@ FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
-    DEBIAN_FRONTEND=noninteractive
+    DEBIAN_FRONTEND=noninteractive \
+    AVAN_STATE_DIR=/var/lib/avan
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl gnupg unixodbc tzdata \
  && curl --fail --silent --show-error --location --retry 3 \
@@ -19,14 +20,19 @@ WORKDIR /app
 COPY commercial/requirements-production.txt /app/requirements.txt
 RUN python -m pip install --no-cache-dir -r /app/requirements.txt \
  && groupadd --gid 10001 avan \
- && useradd --uid 10001 --gid 10001 --system --create-home avan
+ && useradd --uid 10001 --gid 10001 --system --create-home avan \
+ && mkdir -p /var/lib/avan \
+ && chown 10001:10001 /var/lib/avan
 COPY --chown=10001:10001 commercial/__init__.py /app/commercial/__init__.py
 COPY --chown=10001:10001 commercial/security.py /app/commercial/security.py
 COPY --chown=10001:10001 commercial/meeting_questions.py /app/commercial/meeting_questions.py
 COPY --chown=10001:10001 commercial/production_store.py /app/commercial/production_store.py
 COPY --chown=10001:10001 commercial/production_license.py /app/commercial/production_license.py
 COPY --chown=10001:10001 commercial/licensing/codec.py /app/commercial/licensing/codec.py
+COPY --chown=10001:10001 commercial/setup_console.py /app/commercial/setup_console.py
+COPY --chown=10001:10001 commercial/setup_routes.py /app/commercial/setup_routes.py
 COPY --chown=10001:10001 commercial/production_app.py /app/commercial/production_app.py
+COPY --chown=10001:10001 commercial/web/admin/ /app/commercial/web/admin/
 COPY --chown=10001:10001 commercial/web/production/ /app/commercial/web/production/
 USER 10001:10001
 EXPOSE 8188
