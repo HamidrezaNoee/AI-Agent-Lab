@@ -15,3 +15,15 @@ __pycache__/
 *.log
 secrets.*
 credentials.*
+
+# Keep licensed Persian font binaries on the user's own workstation, not GitHub.
+commercial/web/fonts/
+*.ttf
+*.otf
+*.woff
+*.woff2
+
+# Private Docker Compose files and local operator settings.
+.env.connected-lab
+.env.connected-lab.*
+!.env.connected-lab.example
