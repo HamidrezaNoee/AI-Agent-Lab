@@ -292,6 +292,33 @@ def sql_save(body:SqlConfig,session=Depends(_ready)):
     return {"saved":True,"database":"EnterpriseProcess2"}
 
 
+class CompanyConfig(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    company_name:str=Field(min_length=2,max_length=200)
+
+
+@router.post("/api/company/save")
+def company_save(body:CompanyConfig,session=Depends(_ready)):
+    import uuid
+    current=setup.get_setting("company") or {}
+    tenant_id=current.get("tenant_id")
+    if tenant_id:
+        try: tenant_id=str(uuid.UUID(str(tenant_id)))
+        except ValueError: raise HTTPException(409,"شناسه سازمان ذخیره‌شده معتبر نیست.")
+    else:
+        tenant_id=str(uuid.uuid4())
+    payload={"tenant_id":tenant_id,"company_name":body.company_name.strip()}
+    setup.put_setting("company",payload)
+    return {"saved":True,**payload}
+
+
+@router.get("/api/company")
+def company_get(session=Depends(_ready)):
+    current=setup.get_setting("company") or {}
+    return {"tenant_id":current.get("tenant_id"),
+            "company_name":current.get("company_name")}
+
+
 @router.get("/api/identity/status")
 def identity_status(session=Depends(_ready)):
     config=setup.get_setting("oidc") or {}
