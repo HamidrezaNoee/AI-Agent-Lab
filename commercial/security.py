@@ -33,9 +33,17 @@ class Principal:
 
 def _https_url(value: str, name: str) -> str:
     parsed = urlsplit(value or "")
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
-        raise ConfigurationFailed(f"{name} must be a configured HTTPS URL without credentials/fragment")
-    return value  # Preserve exact OIDC issuer, including any required trailing slash.
+    if not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+        raise ConfigurationFailed(f"{name} must be a configured URL without credentials/fragment")
+    bundled_local = (
+        os.getenv("AVAN_BUNDLED_IDP") == "1"
+        and parsed.scheme == "http"
+        and parsed.hostname in ("auth.localhost", "localhost", "127.0.0.1")
+        and parsed.port == 8181
+    )
+    if parsed.scheme != "https" and not bundled_local:
+        raise ConfigurationFailed(f"{name} must use HTTPS outside the bundled localhost identity service")
+    return value  # Preserve exact issuer string required by signed token validation.
 
 
 class VerifiedTokenAuthenticator:
