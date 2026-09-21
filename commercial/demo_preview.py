@@ -8,6 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 import json
 from ipaddress import ip_address
+import os
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,7 +36,18 @@ async def loopback_only(request: Request, call_next):
         local = ip_address(remote).is_loopback
     except ValueError:
         local = remote == "testclient"
-    if not local:
+    # Docker Desktop bridges localhost-published ports through a private
+    # gateway address. Allow that proxy only in explicit fictional-Docker
+    # mode AND only with a localhost Host header. Compose MUST publish the
+    # container port on 127.0.0.1, never on 0.0.0.0. No real data is exposed.
+    docker_loopback = False
+    if (not local and os.getenv("COMMERCIAL_PREVIEW_DOCKER") == "1"
+            and request.url.hostname in ("127.0.0.1", "localhost")):
+        try:
+            docker_loopback = ip_address(remote).is_private
+        except ValueError:
+            docker_loopback = False
+    if not (local or docker_loopback):
         return JSONResponse({"detail": "Local fictional preview only"}, status_code=403)
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
