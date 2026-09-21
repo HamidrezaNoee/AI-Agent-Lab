@@ -199,6 +199,7 @@ class MigrationRequest(DbaConnection):
     backup_confirmed:bool=False
     confirmation:str=Field(max_length=100)
     existing_reader_password:str|None=Field(default=None,max_length=255)
+    existing_writer_password:str|None=Field(default=None,max_length=255)
 
 @router.post("/api/sql/inventory")
 def sql_inventory(body:DbaConnection,session=Depends(_ready)):
@@ -217,7 +218,8 @@ def sql_prepare(body:MigrationRequest,session=Depends(_ready)):
             trust_certificate=body.trust_server_certificate,
             backup_confirmed=body.backup_confirmed,
             confirmation=body.confirmation,
-            reader_existing_password=body.existing_reader_password)
+            reader_existing_password=body.existing_reader_password,
+            writer_existing_password=body.existing_writer_password)
     except InstallationDenied as exc:
         # Only safe, predefined error messages (never driver strings, SQL
         # credentials, connection strings, user SQL or raw stack traces).
