@@ -245,20 +245,22 @@ async function renderIdentity(m){
 }
 
 function renderPm(m,config){
- const p=panel("اتصال ProcessMaker","تنظیمات سرویس فقط‌خواندنی برای دریافت فهرست کاربران فرایند.");
+ const p=panel("اتصال ProcessMaker",
+   "آوان فقط فهرست کاربران را با درخواست GET می‌خواند. حساب administrator نیز قابل استفاده است؛ محدودیتی روی سطح دسترسی خود حساب اعمال نمی‌شود.");
  const f=node("form","grid"),specs=[
-  ["نشانی HTTPS ProcessMaker","base_url",config.base_url],
-  ["Workspace","workspace",config.workspace],
-  ["توکن دسترسی فقط‌خواندنی","bearer_token",""]
+  ["نشانی اصلی ProcessMaker","base_url",config.base_url||"http://host.docker.internal:84"],
+  ["Workspace","workspace",config.workspace||"workflow"],
+  ["توکن OAuth حساب ProcessMaker","bearer_token",""]
  ];
+ append(p,info("برای نصب آزمایشی ProcessMaker روی همین لپ‌تاپ، نشانی http://host.docker.internal:84 و Workspace برابر workflow است. رمز ورود یا Client Secret را جای توکن وارد نکنید."));
  for(const [title,name,value] of specs)append(f,field(title,name,value||"",{secret:name==="bearer_token"}));
  const out=node("div","full"),actions=node("div","actions full");
  async function run(mode){
   const body={};for(const [,name] of specs)body[name]=formValue(f,name);
   out.replaceChildren();busy(f,true);
   try{await api("processmaker/"+mode,body);append(out,info(
-    mode==="check"?"اتصال کاربران ProcessMaker برقرار شد.":
-    "تنظیمات اتصال ذخیره شد؛ دسترسی کاربران فقط پس از نگاشت و تأیید هویت فعال می‌شود."));
+    mode==="check"?"دسترسی API کاربران ProcessMaker تأیید شد.":
+    "تنظیمات اتصال ذخیره شد؛ دسترسی کارکنان فقط پس از نگاشت و تأیید هویت فعال می‌شود."));
   }catch(err){showError(out,err)}finally{busy(f,false)}
  }
  append(actions,btn("بررسی اتصال",()=>run("check"),"secondary"),
