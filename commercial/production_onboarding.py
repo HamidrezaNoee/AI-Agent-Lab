@@ -93,7 +93,8 @@ def writer_connection():
 
 
 def approve_employee(*,tenant_id:str,subject:str,company_name:str,
-                     pm_uid:str,role:str,manager_pm_uid:str|None):
+                     pm_uid:str,role:str,manager_pm_uid:str|None,
+                     department_name:str|None):
     import uuid
     try:tenant_id=str(uuid.UUID(tenant_id))
     except (TypeError,ValueError,AttributeError):
@@ -102,6 +103,9 @@ def approve_employee(*,tenant_id:str,subject:str,company_name:str,
         or not re.fullmatch(r"[0-9a-fA-F]{32}",pm_uid or "")
         or role not in ("Expert","Manager","SysAdmin")):
         raise ProvisioningDenied("Unapproved company, PM user or organizational role")
+    if department_name is not None and len(department_name.strip())>160:
+        raise ProvisioningDenied("Department name is too long")
+    department=department_name.strip() if department_name else None
     pm_uid=pm_uid.lower()
     if manager_pm_uid is not None:
         manager_pm_uid=manager_pm_uid.strip().lower() or None
@@ -153,7 +157,7 @@ def approve_employee(*,tenant_id:str,subject:str,company_name:str,
             ManagerPMUserUID,IsEnabled,PMIsActive,PMVerifiedAtUTC)
             VALUES(?,?,?,?,?,?,?,1,1,SYSUTCDATETIME())""",
             tenant_id,subject,pm_uid,staff.display_name,
-            None,role,manager_pm_uid)
+            department,role,manager_pm_uid)
     finish_pending(tenant_id,subject)
     setup.audit("VERIFIED_STAFF_MAPPED_"+role.upper())
     return {"mapped":True,"company_name":company_name.strip(),
