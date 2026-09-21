@@ -93,7 +93,7 @@ function showTotpEnroll(){
 }
 const menu=[
  ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["oidc","هویت سازمانی"],["processmaker","ProcessMaker"],
- ["license","لایسنس و شناسه نصب"],["company","اطلاعات سازمان"]
+ ["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
 ];
 async function showSettings(page=state.page){
  const settings=await api("settings");state.settings=settings;state.page=page;
@@ -110,6 +110,7 @@ async function showSettings(page=state.page){
  else if(page==="oidc")renderOidc(m,settings.oidc||{});
  else if(page==="processmaker")renderPm(m,settings.processmaker||{});
  else if(page==="license")renderLicense(m,settings);
+ else if(page==="users")await renderUsers(m);
  else renderCompany(m,settings.company||{});
 }
 function renderInstall(m,config){
@@ -289,6 +290,79 @@ function renderLicense(m,settings){
  });
  append(p,node("h2","","فعالسازی مجوز سازمان"),licenseForm);
  append(m,p);
+}
+async function renderUsers(m){
+ const p=panel("کاربران و سازمان",
+   "تنها حسابی قابل اتصال است که قبلاً با هویت امضاشده وارد آوان شده، ایمیل تأییدشده آن با کاربر فعال ProcessMaker مطابقت دارد و GodAdmin ارتباط را تصویب کند.");
+ append(m,p);
+ const refresh=btn("به‌روزرسانی درخواست‌های دسترسی",()=>showSettings("users"),"secondary");
+ append(p,refresh);
+ let pending=[];
+ try{
+   const response=await api("users/pending");
+   pending=response.pending||[];
+ }catch(err){append(p,info(err.message,true));return}
+ if(!pending.length){
+   append(p,info("درخواست تأییدشده‌ای در انتظار ثبت نیست. شخص موردنظر باید یک‌بار از فضای کاری آوان با حساب هویت سازمانی خود وارد شود تا درخواست او اینجا ظاهر شود."));
+ }
+ const link=node("a","visit","باز کردن ورود سازمانی در برگه جدید");
+ link.href="/auth/login";link.target="_blank";link.rel="noopener noreferrer";
+ append(p,link);
+ let users=[];
+ try{
+   users=(await api("processmaker/users")).users||[];
+ }catch(err){
+   append(p,info("فهرست کاربران ProcessMaker در دسترس نیست. ابتدا تنظیمات آن بخش را ثبت و بررسی کن.",true));
+   return;
+ }
+ for(const account of pending){
+   const section=panel("درخواست "+account.name,
+      "زمان ورود: "+account.seen_at_utc+" · شناسه سازمان: "+account.tenant_id);
+   append(section,node("p","hint","حساب امضاشده: "+account.subject+
+      " · ایمیل تأییدشده: "+(account.email_verified?account.email||"ثبت نشده":"خیر")+
+      " · نقش‌های امضاشده: "+(account.roles||[]).join("، ")));
+   const form=node("form","grid");
+   append(form,field("نام حقوقی سازمان (مطابق لایسنس)","company_name",""));
+   const pmLabel=node("label","full","کاربر فعال ProcessMaker");
+   const select=node("select");select.name="pm_uid";
+   const placeholder=node("option","","انتخاب کاربر با ایمیل برابر");placeholder.value="";
+   append(select,placeholder);
+   for(const user of users){
+     if(!user.email||!account.email_verified||!account.email||
+        user.email.toLowerCase()!==account.email.toLowerCase())continue;
+     const opt=node("option","",user.name+" · "+user.email+" · "+user.pm_uid);
+     opt.value=user.pm_uid;append(select,opt);
+   }
+   append(pmLabel,select);append(form,pmLabel);
+   const roleLabel=node("label","","نقش سازمانی");
+   const roleSelect=node("select");roleSelect.name="role";
+   for(const [value,label] of [["Expert","کارشناس"],["Manager","مدیر"],["SysAdmin","مدیر سیستم"]]){
+     if(value==="SysAdmin" && !(account.roles||[]).includes("SysAdmin"))continue;
+     const opt=node("option","",label);opt.value=value;append(roleSelect,opt);
+   }
+   append(roleLabel,roleSelect);
+   append(form,roleLabel,field("شناسه PM مدیر مستقیم (در صورت وجود)","manager_pm_uid","",
+       {required:false}));
+   const result=node("div","full");
+   const submit=node("button","","تأیید و اتصال امن کاربر");submit.type="submit";
+   append(form,submit,result);
+   form.addEventListener("submit",async e=>{
+     e.preventDefault();busy(form,true);result.replaceChildren();
+     try{
+       const mapped=await api("users/approve",{
+         tenant_id:account.tenant_id,subject:account.subject,
+         company_name:formValue(form,"company_name"),
+         pm_uid:formValue(form,"pm_uid"),
+         role:formValue(form,"role"),
+         manager_pm_uid:formValue(form,"manager_pm_uid")||null
+       });
+       append(result,info("کاربر "+mapped.name+" به سازمان "+mapped.company_name+
+           " متصل شد. برای استفاده از ماژول‌های سازمان، لایسنس امضاشده نیز لازم است."));
+       await showSettings("users");
+     }catch(err){showError(result,err)}finally{busy(form,false)}
+   });
+   append(section,form);append(p,section);
+ }
 }
 function renderCompany(m,config){
  const p=panel("اطلاعات سازمان",
