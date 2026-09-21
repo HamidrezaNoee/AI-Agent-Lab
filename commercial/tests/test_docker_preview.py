@@ -28,6 +28,22 @@ class DockerPreviewTests(unittest.TestCase):
             self.assertNotIn(unwanted,requirements)
         self.assertIn('commercial.demo_preview:app',dockerfile)
 
+    def test_optional_connected_lab_is_loopback_only_and_v2_only(self):
+        compose=(ROOT/"compose.connected-lab.yaml").read_text(encoding="utf-8")
+        dockerfile=(ROOT/"commercial"/"Dockerfile.connected-lab").read_text(encoding="utf-8")
+        ignore=(ROOT/".dockerignore").read_text(encoding="utf-8")
+        self.assertIn("127.0.0.1:8088:8088",compose)
+        self.assertIn("EnterpriseProcess2_AI_Test",compose)
+        self.assertIn('COMMERCIAL_V2_ONLY: "1"',compose)
+        self.assertIn('COMMERCIAL_CHAT_ENABLED: "0"',compose)
+        self.assertIn("COMMERCIAL_PORTAL_DOCKER:",compose)
+        self.assertNotIn("COMMERCIAL_SQL_PASSWORD:",compose)
+        self.assertNotIn("COMMERCIAL_OIDC_CLIENT_SECRET:",compose)
+        self.assertIn("msodbcsql17",dockerfile)
+        self.assertIn("USER 10001:10001",dockerfile)
+        self.assertIn(".env.*",ignore)
+        self.assertIn("**/*.ttf",ignore)
+
     def test_docker_private_gateway_requires_explicit_mode_and_localhost_host(self):
         async def docker_bridge_client(scope, receive, send):
             changed=dict(scope)
