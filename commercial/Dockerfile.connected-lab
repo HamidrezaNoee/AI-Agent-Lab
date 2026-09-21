@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1
+# Isolated commercial SQL + verified external IdP LAB ONLY.
+# Build requires packages.microsoft.com for msodbcsql17 on Debian Bookworm.
+FROM python:3.13-slim-bookworm
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg unixodbc \
+    && curl --fail --silent --show-error --location --retry 3 \
+         https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+         --output /tmp/packages-microsoft-prod.deb \
+    && dpkg -i /tmp/packages-microsoft-prod.deb \
+    && rm -f /tmp/packages-microsoft-prod.deb \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY commercial/requirements.txt /app/requirements.txt
+RUN python -m pip install --no-cache-dir -r /app/requirements.txt \
+    && groupadd --gid 10001 avan \
+    && useradd --uid 10001 --gid 10001 --system --create-home avan \
+    && mkdir -p /var/lib/avan/logos \
+    && chown 10001:10001 /var/lib/avan/logos
+COPY --chown=10001:10001 commercial /app/commercial
+
+USER 10001:10001
+EXPOSE 8088
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8088/health',timeout=3); assert r.status==200" || exit 1
+CMD ["python","-m","uvicorn","commercial.api:app","--host","0.0.0.0","--port","8088","--no-proxy-headers"]
