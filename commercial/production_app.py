@@ -7,6 +7,7 @@ records are checked against the current signed identity + AVAN.UserAccess.
 """
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 import hashlib, hmac, os, secrets, time
@@ -46,7 +47,35 @@ PROD_QUESTIONS=(
 )
 sessions={}
 pending={}
-app=FastAPI(title="AVAN",docs_url=None,redoc_url=None,openapi_url=None)
+
+
+@asynccontextmanager
+async def production_lifespan(_app):
+    # Refuse to start an operational container with placeholder credentials,
+    # the wrong database, missing issuer material or an untrusted origin.
+    import re
+    if os.getenv("AVAN_SQL_DATABASE")!="EnterpriseProcess2" or (
+        os.getenv("AVAN_SQL_USER","").casefold()!="avan_reader"
+    ):
+        raise RuntimeError("AVAN requires dedicated EnterpriseProcess2 read-only connection")
+    for name in ("AVAN_SQL_SERVER","AVAN_SQL_PASSWORD",
+                 "AVAN_OIDC_CLIENT_SECRET","COMMERCIAL_OIDC_CLIENT_ID"):
+        value=os.getenv(name,"").strip()
+        if not value or value.startswith(("SET_","YOUR_","REPLACE_")):
+            raise RuntimeError("Required operational configuration is incomplete: "+name)
+    if not re.fullmatch(r"[0-9a-fA-F]{64}",os.getenv("AVAN_INSTALLATION_ID","")):
+        raise RuntimeError("Stable licensed installation fingerprint missing")
+    _public_origin()
+    _oidc_config()
+    from .production_license import signed_entitlement
+    from pathlib import Path
+    if not Path(os.getenv("AVAN_LICENSE_PUBLIC_KEY_PATH","/missing")).is_file():
+        raise RuntimeError("Pinned publisher public license key is missing")
+    yield
+
+
+app=FastAPI(title="AVAN",docs_url=None,redoc_url=None,openapi_url=None,
+            lifespan=production_lifespan)
 hosts=[h.strip() for h in os.getenv("AVAN_ALLOWED_HOSTS","localhost,127.0.0.1").split(",")
        if h.strip() and "*" not in h]
 app.add_middleware(TrustedHostMiddleware,allowed_hosts=hosts or ["localhost"])
