@@ -96,11 +96,12 @@ BEGIN TRY
  BEGIN
   CREATE TABLE AVAN.License(
    TenantID uniqueidentifier NOT NULL
-     CONSTRAINT PK_AVAN_License PRIMARY KEY
-     CONSTRAINT FK_AVAN_LicenseTenant REFERENCES AVAN.Tenant(TenantID),
+     CONSTRAINT PK_AVAN_License PRIMARY KEY,
    LicenseToken nvarchar(max) NOT NULL,
    ActivatedAtUTC datetime2(0) NOT NULL
-     CONSTRAINT DF_AVAN_LicenseActivated DEFAULT(SYSUTCDATETIME())
+     CONSTRAINT DF_AVAN_LicenseActivated DEFAULT(SYSUTCDATETIME()),
+   CONSTRAINT FK_AVAN_LicenseTenant FOREIGN KEY(TenantID)
+     REFERENCES AVAN.Tenant(TenantID)
   );
  END;
  COMMIT TRANSACTION;
