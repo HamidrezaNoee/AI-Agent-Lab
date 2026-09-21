@@ -19,6 +19,9 @@ MAX_MEETINGS=2000
 
 class ProductionUnavailable(Exception): pass
 class ProductionAccessDenied(Exception): pass
+class EmployeeMappingRequired(ProductionAccessDenied):
+    """Signed organizational user has not yet been mapped to an active PM user."""
+    pass
 
 
 def _value(value: str) -> str:
@@ -81,7 +84,13 @@ def verified_scope(con, principal: Principal)->dict:
     # Without this guard, two AVAN tenants could both see the same MTG rows.
     cursor.execute("SELECT COUNT_BIG(*) FROM AVAN.Tenant WHERE IsEnabled=1")
     row_count=cursor.fetchone()
-    if row_count is None or int(row_count[0])!=1:
+    if row_count is None:
+        raise ProductionUnavailable("Cannot read active organization count")
+    if int(row_count[0])==0:
+        # First verified employee must be approved by GodAdmin before the
+        # initial tenant row exists. This does not grant meeting access.
+        raise EmployeeMappingRequired("Initial tenant enrollment required")
+    if int(row_count[0])!=1:
         raise ProductionAccessDenied("Operational MTG requires one active tenant per database")
     cursor.execute("""
         SELECT TOP (1) u.PMUserUID,u.DisplayName,u.DepartmentName,u.RoleCode,
@@ -93,7 +102,7 @@ def verified_scope(con, principal: Principal)->dict:
     """,str(principal.tenant_id),principal.subject)
     row=cursor.fetchone()
     if not row:
-        raise ProductionAccessDenied("Active linked ProcessMaker user not verified")
+        raise EmployeeMappingRequired("Active linked ProcessMaker user not verified")
     role=str(row[3])
     if role=="SysAdmin" and "SysAdmin" not in principal.roles:
         raise ProductionAccessDenied("Signed SysAdmin role missing")
