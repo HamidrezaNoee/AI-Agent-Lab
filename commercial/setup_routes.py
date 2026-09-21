@@ -159,11 +159,47 @@ def change_password(body:NewPassword,session=Depends(_required)):
     response.delete_cookie("avan_godadmin",path="/admin")
     return response
 
+def _totp_setup_payload(secret:str)->dict:
+    # Generate the QR locally. Never send a TOTP seed to a third-party QR API.
+    from base64 import b64encode
+    from urllib.parse import quote, urlencode
+    import qrcode
+    from qrcode.image.svg import SvgImage
+    label=quote("AVAN:godadmin",safe="")
+    parameters=urlencode({"secret":secret,"issuer":"AVAN","algorithm":"SHA1",
+                           "digits":"6","period":"30"})
+    provisioning_uri="otpauth://totp/"+label+"?"+parameters
+    svg=qrcode.make(provisioning_uri,image_factory=SvgImage,box_size=8,border=4).to_string()
+    return {"secret":secret,"account":"godadmin","issuer":"AVAN",
+            "qr_data_uri":"data:image/svg+xml;base64,"+b64encode(svg).decode("ascii")}
+
+
 @router.post("/api/totp/enrollment")
 def totp_enrollment(session=Depends(_required)):
     try:secret=setup.totp_enrollment()
     except setup.SetupError:raise HTTPException(403,"ابتدا رمز اولیه را تغییر دهید.")
-    return {"secret":secret,"account":"godadmin","issuer":"AVAN"}
+    return _totp_setup_payload(secret)
+
+
+@router.post("/api/totp/rotate")
+def totp_rotate(session=Depends(_required)):
+    # Rotation is available only during enrollment. Previously issued
+    # QR codes and manual setup keys immediately become invalid.
+    from base64 import b32encode
+    current=setup.password_state()
+    if not current["changed"] or current["totp"]:
+        raise HTTPException(403,"تولید کلید جدید فقط پیش از فعال‌سازی دومرحله‌ای مجاز است.")
+    secret=b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
+    with setup._db() as con:
+        changed=con.execute(
+            """UPDATE godadmin SET totp_secret=? WHERE username='godadmin'
+               AND password_changed=1 AND totp_verified=0""",(secret,)
+        ).rowcount
+    if changed!=1:
+        raise HTTPException(409,"لطفاً صفحه فعال‌سازی را دوباره باز کنید.")
+    setup.audit("GODADMIN_MFA_PENDING_SECRET_ROTATED")
+    return _totp_setup_payload(secret)
+
 
 class Totp(BaseModel):
     model_config=ConfigDict(extra="forbid")
