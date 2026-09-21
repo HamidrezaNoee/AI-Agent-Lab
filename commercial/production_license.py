@@ -16,17 +16,25 @@ class ProductionLicenseDenied(Exception):
 
 
 def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
-    installation=os.getenv("AVAN_INSTALLATION_ID","")
-    path=os.getenv("AVAN_LICENSE_PUBLIC_KEY_PATH","")
+    from .setup_console import PUBLIC, get_setting
+    install=get_setting("installation") or {}
+    installation=install.get("installation_id","")
+    public=PUBLIC
     if not re.fullmatch(r"[0-9a-fA-F]{64}",installation):
         raise ProductionLicenseDenied("Installation fingerprint not configured")
-    public=Path(path) if path else None
-    if public is None or not public.is_file() or public.stat().st_size>10000:
+    if not public.is_file() or public.stat().st_size>10000:
         raise ProductionLicenseDenied("Pinned publisher public key unavailable")
     cur=con.cursor()
-    cur.execute("SELECT LicenseToken FROM AVAN.License WHERE TenantID=?",tenant_id)
-    row=cur.fetchone()
-    if row is None or not row[0]:
+    # An activated license is stored in the encrypted independent AVAN
+    # control-plane. Existing centrally DBA-installed license remains a
+    # read-only fallback. No DB writes or service account privilege escalation.
+    local=get_setting("license") or {}
+    token=(local.get("token") if local.get("tenant_id")==tenant_id else None)
+    if not token:
+        cur.execute("SELECT LicenseToken FROM AVAN.License WHERE TenantID=?",tenant_id)
+        row=cur.fetchone()
+        token=str(row[0]) if row and row[0] else None
+    if not token:
         raise ProductionLicenseDenied("No signed tenant license")
     cur.execute("""
         SELECT COUNT_BIG(*) FROM AVAN.UserAccess
@@ -35,7 +43,7 @@ def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
     used=int(cur.fetchone()[0])
     try:
         payload=verify_license(
-            str(row[0]),public.read_bytes(),tenant_id=tenant_id,
+            token,public.read_bytes(),tenant_id=tenant_id,
             installation_id=installation,active_users=used,
         )
     except LicenseInvalid as exc:
