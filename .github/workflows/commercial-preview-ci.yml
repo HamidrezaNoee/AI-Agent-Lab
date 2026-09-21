@@ -1,29 +1,35 @@
-name: AVAN operational source and container validation
+name: AVAN operational source and Docker installation checks
 
 on:
   push:
     paths:
       - "commercial/production_*.py"
+      - "commercial/setup_*.py"
       - "commercial/meeting_questions.py"
       - "commercial/security.py"
-      - "commercial/licensing/codec.py"
+      - "commercial/licensing/**"
       - "commercial/web/production/**"
+      - "commercial/web/admin/**"
       - "commercial/sql/PRODUCTION_EnterpriseProcess2_*"
       - "commercial/Dockerfile.production"
       - "commercial/requirements-production.txt"
+      - "commercial/tests/test_operational_bootstrap.py"
       - "compose.yaml"
       - "compose.production.yaml"
       - ".github/workflows/commercial-preview-ci.yml"
   pull_request:
     paths:
       - "commercial/production_*.py"
+      - "commercial/setup_*.py"
       - "commercial/meeting_questions.py"
       - "commercial/security.py"
-      - "commercial/licensing/codec.py"
+      - "commercial/licensing/**"
       - "commercial/web/production/**"
+      - "commercial/web/admin/**"
       - "commercial/sql/PRODUCTION_EnterpriseProcess2_*"
       - "commercial/Dockerfile.production"
       - "commercial/requirements-production.txt"
+      - "commercial/tests/test_operational_bootstrap.py"
       - "compose.yaml"
       - "compose.production.yaml"
   workflow_dispatch:
@@ -34,32 +40,35 @@ permissions:
 jobs:
   operational-source:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install production dependencies
+      - name: Install operational dependencies
         run: python -m pip install -r commercial/requirements-production.txt
-      - name: Validate production Python imports and source syntax
+      - name: Check source and authenticated installation lifecycle
         run: |
-          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/setup_console.py commercial/setup_routes.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py
+          python -m unittest commercial.tests.test_operational_bootstrap -v
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
-        run: node --check commercial/web/production/app.js
-      - name: Verify production Compose points exclusively to EnterpriseProcess2
         run: |
-          cp .env.production.example .env.production
-          docker compose -f compose.production.yaml config --quiet
+          node --check commercial/web/production/app.js
+          node --check commercial/web/admin/app.js
+      - name: Validate env-free first-run Compose
+        run: |
+          docker compose config --quiet
           python - <<'PY'
           from pathlib import Path
-          compose=Path("compose.yaml").read_text()
-          image=Path("commercial/Dockerfile.production").read_text()
-          assert "EnterpriseProcess2" in compose
-          assert "EnterpriseProcess2_AI_Test" not in compose
-          assert "demo_preview" not in image
-          assert "commercial.production_app:app" in image
-          assert "commercial/datasets" not in image
-          print("Operational image excludes fictional-data runtime")
+          c=Path("compose.yaml").read_text()
+          dockerfile=Path("commercial/Dockerfile.production").read_text()
+          assert "avan-control-data:" in c
+          assert "127.0.0.1:8188:8188" in c
+          assert "env_file:" not in c and "AVAN_SQL_PASSWORD" not in c
+          assert "commercial.production_app:app" in dockerfile
+          assert "commercial/datasets" not in dockerfile
+          assert "setup_console.py" in dockerfile and "setup_routes.py" in dockerfile
+          print("Operational GodAdmin installation requires no editable .env file.")
           PY
