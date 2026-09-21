@@ -1,5 +1,6 @@
 # Commercial Agent | Milestones 1–3: identity, ACL, cited chat and request quotas (LAB ONLY)
 
+> **مسیر جاری محصول با داده عملیاتی:** [راهنمای EnterpriseProcess2](PRODUCTION_ENTERPRISEPROCESS2_SETUP_FA.md). سرویس پیش‌فرض Docker از `commercial.production_app` با پایگاه اصلی `EnterpriseProcess2` استفاده می‌کند و از داده‌های ساختگی/پورت ۸۰۹۰ استفاده نمی‌کند. **تا تأیید ساختار زنده SQL، نگاشت OIDC↔ProcessMaker و نصب لایسنس معتبر، هیچ مهاجرت یا اتصال واقعی را آماده استفاده تلقی نکنید.**\n\n
 
 > **Docker Desktop / اجرای برنامه:** [`commercial/DOCKER_SETUP_FA.md`](DOCKER_SETUP_FA.md) — اجرای فوری پیش‌نمایش فارسی در `http://127.0.0.1:8090` با `docker compose up -d --build --wait`؛ محیط متصل SQL/Keycloak صرفاً به‌صورت جداگانه و فقط برای LAB قابل پیکربندی است.
 
