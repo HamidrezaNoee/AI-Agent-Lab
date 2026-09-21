@@ -1,5 +1,5 @@
 "use strict";
-const app={user:null,csrf:null,page:"overview",cursor:null,meetings:[],questions:[],sending:false};
+const app={user:null,csrf:null,page:"overview",cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null};
 const $=id=>document.getElementById(id);
 function el(tag,klass,text){const n=document.createElement(tag);if(klass)n.className=klass;if(text!==undefined)n.textContent=String(text);return n}
 function add(parent,...children){for(const x of children.flat())if(x!==undefined&&x!==null)parent.append(x);return parent}
@@ -73,12 +73,8 @@ function meetingRow(meeting){
  add(details,el("strong","",meeting.title),el("small","",meeting.meeting_no+" · "+meeting.meeting_status+
   " · "+(meeting.meeting_date_utc||"تاریخ ثبت نشده")));
  add(row,details,link("بررسی اقدامات",()=>{
-  select("assistant");setTimeout(()=>{
-    const q=$("management-question");
-    if(!q)return;
-    q.value="اقدامات جلسه شماره "+meeting.meeting_no+" در چه وضعیتی هستند؟";
-    askQuestion(q.value);
-  },0);
+  app.pendingQuestion="اقدامات جلسه شماره "+meeting.meeting_no+" در چه وضعیتی هستند؟";
+  select("assistant");
  }));
  return row;
 }
@@ -119,6 +115,10 @@ async function assistantPage(){
    text.value=q;askQuestion(q);
  },"")));
  add(suggestions,grid);add(m,suggestions);
+ if(app.pendingQuestion){
+   const pending=app.pendingQuestion;app.pendingQuestion=null;
+   text.value=pending;await askQuestion(pending);
+ }
 }
 async function askQuestion(question){
  const target=$("management-result");if(!target)return;
