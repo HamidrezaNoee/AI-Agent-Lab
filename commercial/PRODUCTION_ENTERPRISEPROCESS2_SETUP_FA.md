@@ -30,6 +30,20 @@
 
 با مدیر SQL، یک LOGIN جدید با نام دقیق `AVAN_Reader` و رمز قویِ مخصوص این برنامه بساز. رمز را در مخزن، اسکریپت، لاگ یا گفتگو قرار نده. از حساب فرآیند `PM_EnterpriseProcess2`، SA، `AI_MeetingAgent` یا db_owner استفاده نکن.
 
+نمونه دستور ساخت LOGIN در SSMS (مقدار رمز را فقط در محیط امن خودت وارد کن و آن را در گفتگو یا GitHub منتشر نکن):
+
+```sql
+USE [master];
+GO
+CREATE LOGIN [AVAN_Reader]
+WITH PASSWORD = N'REPLACE_WITH_RANDOM_STRONG_PASSWORD',
+     CHECK_POLICY = ON,
+     CHECK_EXPIRATION = ON;
+GO
+```
+
+**این دستور را با مقدار `REPLACE_...` اجرا نکن.** اگر Login از قبل وجود دارد، آن را بدون بررسی مجوزها بازسازی نکن.
+
 پس از ساخت LOGIN، فایل زیر را اجرا کن:
 
 `commercial/sql/PRODUCTION_EnterpriseProcess2_02_reader_grants.sql`
@@ -51,6 +65,26 @@
 ## ۵. امضای لایسنس و فعال‌سازی
 
 برنامه بدون لایسنس امضاشده معتبر به داده‌های جلسات دسترسی نمی‌دهد. ابزار مستقل `commercial/licensing/studio.py` کلید خصوصی ECDSA P-256 رمزدار را **خارج از مخزن و فقط در اختیار ناشر** نگه می‌دارد. در Docker مشتری **فقط فایل کلید عمومی** `private/license-public.pem` به‌صورت bind mount فقط‌خواندنی قرار می‌گیرد؛ هرگز کلید خصوصی ناشر را به مشتری، Docker یا SQL منتقل نکن.
+
+برای ساخت Installation ID تصادفی **فقط یک بار** روی سیستم صاحب لایسنس:
+
+```powershell
+$bytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$installationId = ([BitConverter]::ToString($bytes)).Replace("-", "")
+$installationId
+```
+
+در سیستم آفلاین ناشر و **خارج از مخزن**، پوشه نگه‌داری کلید رمزدار و کلید عمومی را آماده کن. مثال زیر فقط برای تشریح آرگومان‌های موجود License Studio است؛ مسیرها و شناسه UUID واقعی سازمان را با مقادیر تأییدشده جایگزین کن:
+
+```powershell
+$python = "D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab\.venv\Scripts\python.exe"
+& $python -m commercial.licensing.studio keygen --private "D:\AVAN-Issuer\issuer-private.pem" --public "D:\AVAN-Issuer\license-public.pem"
+& $python -m commercial.licensing.studio issue --private "D:\AVAN-Issuer\issuer-private.pem" --tenant "<VERIFIED_TENANT_UUID>" --installation "<STABLE_INSTALLATION_ID>" --customer "<EXACT_COMPANY_NAME>" --max-users 100 --modules 1,2,3,4 --expires unlimited --out "D:\AVAN-Issuer\customer.license.txt"
+```
+
+**فایل `issuer-private.pem` را به هیچ سیستم مشتری، هاست Docker، مخزن یا مسیر `private/` پروژه منتقل نکن.** فقط فایل `license-public.pem` را با کنترل اصالت ناشر به مسیر پروژه `private/license-public.pem` منتقل کن؛ توکن خروجی `customer.license.txt` برای ثبت در اسکریپت ۰۴ است.
 
 در فایل `.env.production` یک `AVAN_INSTALLATION_ID` ثابت و تصادفی ۶۴کاراکتری HEX نگه‌دار؛ همان مقدار هنگام صدور لایسنس به ابزار آفلاین داده شود. لایسنس باید `tenant_id`، نام دقیق سازمان، شماره نصب، سقف کاربران و ماژول‌های خریداری‌شده را پوشش دهد. ماژول ۱ پایه است؛ ۲ دبیر، ۳ تحلیل و ۴ پایش. اعتبار امضا، انقضا، ظرفیت و ماژول‌ها در API بررسی می‌شوند.
 
