@@ -375,6 +375,40 @@ def pm_save(body:PMConfig,session=Depends(_ready)):
     setup.put_setting("processmaker",body.model_dump())
     return {"saved":True,"note":"اتصال تأیید شد؛ همگام‌سازی کاربران هنوز به تأیید هویت‌نامه و سیاست ابطال دسترسی نیاز دارد."}
 
+@router.get("/api/users/pending")
+def pending_staff(session=Depends(_ready)):
+    from .pending_identities import list_pending
+    return {"pending":list_pending()}
+
+@router.get("/api/processmaker/users")
+def processmaker_users(session=Depends(_ready)):
+    from .production_onboarding import ProvisioningDenied,visible_pm_users
+    try:return {"users":visible_pm_users()}
+    except ProvisioningDenied:
+        raise HTTPException(503,"فهرست کاربران فعال ProcessMaker قابل دریافت نیست.")
+
+class StaffApproval(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    tenant_id:str=Field(min_length=36,max_length=36)
+    subject:str=Field(min_length=1,max_length=180)
+    company_name:str=Field(min_length=2,max_length=200)
+    pm_uid:str=Field(min_length=32,max_length=32)
+    role:str=Field(min_length=6,max_length=8)
+    manager_pm_uid:str|None=Field(default=None,max_length=32)
+
+@router.post("/api/users/approve")
+def approve_staff(body:StaffApproval,session=Depends(_ready)):
+    from .production_onboarding import ProvisioningDenied,approve_employee
+    try:return approve_employee(
+        tenant_id=body.tenant_id,subject=body.subject,
+        company_name=body.company_name,pm_uid=body.pm_uid,
+        role=body.role,manager_pm_uid=body.manager_pm_uid)
+    except ProvisioningDenied as exc:
+        # The exception contains only server-defined validation messages; no
+        # SQL driver errors, passwords, PM tokens or raw IdP access token.
+        raise HTTPException(409,str(exc))
+
+
 class PublicKey(BaseModel):
     model_config=ConfigDict(extra="forbid")
     pem:str=Field(min_length=100,max_length=10000)
