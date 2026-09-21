@@ -4,10 +4,16 @@ on:
   push:
     paths:
       - "commercial/**"
+      - "compose.yaml"
+      - "compose.connected-lab.yaml"
+      - ".dockerignore"
       - ".github/workflows/commercial-preview-ci.yml"
   pull_request:
     paths:
       - "commercial/**"
+      - "compose.yaml"
+      - "compose.connected-lab.yaml"
+      - ".dockerignore"
       - ".github/workflows/commercial-preview-ci.yml"
   workflow_dispatch:
 
@@ -51,3 +57,44 @@ jobs:
           assert sum(len(c["actions"]) for c in data["scenarios"])==300
           print("PASS: exactly 100 fictional meeting scenarios and 300 synthetic actions")
           PY
+
+  docker-preview-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify local-only Compose config and container build
+        run: |
+          docker compose config --quiet
+          docker compose up --build -d --wait --wait-timeout 120
+      - name: Verify health, 100 fictional meetings and all eight questions
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          base="http://127.0.0.1:8090"
+          with urllib.request.urlopen(base+"/health",timeout=8) as r:
+              health=json.load(r)
+          assert health["status"]=="up" and health["real_login"] is False
+          assert health["production_data"] is False
+          with urllib.request.urlopen(base+"/demo-data",timeout=8) as r:
+              data=json.load(r)
+          assert data["synthetic"] is True and data["count"]==100
+          assert sum(len(m["actions"]) for m in data["scenarios"])==300
+          with urllib.request.urlopen(base+"/demo-questions",timeout=8) as r:
+              questions=json.load(r)["questions"]
+          assert len(questions)==8
+          for question in questions:
+              req=urllib.request.Request(base+"/demo-ask",
+                  data=json.dumps({"question":question},ensure_ascii=False).encode(),
+                  headers={"Content-Type":"application/json"},method="POST")
+              with urllib.request.urlopen(req,timeout=8) as r:
+                  result=json.load(r)
+              assert result["synthetic"] is True and result["model_used"] is False
+              assert result["meetings_considered"]==100
+              assert result["sources"]==[item["source"] for item in result["items"]]
+          print("PASS: Docker preview health, 100 meetings, 300 actions, all eight questions")
+          PY
+      - name: Stop isolated Docker services
+        if: always()
+        run: docker compose down --volumes --remove-orphans
