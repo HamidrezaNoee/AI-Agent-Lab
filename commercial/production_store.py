@@ -240,7 +240,10 @@ def authorized_meeting_snapshot(con,scope:dict,*,maximum:int=MAX_MEETINGS):
             if count>20000:
                 raise ProductionUnavailable("Action snapshot exceeds safe limit")
             status=str(r[9])
-            closed=bool(r[10]) or status.lower() in ("closed","completed","done")
+            # "Completed" may be an owner submission/review state, not
+            # secretary-authorized workflow closure. Only an actual ClosedAt
+            # or the explicit Closed state counts as closed.
+            closed=bool(r[10]) or status.casefold()=="closed"
             by_id[identifier]["actions"].append({
               "action_no":str(r[1] or "بدون شماره"),
               "description":str(r[2]),"owner_uid":str(r[3]).strip(),
