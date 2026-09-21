@@ -10,6 +10,7 @@ IF DB_NAME()<>N'EnterpriseProcess2'
  THROW 60201,N'Wrong database.',1;
 IF OBJECT_ID(N'AVAN.Tenant',N'U') IS NULL
  OR OBJECT_ID(N'AVAN.UserAccess',N'U') IS NULL
+ OR OBJECT_ID(N'AVAN.License',N'U') IS NULL
  THROW 60202,N'Apply and review AVAN additive migration 01 first.',1;
 IF SUSER_ID(N'AVAN_Reader') IS NULL
  THROW 60203,N'Create restricted SQL SERVER login AVAN_Reader out-of-band with a strong secret first.',1;
@@ -30,6 +31,7 @@ IF EXISTS(SELECT 1 FROM sys.database_permissions p
 
 GRANT SELECT ON OBJECT::AVAN.Tenant TO [AVAN_Reader];
 GRANT SELECT ON OBJECT::AVAN.UserAccess TO [AVAN_Reader];
+GRANT SELECT ON OBJECT::AVAN.License TO [AVAN_Reader];
 GRANT SELECT ON OBJECT::MTG.Meeting TO [AVAN_Reader];
 GRANT SELECT ON OBJECT::MTG.MeetingParticipant TO [AVAN_Reader];
 GRANT SELECT ON OBJECT::MTG.ActionItem TO [AVAN_Reader];
