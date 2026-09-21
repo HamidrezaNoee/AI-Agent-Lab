@@ -29,9 +29,9 @@ from .security import (
     AuthenticationFailed, ConfigurationFailed, VerifiedTokenAuthenticator,
 )
 
-@lru_cache(maxsize=1)
-def _verifier():
-    return VerifiedTokenAuthenticator.from_environment()
+@lru_cache(maxsize=8)
+def _verifier(issuer:str,audience:str,jwks_url:str):
+    return VerifiedTokenAuthenticator(issuer,audience,jwks_url)
 
 
 ROOT=Path(__file__).resolve().parent/"web"/"production"
@@ -51,31 +51,17 @@ pending={}
 
 @asynccontextmanager
 async def production_lifespan(_app):
-    # Refuse to start an operational container with placeholder credentials,
-    # the wrong database, missing issuer material or an untrusted origin.
-    import re
-    if os.getenv("AVAN_SQL_DATABASE")!="EnterpriseProcess2" or (
-        os.getenv("AVAN_SQL_USER","").casefold()!="avan_reader"
-    ):
-        raise RuntimeError("AVAN requires dedicated EnterpriseProcess2 read-only connection")
-    for name in ("AVAN_SQL_SERVER","AVAN_SQL_PASSWORD",
-                 "AVAN_OIDC_CLIENT_SECRET","COMMERCIAL_OIDC_CLIENT_ID"):
-        value=os.getenv(name,"").strip()
-        if not value or value.startswith(("SET_","YOUR_","REPLACE_")):
-            raise RuntimeError("Required operational configuration is incomplete: "+name)
-    if not re.fullmatch(r"[0-9a-fA-F]{64}",os.getenv("AVAN_INSTALLATION_ID","")):
-        raise RuntimeError("Stable licensed installation fingerprint missing")
-    _public_origin()
-    _oidc_config()
-    from .production_license import signed_entitlement
-    from pathlib import Path
-    if not Path(os.getenv("AVAN_LICENSE_PUBLIC_KEY_PATH","/missing")).is_file():
-        raise RuntimeError("Pinned publisher public license key is missing")
+    # The control plane is deliberately independent of operational SQL/IdP.
+    # First Docker start therefore succeeds without .env or live credentials.
+    from .setup_console import initialize
+    initialize()
     yield
 
 
 app=FastAPI(title="AVAN",docs_url=None,redoc_url=None,openapi_url=None,
             lifespan=production_lifespan)
+from .setup_routes import router as godadmin_router
+app.include_router(godadmin_router)
 hosts=[h.strip() for h in os.getenv("AVAN_ALLOWED_HOSTS","localhost,127.0.0.1").split(",")
        if h.strip() and "*" not in h]
 app.add_middleware(TrustedHostMiddleware,allowed_hosts=hosts or ["localhost"])
@@ -97,7 +83,9 @@ async def security_headers(request:Request,call_next):
 
 
 def _public_origin()->str:
-    value=os.getenv("AVAN_PUBLIC_ORIGIN","").rstrip("/")
+    # Loopback origin is fixed by the deployment. External HTTPS deployments
+    # require a separately reviewed reverse-proxy and secure-cookie design.
+    value=os.getenv("AVAN_PUBLIC_ORIGIN","http://127.0.0.1:8188").rstrip("/")
     parsed=urlsplit(value)
     if parsed.scheme not in ("http","https") or not parsed.hostname or parsed.path not in ("","/"):
         raise ConfigurationFailed("Public origin must be configured exactly")
@@ -109,21 +97,24 @@ def _public_origin()->str:
 
 
 def _oidc_config():
-    issuer=os.getenv("COMMERCIAL_OIDC_ISSUER","").rstrip("/")
-    auth=os.getenv("COMMERCIAL_OIDC_AUTHORIZATION_URL","")
-    token=os.getenv("COMMERCIAL_OIDC_TOKEN_URL","")
-    client_id=os.getenv("COMMERCIAL_OIDC_CLIENT_ID","")
-    client_secret=os.getenv("AVAN_OIDC_CLIENT_SECRET","")
-    verifier=_verifier()
+    from .setup_console import get_setting
+    config=get_setting("oidc") or {}
+    issuer=str(config.get("issuer","")).rstrip("/")
+    audience=str(config.get("audience",""))
+    jwks=str(config.get("jwks_url",""))
+    client_id=str(config.get("client_id",""))
+    client_secret=str(config.get("client_secret",""))
     origin=urlsplit(issuer)
     if (origin.scheme!="https" or
-        auth!=issuer+"/protocol/openid-connect/auth" or
-        token!=issuer+"/protocol/openid-connect/token" or
+        config.get("jwks_url")!=issuer+"/protocol/openid-connect/certs" or
         not client_id or len(client_id)>256 or
         not 16<=len(client_secret)<=4096 or
-        any(c in client_secret for c in "\r\n")):
-        raise ConfigurationFailed("Confidential OIDC client/issuer not configured")
-    return auth,token,client_id,client_secret,verifier
+        any(c in client_secret for c in "\\r\\n")):
+        raise ConfigurationFailed("Secure OIDC realm settings not configured")
+    verifier=_verifier(issuer,audience,jwks)
+    return (issuer+"/protocol/openid-connect/auth",
+            issuer+"/protocol/openid-connect/token",client_id,client_secret,
+            verifier)
 
 
 def _purge():
@@ -163,6 +154,9 @@ def health():
 
 @app.get("/")
 def home():
+    from .setup_console import get_setting
+    if not get_setting("sql") or not get_setting("oidc"):
+        return RedirectResponse("/admin/",status_code=303)
     return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
 
 
