@@ -29,22 +29,24 @@ class DockerPreviewTests(unittest.TestCase):
         self.assertIn('commercial.demo_preview:app',dockerfile)
 
     def test_docker_private_gateway_requires_explicit_mode_and_localhost_host(self):
+        async def docker_bridge_client(scope, receive, send):
+            changed=dict(scope)
+            if scope["type"]=="http":
+                changed["client"]=("172.19.0.1",1234)
+            await app(changed,receive,send)
+
+        def check(host, enabled):
+            with patch.dict("os.environ",
+                            {"COMMERCIAL_PREVIEW_DOCKER":"1" if enabled else "0"}):
+                with TestClient(docker_bridge_client,base_url="http://"+host) as client:
+                    return client.get("/health").status_code
+
+        self.assertEqual(check("127.0.0.1:8090",False),403)
+        self.assertEqual(check("127.0.0.1:8090",True),200)
+        self.assertIn(check("external.example.test:8090",True),(400,403))
         with TestClient(app) as client:
-            # This security test simulates a Docker private bridge source.
-            fake={"host":"172.19.0.1","port":55999}
-            # The ASGI TestClient defaults to testclient; adjust transport
-            # scope directly to prove the middleware's real remote IP gate.
-            from starlette.testclient import TestClient as NativeClient
-            def check(host, enabled):
-                with patch.dict("os.environ",
-                                {"COMMERCIAL_PREVIEW_DOCKER":"1" if enabled else "0"}):
-                    with NativeClient(app,client=("172.19.0.1",1234),
-                                      base_url="http://"+host) as simulated:
-                        return simulated.get("/health").status_code
-            self.assertEqual(check("127.0.0.1:8090",False),403)
-            self.assertEqual(check("127.0.0.1:8090",True),200)
-            self.assertIn(check("external.example.test:8090",True),(400,403))
             self.assertEqual(client.get("/health").status_code,200)
+
 
 if __name__=="__main__":
     unittest.main()
