@@ -67,11 +67,21 @@ def _entry(meeting: dict, action: dict | None = None, *, detail: str | None = No
 
 
 def _meeting_number(question: str) -> str | None:
-    # A meeting number is meaningful only when explicitly referring to a
-    # meeting. It is never interpreted as SQL or a user-specified tenant.
-    value = re.search(r"(?:جلسه\s*(?:شماره\s*)?|شماره\s*جلسه\s*)(LAB-\d+|\d{1,12})",
-                      question, re.IGNORECASE)
-    return value.group(1).upper() if value else None
+    # Accept the REAL meeting number as written by MTG, including slashes
+    # and hyphens. Never extract a tenant/UID or SQL from the prompt.
+    value = re.search(
+        r"(?:جلسه\s+شماره\s*|شماره\s+جلسه\s*)([^\s؟،,:;]{1,50})",
+        question, re.IGNORECASE,
+    )
+    if value is None:
+        value = re.search(r"جلسه\s+(LAB-\d+|\d{1,12})",
+                          question, re.IGNORECASE)
+    if value is None:
+        return None
+    code = value.group(1).strip(".,؛!?؟").upper()
+    if code in ("مشخص", "موردنظر", "مورد", "آینده"):
+        return None
+    return code if code and len(code) <= 50 else None
 
 
 def _intent(question: str) -> str:
