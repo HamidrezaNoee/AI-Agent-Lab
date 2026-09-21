@@ -1,18 +1,20 @@
-# آوان — مدیریت هوشمند جلسات و مصوبات
+# آوان | سامانه مدیریت هوشمند جلسات
 
-مسیر پیش‌فرض Docker این مخزن اکنون سرویس عملیاتی `commercial.production_app` با فرانت مستقل `commercial/web/production`، بانک `EnterpriseProcess2` و پورت محلی `8188` است. نه دیتاست ساختگی وارد ایمیج عملیاتی می‌شود، نه سیستم از APIهای قدیمی /v1 برای دسترسی به جلسات استفاده می‌کند. ورود، هویت شرکت و نقش‌ها باید از IdP معتبر و نگاشت تأییدشده ProcessMaker به دست بیایند؛ هیچ اکانت پیش‌فرض یا گذرواژه نمایشی ساخته نمی‌شود.
+آوان در مسیر پیش‌فرض Docker از `commercial.production_app` و اطلاعات ثبت‌شده در `EnterpriseProcess2.MTG` استفاده می‌کند. تصویر عملیاتی هیچ سناریوی ساختگی یا API قدیمی /v1 را به کاربر ارائه نمی‌دهد.
 
-**[راهنمای کامل مهاجرت EnterpriseProcess2، اسکریپت‌های SQL و راه‌اندازی Docker](PRODUCTION_ENTERPRISEPROCESS2_SETUP_FA.md)**
+**[اجرای Docker بدون .env، دریافت یک‌باره رمز GodAdmin و تنظیم تمام اتصال‌های اصلی از داخل برنامه](PRODUCTION_ENTERPRISEPROCESS2_SETUP_FA.md)**
 
-اپلیکیشن متصل فعلی گزارش‌گیری فقط‌خواندنی از جداول `MTG` را با کنترل شرکت واحد، چارت و امضای لایسنس ارائه می‌کند. بااین‌حال اجرای موفق روی **نسخه زنده دیتابیس، هویت و لایسنس شما هنوز مشاهده نشده است** و برخی قابلیت‌های وعده‌داده‌شده محصول (GodAdmin کامل، مدیریت حساب در SysAdmin، Sync و ابطال دسترسی خودکار ProcessMaker، ثبت اقدام در گردش کار، voice/LLM و انتشار اینترنتی امن) هنوز تکمیل نشده‌اند. بخش عملیاتی موجود نباید بدون تأیید SQL و احراز هویت واقعی، آماده استقرار عمومی معرفی شود.
+دستورات راه‌اندازی:
 
-## اسناد و فایل‌های فعال
+```powershell
+cd "D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab-GitHub"
+git pull --ff-only origin main
+docker compose up -d --build --wait
+docker compose exec -T avan python -m commercial.setup_console --take-bootstrap
+```
 
-- [بررسی فقط‌خواندنی اختلاف ستون‌های SQL](sql/PRODUCTION_EnterpriseProcess2_00_inventory.sql)
-- [مهاجرت افزودنی AVAN بدون تغییر MTG](sql/PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql)
-- [مجوزهای محدود حساب SQL](sql/PRODUCTION_EnterpriseProcess2_02_reader_grants.sql)
-- [قالب کنترل‌شده اتصال هویت کاربران](sql/PRODUCTION_EnterpriseProcess2_03_verified_onboarding_TEMPLATE.sql)
-- [قالب فعال‌سازی لایسنس امضاشده](sql/PRODUCTION_EnterpriseProcess2_04_install_signed_license_TEMPLATE.sql)
-- [Dockerfile عملیاتی](Dockerfile.production) و [Compose پیش‌فرض](../compose.yaml)
+مدیریت نصب و تنظیمات در **http://127.0.0.1:8188/admin/** و فضای کاری کارکنان در **http://127.0.0.1:8188/** است. GodAdmin اولیه با رمز تصادفی ایجاد می‌شود؛ تغییر رمز و احراز هویت دومرحله‌ای در اولین ورود لازم است. اطلاعات SQL Server، Realm هویت، ProcessMaker و لایسنس از داخل صفحه مدیریت دریافت و به صورت رمزگذاری‌شده در Docker volume نگهداری می‌شوند؛ کلید خصوصی ناشر هرگز وارد مشتری نمی‌شود.
 
-فایل‌های پیش‌نمایش قدیمی در تاریخچه توسعه باقی مانده‌اند؛ نه بخشی از ایمیج عملیاتی هستند و نه در صفحه فعلی به کاربر نمایش داده می‌شوند. پیش از اجرای اسکریپت‌های بانک اصلی، مرحله اول inventory و بررسی ساختار زنده الزامی است.
+راه‌اندازی پایگاه اصلی فقط پس از بررسی اختلاف جداول، تأیید نسخه پشتیبان و اعلام صریح نام `EnterpriseProcess2` مجاز است. ابزار نصب از SQLهای از پیش بازبینی‌شده استفاده می‌کند و جدول/فرایند/تریگر موجود `MTG` را تغییر نمی‌دهد.
+
+**محدودیت صداقت محصول:** ساخت Realm و سرویس معتبر Keycloak، کلید عمومی مرجع ناشر و نگاشت/ابطال خودکار حساب کارکنان ProcessMaker هنوز پیش‌نیازهای مستقلی دارند. نصب GodAdmin یا ورود تنظیمات به معنی آماده‌بودن سامانه برای انتشار اینترنتی یا دسترسی محتوایی کارکنان نیست.
