@@ -1,0 +1,24 @@
+# syntax=docker/dockerfile:1
+# Fictional meeting analytics + RTL demo only. NEVER publish as a real portal.
+FROM python:3.13-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    COMMERCIAL_PREVIEW_DOCKER=1
+
+WORKDIR /app
+COPY commercial/requirements-preview.txt /app/requirements-preview.txt
+RUN python -m pip install --no-cache-dir -r /app/requirements-preview.txt \
+    && groupadd --gid 10001 avan \
+    && useradd --uid 10001 --gid 10001 --system --create-home avan
+
+COPY --chown=10001:10001 commercial /app/commercial
+
+USER 10001:10001
+EXPOSE 8090
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=3); assert r.status==200 and r.read()" || exit 1
+
+# Bind 0.0.0.0 ONLY inside the container. The Compose host mapping is 127.0.0.1.
+CMD ["python","-m","uvicorn","commercial.demo_preview:app","--host","0.0.0.0","--port","8090","--no-proxy-headers"]
