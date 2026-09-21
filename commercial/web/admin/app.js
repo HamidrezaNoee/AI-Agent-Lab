@@ -92,7 +92,7 @@ function showTotpEnroll(){
  });
 }
 const menu=[
- ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["oidc","هویت سازمانی"],["processmaker","ProcessMaker"],
+ ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
  ["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
 ];
 async function showSettings(page=state.page){
@@ -107,7 +107,7 @@ async function showSettings(page=state.page){
  },"secondary"));append(m,tabs);
  if(page==="install")renderInstall(m,settings.sql||{});
  else if(page==="sql")renderSql(m,settings.sql||{});
- else if(page==="oidc")renderOidc(m,settings.oidc||{});
+ else if(page==="identity")await renderIdentity(m);
  else if(page==="processmaker")renderPm(m,settings.processmaker||{});
  else if(page==="license")renderLicense(m,settings);
  else if(page==="users")await renderUsers(m);
@@ -203,32 +203,20 @@ function renderSql(m,config){
    info("اگر ساختار AVAN هنوز وجود ندارد، فایل مهاجرت افزودنی بانک اصلی باید با مجوز DBA و نسخه پشتیبان تأییدشده اعمال شود. اطلاعات DBA در آوان ذخیره نمی‌شود."));
  append(m,p);
 }
-function renderOidc(m,config){
- const p=panel("اتصال هویت سازمانی (Keycloak / OIDC)",
-  "نشانی Realm با HTTPS و شناسه برنامه محرمانه را ثبت کنید. ورود سازمانی پس از تطبیق شناسه کاربر با ProcessMaker فعال می‌شود.");
- const f=node("form","grid"),specs=[
-  ["نشانی صادرکننده OIDC (Issuer)","issuer",config.issuer],
-  ["Audience توکن","audience",config.audience],
-  ["نشانی کلیدهای امضا JWKS","jwks_url",config.jwks_url],
-  ["شناسه برنامه محرمانه","client_id",config.client_id],
-  ["رمز محرمانه برنامه","client_secret",""]
- ];
- for(const [label,name,value] of specs)append(f,field(label,name,value||"",{secret:name==="client_secret"}));
- const result=node("div","full"),buttons=node("div","actions full");
- async function run(action){
-  const body={};for(const [,name] of specs)body[name]=formValue(f,name);
-  busy(f,true);result.replaceChildren();
-  try{await api("oidc/"+action,body);append(result,info(
-    action==="check"?"نشانی‌های Realm و کلیدهای امضا تأیید شدند.":
-    "تنظیمات هویت سازمانی رمزگذاری و ذخیره شدند."));
-  }catch(err){showError(result,err)}finally{busy(f,false)}
- }
- append(buttons,btn("بررسی سرویس هویت",()=>run("check"),"secondary"),
-   btn("ذخیره هویت سازمانی",()=>run("save")));
- append(f,buttons,result);append(p,f,info(
-  "نکته امنیتی: ساخت حساب کاربر، نقش SysAdmin و نگاشت PMUserUID با sub توکن کاربر پس از تأیید هویت واقعی انجام می‌شود؛ ورود کاربران صرفاً با ذخیره این تنظیمات باز نخواهد شد."));
+async function renderIdentity(m){
+ const p=panel("هویت سازمانی آوان",
+  "Keycloak و تنظیمات OIDC جزو زیرساخت داخلی آوان هستند و نیازی به واردکردن Issuer، JWKS یا Client Secret توسط کاربر ندارند.");
+ const result=node("div");
+ append(p,info("Secretهای داخلی هنگام نصب امن Docker ساخته می‌شوند و هیچ‌وقت در این پنل یا فایل .env به کاربر نمایش داده نمی‌شوند."),result);
+ try{
+   const status=await api("identity/status",null,"GET");
+   append(result,info(status.connected?
+      "سرویس هویت داخلی آوان فعال است · Realm: "+status.realm:
+      "سرویس هویت داخلی هنوز آماده نیست.",!status.connected));
+ }catch(err){showError(result,err)}
  append(m,p);
 }
+
 function renderPm(m,config){
  const p=panel("اتصال ProcessMaker","تنظیمات سرویس فقط‌خواندنی برای دریافت فهرست کاربران فرایند.");
  const f=node("form","grid"),specs=[
