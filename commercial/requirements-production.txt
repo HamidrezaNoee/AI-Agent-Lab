@@ -1,0 +1,7 @@
+# Production service — no preview dataset, no OpenAI text generation.
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+PyJWT[crypto]>=2.9,<3
+pyodbc>=5,<6
+httpx>=0.27,<1
+jdatetime>=5,<6
