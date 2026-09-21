@@ -1,0 +1,50 @@
+"""Docker deployment configuration regression without requiring Docker Desktop."""
+from pathlib import Path
+import unittest
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+from commercial.demo_preview import app
+
+ROOT=Path(__file__).resolve().parents[2]
+
+class DockerPreviewTests(unittest.TestCase):
+    def test_compose_binds_only_host_loopback_and_never_mounts_secrets(self):
+        source=(ROOT/"compose.yaml").read_text(encoding="utf-8")
+        self.assertIn('127.0.0.1:8090:8090',source)
+        self.assertIn('commercial/Dockerfile.preview',source)
+        self.assertNotIn('COMMERCIAL_SQL_PASSWORD',source)
+        self.assertNotIn('OPENAI_API_KEY',source)
+        self.assertNotIn('COMMERCIAL_PM_BEARER_TOKEN',source)
+        self.assertIn('read_only: true',source)
+        self.assertIn('cap_drop:',source)
+
+    def test_image_is_nonroot_and_installs_only_preview_deps(self):
+        dockerfile=(ROOT/"commercial"/"Dockerfile.preview").read_text(encoding="utf-8")
+        requirements=(ROOT/"commercial"/"requirements-preview.txt").read_text(encoding="utf-8")
+        self.assertIn('USER 10001:10001',dockerfile)
+        self.assertIn('requirements-preview.txt',dockerfile)
+        for unwanted in ('pyodbc','OPENAI_API_KEY','COMMERCIAL_SQL_PASSWORD'):
+            self.assertNotIn(unwanted,requirements)
+        self.assertIn('commercial.demo_preview:app',dockerfile)
+
+    def test_docker_private_gateway_requires_explicit_mode_and_localhost_host(self):
+        with TestClient(app) as client:
+            # This security test simulates a Docker private bridge source.
+            fake={"host":"172.19.0.1","port":55999}
+            # The ASGI TestClient defaults to testclient; adjust transport
+            # scope directly to prove the middleware's real remote IP gate.
+            from starlette.testclient import TestClient as NativeClient
+            def check(host, enabled):
+                with patch.dict("os.environ",
+                                {"COMMERCIAL_PREVIEW_DOCKER":"1" if enabled else "0"}):
+                    with NativeClient(app,client=("172.19.0.1",1234),
+                                      base_url="http://"+host) as simulated:
+                        return simulated.get("/health").status_code
+            self.assertEqual(check("127.0.0.1:8090",False),403)
+            self.assertEqual(check("127.0.0.1:8090",True),200)
+            self.assertIn(check("external.example.test:8090",True),(400,403))
+            self.assertEqual(client.get("/health").status_code,200)
+
+if __name__=="__main__":
+    unittest.main()
