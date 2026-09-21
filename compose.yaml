@@ -1,5 +1,5 @@
-# AVAN operational MTG (EnterpriseProcess2), no demo datasets or /v1 endpoints.
-# Explicitly configured confidential IdP + verified PM mappings required.
+# AVAN enterprise application: first-run GodAdmin bootstraps without .env.
+# No production SQL credentials, identity secrets or issuer private key in Compose.
 name: avan-production
 services:
   avan:
@@ -11,22 +11,15 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8188:8188"
-    env_file:
-      - path: ./.env.production
-        required: true
     environment:
-      AVAN_SQL_DATABASE: EnterpriseProcess2
-      AVAN_SQL_USER: AVAN_Reader
-      AVAN_LICENSE_PUBLIC_KEY_PATH: /run/avan/license-public.pem
-    volumes:
-      - type: bind
-        source: ./private/license-public.pem
-        target: /run/avan/license-public.pem
-        read_only: true
-        bind:
-          create_host_path: false
+      AVAN_STATE_DIR: /var/lib/avan
+      AVAN_PUBLIC_ORIGIN: http://127.0.0.1:8188
+      AVAN_ALLOWED_HOSTS: 127.0.0.1,localhost
+      AVAN_DATA_TIMEZONE: Asia/Tehran
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - avan-control-data:/var/lib/avan
     read_only: true
     tmpfs:
       - /tmp:rw,nosuid,noexec,size=16m
@@ -42,3 +35,5 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+volumes:
+  avan-control-data:
