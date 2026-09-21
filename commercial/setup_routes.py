@@ -292,55 +292,26 @@ def sql_save(body:SqlConfig,session=Depends(_ready)):
     return {"saved":True,"database":"EnterpriseProcess2"}
 
 
-class OidcConfig(BaseModel):
-    model_config=ConfigDict(extra="forbid")
-    issuer:str=Field(min_length=12,max_length=400)
-    audience:str=Field(min_length=1,max_length=250)
-    jwks_url:str=Field(min_length=12,max_length=500)
-    client_id:str=Field(min_length=1,max_length=250)
-    client_secret:str=Field(min_length=16,max_length=4096)
-
-def _oidc_check(config:OidcConfig):
-    issuer=config.issuer.rstrip("/")
-    u=urlsplit(issuer)
-    cert=urlsplit(config.jwks_url)
-    if (u.scheme!="https" or not u.hostname or u.username or u.password
-        or u.query or u.fragment or not re.fullmatch(r"/realms/[A-Za-z0-9_-]+",u.path)
-        or cert.scheme!="https" or cert.netloc!=u.netloc
-        or config.jwks_url!=issuer+"/protocol/openid-connect/certs"):
-        raise HTTPException(422,"آدرس‌های هویت باید HTTPS و متعلق به یک Realm مورد تأیید باشند.")
-    discovery=issuer+"/.well-known/openid-configuration"
+@router.get("/api/identity/status")
+def identity_status(session=Depends(_ready)):
+    config=setup.get_setting("oidc") or {}
+    issuer=str(config.get("issuer","")).rstrip("/")
+    managed=config.get("managed_by_product") is True
+    if not managed:
+        raise HTTPException(503,"زیرساخت هویت داخلی آوان آماده نیست.")
     try:
         with httpx.Client(timeout=7,follow_redirects=False,trust_env=False) as http:
-            response=http.get(discovery)
+            response=http.get(issuer+"/.well-known/openid-configuration")
             response.raise_for_status()
-            if len(response.content)>40000:raise ValueError("Oversize discovery response")
             data=response.json()
-            if (data.get("issuer")!=issuer or
-                data.get("authorization_endpoint")!=issuer+"/protocol/openid-connect/auth" or
-                data.get("token_endpoint")!=issuer+"/protocol/openid-connect/token" or
-                data.get("jwks_uri")!=config.jwks_url):
-                raise ValueError("IdP metadata realm mismatch")
-            keys=http.get(config.jwks_url)
-            keys.raise_for_status()
-            if len(keys.content)>200000 or not isinstance(keys.json().get("keys"),list):
-                raise ValueError("JWKS keys not present")
+            if data.get("issuer")!=issuer:
+                raise ValueError("issuer mismatch")
+        return {"managed_by_product":True,"connected":True,
+                "realm":"avan","issuer":issuer,
+                "customer_secret_entry_required":False}
     except Exception:
-        raise HTTPException(503,"تأیید امن تنظیمات Realm و کلیدهای امضای هویت انجام نشد.")
-    return issuer
+        raise HTTPException(503,"سرویس هویت داخلی آوان در دسترس نیست.")
 
-@router.post("/api/oidc/check")
-def oidc_check(body:OidcConfig,session=Depends(_ready)):
-    issuer=_oidc_check(body)
-    return {"connected":True,"issuer":issuer}
-
-@router.post("/api/oidc/save")
-def oidc_save(body:OidcConfig,session=Depends(_ready)):
-    issuer=_oidc_check(body)
-    payload=body.model_dump()
-    payload["issuer"]=issuer
-    setup.put_setting("oidc",payload)
-    return {"saved":True,"issuer":issuer}
 
 class PMConfig(BaseModel):
     model_config=ConfigDict(extra="forbid")
