@@ -41,6 +41,10 @@ IF OBJECT_ID(N'AVAN.Tenant') IS NOT NULL
  AND (COL_LENGTH(N'AVAN.Tenant',N'TenantID') IS NULL
  OR COL_LENGTH(N'AVAN.Tenant',N'CompanyName') IS NULL)
  THROW 60105,N'Existing AVAN tenant schema differs; no automatic upgrade.',1;
+IF OBJECT_ID(N'AVAN.License') IS NOT NULL
+ AND (COL_LENGTH(N'AVAN.License',N'TenantID') IS NULL
+ OR COL_LENGTH(N'AVAN.License',N'LicenseToken') IS NULL)
+ THROW 60107,N'Existing AVAN license schema differs; no automatic upgrade.',1;
 IF OBJECT_ID(N'AVAN.UserAccess') IS NOT NULL
  AND (COL_LENGTH(N'AVAN.UserAccess',N'SubjectID') IS NULL
  OR COL_LENGTH(N'AVAN.UserAccess',N'PMUserUID') IS NULL
@@ -87,6 +91,17 @@ BEGIN TRY
   );
   CREATE INDEX IX_AVAN_Manager ON AVAN.UserAccess
      (TenantID,ManagerPMUserUID) INCLUDE(PMUserUID,IsEnabled,PMIsActive);
+ END;
+ IF OBJECT_ID(N'AVAN.License',N'U') IS NULL
+ BEGIN
+  CREATE TABLE AVAN.License(
+   TenantID uniqueidentifier NOT NULL
+     CONSTRAINT PK_AVAN_License PRIMARY KEY
+     CONSTRAINT FK_AVAN_LicenseTenant REFERENCES AVAN.Tenant(TenantID),
+   LicenseToken nvarchar(max) NOT NULL,
+   ActivatedAtUTC datetime2(0) NOT NULL
+     CONSTRAINT DF_AVAN_LicenseActivated DEFAULT(SYSUTCDATETIME())
+  );
  END;
  COMMIT TRANSACTION;
 END TRY
