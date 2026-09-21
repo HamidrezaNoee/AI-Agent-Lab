@@ -105,7 +105,10 @@ def _oidc_config():
     client_id=str(config.get("client_id",""))
     client_secret=str(config.get("client_secret",""))
     origin=urlsplit(issuer)
-    if (origin.scheme!="https" or
+    bundled_local=(os.getenv("AVAN_BUNDLED_IDP")=="1" and
+                   origin.scheme=="http" and origin.hostname=="auth.localhost"
+                   and origin.port==8181)
+    if ((origin.scheme!="https" and not bundled_local) or
         config.get("jwks_url")!=issuer+"/protocol/openid-connect/certs" or
         not client_id or len(client_id)>256 or
         not 16<=len(client_secret)<=4096 or
