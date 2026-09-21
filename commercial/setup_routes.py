@@ -387,6 +387,15 @@ def processmaker_users(session=Depends(_ready)):
     except ProvisioningDenied:
         raise HTTPException(503,"فهرست کاربران فعال ProcessMaker قابل دریافت نیست.")
 
+@router.post("/api/processmaker/refresh-users")
+def refresh_processmaker_users(session=Depends(_ready)):
+    from .production_onboarding import ProvisioningDenied,refresh_employee_statuses
+    try:return refresh_employee_statuses()
+    except ProvisioningDenied:
+        raise HTTPException(503,
+            "تازه‌سازی امن کاربران انجام نشد؛ هیچ دسترسی کاربری تغییر نکرد.")
+
+
 class StaffApproval(BaseModel):
     model_config=ConfigDict(extra="forbid")
     tenant_id:str=Field(min_length=36,max_length=36)
