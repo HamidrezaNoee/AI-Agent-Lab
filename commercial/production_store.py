@@ -83,7 +83,15 @@ def verified_scope(con, principal: Principal)->dict:
         raise ProductionAccessDenied("Signed SysAdmin role missing")
     if role not in ("Expert","Manager","SysAdmin"):
         raise ProductionAccessDenied("Unsupported organizational role")
-    return {"pm_uid":str(row[0]).strip(),"name":str(row[1]),
+    from .production_license import ProductionLicenseDenied, signed_entitlement
+    try:
+        license_data=signed_entitlement(
+            con,tenant_id=str(principal.tenant_id),company_name=str(row[4])
+        )
+    except ProductionLicenseDenied as exc:
+        raise ProductionAccessDenied("Signed commercial tenant license missing, invalid or expired") from exc
+    return {"license":license_data,
+            "pm_uid":str(row[0]).strip(),"name":str(row[1]),
             "department":str(row[2]) if row[2] else None,
             "role":role,"company":str(row[4]),
             "tenant_id":str(principal.tenant_id)}
