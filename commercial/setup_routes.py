@@ -273,7 +273,16 @@ def sql_save(body:SqlConfig,session=Depends(_ready)):
     try:
         if str(info[0])!="EnterpriseProcess2" or info[1] is None:
             raise HTTPException(409,"جداول اصلی MTG باید پیش از ذخیره موجود باشند.")
-        setup.put_setting("sql",body.model_dump())
+        current=setup.get_setting("sql") or {}
+        new_setting=body.model_dump()
+        if current.get("writer_password"):
+            if (current.get("server")!=body.server or
+                current.get("trust_server_certificate")!=body.trust_server_certificate):
+                raise HTTPException(409,
+                    "برای تغییر سرور یا سیاست TLS نصب کنترل‌شده SQL را مجدداً اجرا کنید.")
+            new_setting["writer_username"]="AVAN_ConfigWriter"
+            new_setting["writer_password"]=current["writer_password"]
+        setup.put_setting("sql",new_setting)
     finally:con.close()
     return {"saved":True,"database":"EnterpriseProcess2"}
 
