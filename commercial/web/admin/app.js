@@ -209,7 +209,7 @@ async function renderIdentity(m){
  const result=node("div");
  append(p,info("Secretهای داخلی هنگام نصب امن Docker ساخته می‌شوند و هیچ‌وقت در این پنل یا فایل .env به کاربر نمایش داده نمی‌شوند."),result);
  try{
-   const status=await api("identity/status",null,"GET");
+   const status=await api("identity/status");
    append(result,info(status.connected?
       "سرویس هویت داخلی آوان فعال است · Realm: "+status.realm:
       "سرویس هویت داخلی هنوز آماده نیست.",!status.connected));
