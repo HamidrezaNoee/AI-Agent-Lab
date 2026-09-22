@@ -63,14 +63,14 @@ class GodAdminBootTests(unittest.TestCase):
     def test_secret_settings_are_authenticated_and_encrypted_at_rest(self):
         denied=self.client.get("/admin/api/settings")
         self.assertEqual(denied.status_code,401)
-        setup.put_setting("sql",{"server":"host.docker.internal,1433",
-              "database":"EnterpriseProcess2","username":"AVAN_Reader",
+        setup.put_setting("mysql",{"host":"host.docker.internal", "port":3306,
+              "database":"wf_workflow","username":"avan_reader",
               "password":"unique-private-SQL-value",
-              "trust_server_certificate":False})
+              "tls":True})
         self.assertNotIn(b"unique-private-SQL-value",setup.SQLITE.read_bytes())
-        self.assertEqual(setup.get_setting("sql")["password"],
+        self.assertEqual(setup.get_setting("mysql")["password"],
                          "unique-private-SQL-value")
-        self.assertEqual(setup.masked_settings()["sql"]["password"],"********")
+        self.assertEqual(setup.masked_settings()["mysql"]["password"],"********")
 
     def test_initial_login_forces_password_rotation_and_mfa(self):
         response=self.client.post("/admin/api/login",json={
@@ -129,3 +129,4 @@ class GodAdminBootTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+

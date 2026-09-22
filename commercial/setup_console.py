@@ -51,7 +51,7 @@ def _db():
         con.close()
 
 def _hash(password:str,salt:bytes)->bytes:
-    return hashlib.scrypt(password.encode("utf-8"),salt=salt,n=2**15,r=8,p=1,dklen=32)
+    return hashlib.scrypt(password.encode("utf-8"),salt=salt,n=2**15,r=8,p=1,dklen=32,maxmem=64*1024*1024)
 
 def initialize():
     ROOT.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -119,7 +119,7 @@ def _unseal(name:str,blob:bytes)->dict:
     return json.loads(AESGCM(KEYFILE.read_bytes()).decrypt(blob[:12],blob[12:],name.encode()).decode())
 
 def put_setting(name:str,value:dict):
-    if name not in ("installation","sql","oidc","processmaker","company","license"):
+    if name not in ("installation","mysql","oidc","processmaker","company","license","ai","agent_sql","agent_sql_pending"):
         raise SetupError("Unsupported setup setting")
     enc=_seal(name,value)
     with _db() as con:
@@ -200,9 +200,9 @@ def confirm_totp(code:str):
 
 def masked_settings()->dict:
     result={}
-    for name in ("sql","processmaker","company"):
+    for name in ("mysql","agent_sql","processmaker","company","ai"):
         data=get_setting(name) or {}
-        result[name]={k:("********" if (k in ("password","client_secret","bearer_token")
+        result[name]={k:("********" if (k in ("password","client_secret","bearer_token","api_key")
                                        or k.endswith("_password") or k.endswith("_secret"))
                                   and v else v)
                       for k,v in data.items()}
@@ -264,4 +264,5 @@ if __name__=="__main__":
         reset_from_docker_host()
     else:
         raise SystemExit("Usage: python -m commercial.setup_console --take-bootstrap")
+
 

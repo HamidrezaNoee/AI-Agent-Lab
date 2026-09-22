@@ -1,9 +1,6 @@
-"""Operational AVAN application: external OIDC BFF -> read-only MTG reporting.
-
-This is NOT commercial.demo_preview or commercial.api. No synthetic dataset,
-old /v1 endpoints, raw JWT in JavaScript, local passwords or database writes.
-A customer-visible page is served only after external IdP login; ALL meeting
-records are checked against the current signed identity + AVAN.UserAccess.
+"""Operational AVAN: OIDC + SQL-authorized meeting analysis and secretary drafts.
+MTG stays read-only. AI tools receive freshly authorized bounded snapshots;
+local review drafts and monitoring observations are encrypted and audited.
 """
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
@@ -20,7 +17,6 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .meeting_questions import answer_question, _intent
 from .production_store import (
     EmployeeMappingRequired, ProductionAccessDenied, ProductionUnavailable,
     authorized_meetings_page, authorized_meeting_snapshot, open_production,
@@ -42,7 +38,7 @@ PROD_QUESTIONS=(
     "عملکرد واحدها در اجرای مصوبات چگونه بوده است؟",
     "کدام مدیر یا واحد بیشترین اقدامات باز را دارد؟",
     "اقدامات جلسه شماره مشخص در چه وضعیتی هستند؟",
-    "مهم‌ترین ریسک‌های ثبت‌شده در جلسات اخیر چیست؟",
+    "مهم‌ترین ریسک‌های قابل مشاهده در جلسات اخیر چیست؟",
     "چه موضوعاتی در جلسات مختلف به‌صورت مکرر مطرح شده‌اند؟",
     "برای جلسه آینده چه مواردی باید در دستور جلسه قرار گیرد؟",
 )
@@ -56,7 +52,15 @@ async def production_lifespan(_app):
     # First Docker start therefore succeeds without .env or live credentials.
     from .setup_console import initialize
     initialize()
-    yield
+    import asyncio
+    from .agent_routes import monitor_worker
+    task=asyncio.create_task(monitor_worker())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:await task
+        except asyncio.CancelledError:pass
 
 
 app=FastAPI(title="AVAN",docs_url=None,redoc_url=None,openapi_url=None,
@@ -159,7 +163,7 @@ def health():
 @app.get("/")
 def home():
     from .setup_console import get_setting
-    if not get_setting("sql") or not get_setting("oidc"):
+    if not get_setting("mysql") or not get_setting("agent_sql") or not get_setting("oidc"):
         return RedirectResponse("/admin/",status_code=303)
     return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
 
@@ -312,7 +316,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         # Do not expose SQL exception strings, bearer tokens, user information
         # or operational table names through public identity endpoints.
         raise HTTPException(status_code=503,
-            detail="در بررسی دسترسی SQL آوان خطای داخلی رخ داد؛ وضعیت ساختار بانک و مجوز AVAN_Reader را در GodAdmin بررسی کنید.")
+            detail="دسترسی به داده‌های ProcessMaker تأیید نشد؛ اتصال MySQL و نگاشت کاربر را در GodAdmin بررسی کنید.")
 
     _purge()
     if len(sessions)>5000:
@@ -423,30 +427,12 @@ def meetings(value=Depends(_authorized),
     return _store_response(read,principal)
 
 
-class Question(BaseModel):
-    model_config=ConfigDict(extra="forbid")
-    question:str=Field(min_length=3,max_length=350)
-
-
-def _month_start(now_utc:datetime)->datetime:
-    # Operational MTG DATETIME2 is assumed company-local Asia/Tehran.
-    # The SQL deployment guide requires verifying this before enabling.
-    import jdatetime
-    from zoneinfo import ZoneInfo
-    tz=ZoneInfo(os.getenv("AVAN_DATA_TIMEZONE","Asia/Tehran"))
-    local=now_utc.astimezone(tz)
-    jalali=jdatetime.datetime.fromgregorian(datetime=local)
-    gregorian=jdatetime.date(jalali.year,jalali.month,1).togregorian()
-    return datetime(gregorian.year,gregorian.month,gregorian.day,
-                    tzinfo=tz).astimezone(timezone.utc)
-
-
 def _normalise_dates(records:list[dict])->None:
     from zoneinfo import ZoneInfo
     tz=ZoneInfo(os.getenv("AVAN_DATA_TIMEZONE","Asia/Tehran"))
     for m in records:
         for obj,key in [(m,"meeting_date_utc")]+[
-            (a,"due_at_utc") for a in m["actions"]
+            (a,key) for a in m["actions"] for key in ("due_at_utc","last_submission_at_utc","created_at_utc","closed_at_utc")
         ]:
             raw=obj.get(key)
             if raw is None:continue
@@ -455,35 +441,12 @@ def _normalise_dates(records:list[dict])->None:
             obj[key]=date.astimezone(timezone.utc).isoformat()
 
 
-@app.post("/api/ask")
-def ask(body:Question,value=Depends(_csrf)):
-    _,_,principal=value
-    def compute(con,scope):
-        intent=_intent(body.question)
-        required={
-            "overdue_actions":4,"next_agenda":2,
-            "monthly_unresolved":3,"unit_performance":3,
-            "owner_backlog":3,"risks":3,"recurring":3,
-        }.get(intent,1)
-        if required not in scope["license"]["modules"]:
-            raise ProductionAccessDenied("Purchased module not enabled")
-        rows,complete=authorized_meeting_snapshot(con,scope)
-        _normalise_dates(rows)
-        now=datetime.now(timezone.utc)
-        answer=answer_question(
-            body.question,rows,now=now,data_scope="MTG operational records "
-            "visible under verified organization access",
-            coverage_complete=complete,
-            month_start_utc=_month_start(now),
-            calendar_label="شمسی به وقت تهران",
-        )
-        answer["company"]=scope["company"]
-        answer["role"]=scope["role"]
-        answer["read_only"]=True
-        if answer["intent"]=="risks":
-            answer["notes"].append(
-              "جدول MTG.Meeting فیلد ریسک ساختاریافته ندارد. "
-              "ParkingLot ریسک تلقی نمی‌شود و به جای آن گزارش نشده است."
-            )
-        return answer
-    return _store_response(compute,principal)
+from .agent_routes import register as register_agent_routes
+register_agent_routes(app,_authorized,_csrf)
+
+
+from .agent_storage import AgentStorageUnavailable
+
+@app.exception_handler(AgentStorageUnavailable)
+async def agent_storage_unavailable(request,exc):
+    return JSONResponse(status_code=503,content={'detail':'بانک اختصاصی Agent در دسترس نیست؛ تنظیمات SQL Server آوان بررسی شود.'})

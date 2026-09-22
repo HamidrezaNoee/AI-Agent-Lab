@@ -24,23 +24,11 @@ def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
         raise ProductionLicenseDenied("Installation fingerprint not configured")
     if not public.is_file() or public.stat().st_size>10000:
         raise ProductionLicenseDenied("Pinned publisher public key unavailable")
-    cur=con.cursor()
-    # An activated license is stored in the encrypted independent AVAN
-    # control-plane. Existing centrally DBA-installed license remains a
-    # read-only fallback. No DB writes or service account privilege escalation.
-    local=get_setting("license") or {}
-    token=(local.get("token") if local.get("tenant_id")==tenant_id else None)
-    if not token:
-        cur.execute("SELECT LicenseToken FROM AVAN.License WHERE TenantID=?",tenant_id)
-        row=cur.fetchone()
-        token=str(row[0]) if row and row[0] else None
-    if not token:
-        raise ProductionLicenseDenied("No signed tenant license")
-    cur.execute("""
-        SELECT COUNT_BIG(*) FROM AVAN.UserAccess
-        WHERE TenantID=? AND IsEnabled=1 AND PMIsActive=1
-    """,tenant_id)
-    used=int(cur.fetchone()[0])
+    from .native_access import seats
+    local=get_setting('license') or {}
+    token=local.get('token') if local.get('tenant_id')==tenant_id else None
+    if not token:raise ProductionLicenseDenied('No signed tenant license')
+    used=seats(tenant_id)
     try:
         payload=verify_license(
             token,public.read_bytes(),tenant_id=tenant_id,
@@ -57,3 +45,4 @@ def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
         "expires_at":payload["expires_at"],
         "license_id":payload["license_id"],
     }
+

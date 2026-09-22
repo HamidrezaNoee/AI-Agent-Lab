@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Live EnterpriseProcess2 service. No demo-preview server/dataset/legacy API.
+# Live ProcessMaker/MySQL service. No demo-preview server/dataset/legacy API.
 FROM python:3.13-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -26,24 +26,32 @@ RUN python -m pip install --no-cache-dir -r /app/requirements.txt \
 COPY --chown=10001:10001 commercial/__init__.py /app/commercial/__init__.py
 COPY --chown=10001:10001 commercial/security.py /app/commercial/security.py
 COPY --chown=10001:10001 commercial/meeting_questions.py /app/commercial/meeting_questions.py
+COPY --chown=10001:10001 commercial/processmaker_store.py /app/commercial/processmaker_store.py
+COPY --chown=10001:10001 commercial/native_access.py /app/commercial/native_access.py
 COPY --chown=10001:10001 commercial/production_store.py /app/commercial/production_store.py
 COPY --chown=10001:10001 commercial/production_license.py /app/commercial/production_license.py
 COPY --chown=10001:10001 commercial/licensing/codec.py /app/commercial/licensing/codec.py
 COPY --chown=10001:10001 commercial/licensing/publisher-key.sha256 /app/commercial/licensing/publisher-key.sha256
-COPY --chown=10001:10001 commercial/production_install.py /app/commercial/production_install.py
 COPY --chown=10001:10001 commercial/production_onboarding.py /app/commercial/production_onboarding.py
 COPY --chown=10001:10001 commercial/pending_identities.py /app/commercial/pending_identities.py
 COPY --chown=10001:10001 commercial/processmaker_directory.py /app/commercial/processmaker_directory.py
-COPY --chown=10001:10001 commercial/sql/PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql /app/commercial/sql/PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql
-COPY --chown=10001:10001 commercial/sql/PRODUCTION_EnterpriseProcess2_02_reader_grants.sql /app/commercial/sql/PRODUCTION_EnterpriseProcess2_02_reader_grants.sql
-COPY --chown=10001:10001 commercial/sql/PRODUCTION_EnterpriseProcess2_05_config_writer_grants.sql /app/commercial/sql/PRODUCTION_EnterpriseProcess2_05_config_writer_grants.sql
 COPY --chown=10001:10001 commercial/setup_console.py /app/commercial/setup_console.py
 COPY --chown=10001:10001 commercial/setup_routes.py /app/commercial/setup_routes.py
 COPY --chown=10001:10001 commercial/production_app.py /app/commercial/production_app.py
 COPY --chown=10001:10001 commercial/web/admin/ /app/commercial/web/admin/
 COPY --chown=10001:10001 commercial/web/production/ /app/commercial/web/production/
+COPY --chown=10001:10001 commercial/agent_tools.py /app/commercial/agent_tools.py
+COPY --chown=10001:10001 commercial/meeting_agent.py /app/commercial/meeting_agent.py
+COPY --chown=10001:10001 commercial/agent_state.py /app/commercial/agent_state.py
+COPY --chown=10001:10001 commercial/secretary_agent.py /app/commercial/secretary_agent.py
+COPY --chown=10001:10001 commercial/agent_routes.py /app/commercial/agent_routes.py
+COPY --chown=10001:10001 commercial/product_state.py /app/commercial/product_state.py
+COPY --chown=10001:10001 commercial/agent_storage.py /app/commercial/agent_storage.py
+COPY --chown=10001:10001 commercial/agent_install.py /app/commercial/agent_install.py
+COPY --chown=10001:10001 commercial/sql/AVANAgent_01_schema.sql /app/commercial/sql/AVANAgent_01_schema.sql
 USER 10001:10001
 EXPOSE 8188
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
  CMD python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8188/health',timeout=3); assert r.status==200" || exit 1
 CMD ["python","-m","uvicorn","commercial.production_app:app","--host","0.0.0.0","--port","8188","--workers","1","--no-proxy-headers"]
+

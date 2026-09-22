@@ -1,5 +1,5 @@
 "use strict";
-const state={csrf:null,user:null,settings:null,stage:"login",page:"sql"};
+const state={csrf:null,user:null,settings:null,stage:"login",page:"agentdb"};
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n}
 function append(parent,...items){for(const item of items.flat())if(item!==null&&item!==undefined)parent.append(item);return parent}
@@ -118,8 +118,8 @@ function showTotpEnroll(){
 }
 
 const menu=[
- ["install","نصب بانک اطلاعاتی"],["sql","اتصال SQL Server"],["company","اطلاعات سازمان"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
- ["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
+ ["agentdb","بانک اختصاصی Agent"],["mysql","داده‌های ProcessMaker"],["company","اطلاعات سازمان"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
+ ["ai","هوش مصنوعی"],["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
 ];
 async function showSettings(page=state.page){
  const settings=await api("settings");state.settings=settings;state.page=page;
@@ -131,104 +131,34 @@ async function showSettings(page=state.page){
  append(tabs,btn("خروج امن",async()=>{
    try{await api("logout",{})}catch{}state.csrf=null;await start()
  },"secondary"));append(m,tabs);
- if(page==="install")renderInstall(m,settings.sql||{});
- else if(page==="sql")renderSql(m,settings.sql||{});
+ if(page==="agentdb")renderAgentDatabase(m,settings.agent_sql||{});
+ else if(page==="mysql")renderMysql(m,settings.mysql||{});
  else if(page==="company")await renderCompany(m);
  else if(page==="identity")await renderIdentity(m);
  else if(page==="processmaker")renderPm(m,settings.processmaker||{});
+ else if(page==="ai")renderAI(m,settings.ai||{});
  else if(page==="license")renderLicense(m,settings);
  else if(page==="users")await renderUsers(m);
  else await renderCompany(m);
 }
-function renderInstall(m,config){
- const p=panel("راه‌اندازی کنترل‌شده بانک اصلی",
-   "این مرحله جداول جدید AVAN و حساب SQL فقط‌خواندنی را در EnterpriseProcess2 اضافه می‌کند؛ جداول MTG و داده‌های جلسات تغییر نمی‌کنند.");
- append(p,info("قبل از اجرا از بانک EnterpriseProcess2 نسخه پشتیبان سالم و قابل بازیابی تهیه و توسط DBA تأیید کن. اگر ساختار MTG با انتظار برنامه تفاوت دارد، اجرای مهاجرت متوقف خواهد شد."));
+function renderMysql(m,config){
+ const p=panel("داده‌های ProcessMaker", "اتصال فقط‌خواندنی به MySQL فرایندها؛ اطلاعات جلسه در خود ProcessMaker نگهداری می‌شود.");
  const f=node("form","grid");
- append(f,field("نشانی و پورت SQL Server","server",config.server||"host.docker.internal,1433"),
-   field("حساب DBA با مجوز اجرای مهاجرت","dba_username",""),
-   field("رمز موقت اتصال DBA؛ ذخیره نمی‌شود","dba_password","",{secret:true}),
-   field("اعتماد به گواهی داخلی SQL Server: yes یا no","trust_server_certificate",
-      config.trust_server_certificate?"yes":"no"));
- const backup=node("label","full"),checked=node("input");
- checked.type="checkbox";checked.name="backup_confirmed";checked.required=true;
- append(backup,checked,node("span","","تهیه نسخه پشتیبان قابل بازیابی از بانک اصلی توسط DBA تأیید شده است."));
- append(f,backup,field("برای تأیید نهایی نام بانک را عیناً وارد کن","confirmation","",
-   {placeholder:"EnterpriseProcess2"}),field(
-   "رمز حساب AVAN_Reader (فقط اگر این حساب قبلاً ساخته شده است)","existing_reader_password","",{secret:true,required:false}),
-   field("رمز حساب AVAN_ConfigWriter (فقط اگر این حساب قبلاً ساخته شده است)",
-     "existing_writer_password","",{secret:true,required:false}));
- const actions=node("div","actions full"),result=node("div","full");
- let inventoryDone=false;
- function data(){
-  return {server:formValue(f,"server"),dba_username:formValue(f,"dba_username"),
-   dba_password:formValue(f,"dba_password"),
-   trust_server_certificate:formValue(f,"trust_server_certificate").toLowerCase()==="yes"};
- }
- async function inventory(){
-  busy(f,true);result.replaceChildren();inventoryDone=false;
-  try{
-   const report=await api("sql/inventory",data());
-   inventoryDone=report.required_columns_missing.length===0 && report.has_server_dba_permission;
-   append(result,info("بانک: "+report.database+" · ساختار AVAN: "+
-      (report.avan_tables_present?"ایجاد شده":"نیازمند نصب")+
-      " · مجوز DBA: "+(report.has_server_dba_permission?"تأیید شده":"کافی نیست")));
-   if(report.required_columns_missing.length)append(result,info(
-       "اختلاف ساختار MTG: "+report.required_columns_missing.join("، "),true));
-   else append(result,info("ستون‌های الزامی MTG موجودند؛ پس از تأیید نسخه پشتیبان می‌توان مهاجرت افزودنی را اجرا کرد."));
-  }catch(err){showError(result,err)}finally{busy(f,false)}
- }
- async function install(){
-  result.replaceChildren();
-  if(!inventoryDone){append(result,info("ابتدا ساختار بانک و سطح دسترسی DBA را بررسی کن.",true));return}
-  if(!checked.checked||formValue(f,"confirmation")!=="EnterpriseProcess2"){
-   append(result,info("تأیید نسخه پشتیبان و ورود نام دقیق بانک الزامی است.",true));return
-  }
-  if(!confirm("مهاجرت افزودنی AVAN و ایجاد یا اعطای مجوز حساب AVAN_Reader روی EnterpriseProcess2 اجرا شود؟"))return;
-  busy(f,true);
-  try{
-   const body={...data(),backup_confirmed:true,
-      confirmation:formValue(f,"confirmation"),
-      existing_reader_password:formValue(f,"existing_reader_password")||null,
-      existing_writer_password:formValue(f,"existing_writer_password")||null};
-   const output=await api("sql/prepare",body);
-   f.reset();inventoryDone=false;
-   append(result,info(output.dedicated_reader_ready?
-      "ساختار AVAN و حساب صرفاً خواندنی ایجاد/تأیید شد و اطلاعات اتصال به شکل رمزگذاری‌شده داخل آوان ذخیره شد.":
-      "نتیجه مهاجرت قطعی نیست؛ جزییات سرور را بررسی کن."));
-  }catch(err){showError(result,err)}finally{busy(f,false)}
- }
- append(actions,btn("۱. بررسی اختلاف بانک",inventory,"secondary"),
-   btn("۲. اجرای نصب بعد از تأیید پشتیبان",install));
- append(f,actions,result);append(p,f);append(m,p);
-}
-function renderSql(m,config){
- const p=panel("اتصال بانک اطلاعاتی جلسات",
-   "بانک عملیاتی EnterpriseProcess2 · حساب SQL فقط‌خواندنی AVAN_Reader. اجرای این بخش هیچ جدول یا مصوبه‌ای را تغییر نمی‌دهد.");
- const form=node("form","grid");
- append(form,field("نشانی SQL Server و پورت","server",config.server||"host.docker.internal,1433"),
-   field("نام دیتابیس","database","EnterpriseProcess2",{required:true}),
-   field("نام کاربری SQL","username","AVAN_Reader"),
-   field("رمز عبور حساب SQL (هنگام ذخیره دوباره وارد شود)","password","",{secret:true}),
-   field("تأیید گواهی SQL Server","trust_server_certificate",
-     config.trust_server_certificate?"yes":"no",{placeholder:"no یا yes"}));
- const out=node("div","full");
- const actions=node("div","actions full");
- const body=()=>({server:formValue(form,"server"),database:formValue(form,"database"),
-   username:formValue(form,"username"),password:formValue(form,"password"),
-   trust_server_certificate:formValue(form,"trust_server_certificate").toLowerCase()==="yes"});
+ append(f,field("نشانی MySQL","host",config.host||"host.docker.internal"),
+  field("پورت","port",String(config.port||3306)),field("بانک Workspace","database",config.database||"wf_workflow"),
+  field("کاربر فقط‌خواندنی","username",config.username||"avan_reader"),
+  field("رمز اتصال","password","",{secret:true}),field("اتصال TLS: yes یا no","tls",config.tls===false?"no":"yes"),field("گواهی CA داخلی MySQL (PEM، اختیاری)","ca_pem",config.ca_pem||"",{required:false}),field("منطقه زمانی ثبت تاریخ در ProcessMaker","timezone",config.timezone||"Asia/Tehran"));
+ const out=node("div","full"),actions=node("div","actions full");
  async function execute(action){
-   out.replaceChildren();busy(form,true);
-   try{const result=await api("sql/"+action,body());append(out,
-     info(action==="check"?"اتصال برقرار است؛ وضعیت ساختار AVAN: "+(result.avan_schema_present?"موجود":"هنوز ایجاد نشده"):
-       "اتصال بانک با موفقیت در تنظیمات امن آوان ثبت شد."));
-   }catch(err){showError(out,err)}finally{busy(form,false)}
+  busy(f,true);out.replaceChildren();
+  try{await api("mysql/"+action,{host:formValue(f,"host"),port:Number(formValue(f,"port")),
+    database:formValue(f,"database"),username:formValue(f,"username"),password:formValue(f,"password"),tls:formValue(f,"tls").toLowerCase()==="yes",ca_pem:formValue(f,"ca_pem"),timezone:formValue(f,"timezone")});
+    append(out,info(action==="save"?"تنظیمات اتصال ذخیره شد.":"اتصال و وجود هر دو فرایند تأیید شد."));
+    if(action==="save")f.querySelector('[name="password"]').value="";
+  }catch(e){showError(out,e)}finally{busy(f,false)}
  }
- append(actions,btn("بررسی اتصال",()=>execute("check"),"secondary"),
-   btn("ذخیره تنظیمات اتصال",()=>execute("save")));
- append(form,actions,out);append(p,form,
-   info("اگر ساختار AVAN هنوز وجود ندارد، فایل مهاجرت افزودنی بانک اصلی باید با مجوز DBA و نسخه پشتیبان تأییدشده اعمال شود. اطلاعات DBA در آوان ذخیره نمی‌شود."));
- append(m,p);
+ append(actions,btn("بررسی اتصال",()=>execute("check"),"secondary"),btn("ذخیره اتصال",()=>execute("save")));
+ append(f,actions,out);append(p,f);append(m,p);
 }
 async function renderIdentity(m){
  const p=panel("هویت سازمانی آوان",
@@ -288,7 +218,7 @@ function renderLicense(m,settings){
  const licenseForm=node("form");
  const licenseResult=node("div");
  append(licenseForm,
-   field("شناسه UUID سازمانِ تأییدشده در EnterpriseProcess2","tenant_id",""),
+   field("شناسه UUID سازمانِ تأییدشده در آوان","tenant_id",""),
    field("متن لایسنس امضاشده ناشر","token","",{multiline:true}),
    node("button","","بررسی و فعال‌سازی لایسنس"),licenseResult);
  licenseForm.addEventListener("submit",async e=>{
@@ -413,3 +343,46 @@ async function renderCompany(m){
 }
 
 document.addEventListener("DOMContentLoaded",start);
+
+
+function renderAI(m,config){
+ const p=panel("اتصال هوش مصنوعی","تحلیل فقط روی داده‌های مجاز انجام می‌شود. با فعال‌سازی، پرسش و بخش‌های مرتبط سوابق برای پردازش به OpenAI ارسال می‌شوند.");
+ const f=node("form"),out=node("div");f.addEventListener("submit",e=>e.preventDefault());
+ const enabled=node("input");enabled.type="checkbox";enabled.checked=!!config.enabled;
+ const label=node("label");append(label,enabled,node("span","","فعال‌سازی دستیار هوشمند"));
+ append(f,label,field("نام مدل","model",config.model||"gpt-4.1-mini"),
+  field("کلید API؛ برای حفظ کلید قبلی خالی بگذارید","api_key","",{type:"password"}));
+ append(f,btn("ذخیره تنظیمات",async()=>{
+  busy(f,true);try{await api("ai/save",{enabled:enabled.checked,model:formValue(f,"model"),api_key:formValue(f,"api_key")});
+   f.elements.namedItem("api_key").value="";out.replaceChildren(info("تنظیمات ذخیره شد."));
+  }catch(e){showError(out,e)}finally{busy(f,false)}
+ }),btn("بررسی اتصال ذخیره‌شده",async()=>{
+  busy(f,true);try{const r=await api("ai/check",{});out.replaceChildren(info("اتصال و دسترسی به مدل "+r.model+" تأیید شد. اجرای تحلیل از صفحه دستیار انجام می‌شود."))}
+  catch(e){showError(out,e)}finally{busy(f,false)}
+ },"secondary"),out);append(p,f);append(m,p);
+}
+
+function renderAgentDatabase(m,config){
+ const p=panel("SQL Server اختصاصی آوان", "بانک AVANAgent برای دسترسی کاربران، پیش‌نویس‌ها، سوابق Agent و پایش است. اطلاعات اصلی جلسه از ProcessMaker خوانده می‌شود.");
+ const f=node("form","grid");
+ append(f,field("نشانی SQL Server","server",config.server||"host.docker.internal,1433"),
+ field("رمز حساب AVAN_AgentApp برای اتصال موجود","password","",{secret:true,required:false}),
+ field("اعتماد به گواهی داخلی: yes یا no","trust",config.trust_server_certificate?"yes":"no"));
+ const out=node("div","full"),actions=node("div","actions full");
+ const base=()=>({server:formValue(f,"server"),trust_server_certificate:formValue(f,"trust").toLowerCase()==="yes"});
+ async function connect(action){
+  busy(f,true);out.replaceChildren();
+  try{await api("agent-db/"+action,{...base(),database:"AVANAgent",username:"AVAN_AgentApp",password:formValue(f,"password")});append(out,info(action==="save"?"اتصال بانک اختصاصی ذخیره شد.":"اتصال بانک اختصاصی تأیید شد."));}
+  catch(e){showError(out,e)}finally{busy(f,false)}
+ }
+ append(actions,btn("بررسی اتصال موجود",()=>connect("check"),"secondary"),btn("ذخیره اتصال موجود",()=>connect("save")));
+ append(f,actions,field("حساب مدیر SQL برای نصب اولیه","install_user","",{required:false}),
+ field("رمز مدیر SQL؛ ذخیره نمی‌شود","install_password","",{secret:true,required:false}),
+ field("برای ساخت بانک اختصاصی، AVANAgent را وارد کنید","confirmation","",{required:false}));
+ append(f,btn("ساخت و اتصال بانک AVANAgent",async()=>{
+  busy(f,true);out.replaceChildren();
+  try{await api("agent-db/prepare",{...base(),username:formValue(f,"install_user"),password:formValue(f,"install_password"),confirmation:formValue(f,"confirmation")});
+   append(out,info("بانک و حساب محدود Agent آماده و تنظیمات اتصال ذخیره شدند."));
+  }catch(e){showError(out,e)}finally{f.querySelector('[name="install_password"]').value="";busy(f,false)}
+ }),out);append(p,f);append(m,p);
+}

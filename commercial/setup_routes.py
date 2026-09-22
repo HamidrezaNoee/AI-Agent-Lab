@@ -108,7 +108,7 @@ def state(request:Request):
             "mfa_enrolled":p["totp"],
             "mfa_authenticated":bool(session and session.get("mfa")),
             "csrf":session["csrf"] if session else None,
-            "configured":bool(setup.get_setting("sql") and setup.get_setting("oidc"))}
+            "configured":bool(setup.get_setting("mysql") and setup.get_setting("agent_sql") and setup.get_setting("oidc"))}
 
 class Login(BaseModel):
     model_config=ConfigDict(extra="forbid")
@@ -227,105 +227,42 @@ def settings(session=Depends(_ready)):
     return setup.masked_settings()
 
 
-class DbaConnection(BaseModel):
-    model_config=ConfigDict(extra="forbid")
-    server:str=Field(min_length=1,max_length=250)
-    dba_username:str=Field(min_length=1,max_length=128)
-    dba_password:str=Field(min_length=1,max_length=512)
-    trust_server_certificate:bool=False
+class MySQLConfig(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    host:str=Field(min_length=1,max_length=253,pattern=r'^[A-Za-z0-9_.:-]+$')
+    port:int=Field(default=3306,ge=1,le=65535)
+    database:str=Field(default='wf_workflow',pattern=r'^wf_[A-Za-z0-9_]{1,48}$')
+    username:str=Field(min_length=1,max_length=128)
+    password:str=Field(min_length=1,max_length=512)
+    tls:bool=True
+    ca_pem:str=Field(default='',max_length=16000)
+    timezone:str=Field(default='Asia/Tehran',max_length=80)
 
-class MigrationRequest(DbaConnection):
-    backup_confirmed:bool=False
-    confirmation:str=Field(max_length=100)
-    existing_reader_password:str|None=Field(default=None,max_length=255)
-    existing_writer_password:str|None=Field(default=None,max_length=255)
 
-@router.post("/api/sql/inventory")
-def sql_inventory(body:DbaConnection,session=Depends(_ready)):
-    from .production_install import InstallationDenied,inspect
-    try:return inspect(body.server,body.dba_username,body.dba_password,
-                       body.trust_server_certificate)
-    except InstallationDenied:
-        raise HTTPException(503,"بررسی ساختار SQL ناموفق بود؛ اطلاعات DBA، شبکه یا ساختار بانک را بررسی کنید.")
-
-@router.post("/api/sql/prepare")
-def sql_prepare(body:MigrationRequest,session=Depends(_ready)):
-    from .production_install import InstallationDenied,apply
+def _mysql_check(body):
+    from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
+    try:ZoneInfo(body.timezone)
+    except (ZoneInfoNotFoundError,ValueError):raise HTTPException(422,"منطقه زمانی ProcessMaker معتبر نیست.")
+    from .processmaker_store import open_production,query,ProductionUnavailable,MEETING_PROCESS,ACTION_PROCESS
     try:
-        return apply(server=body.server,username=body.dba_username,
-            password=body.dba_password,
-            trust_certificate=body.trust_server_certificate,
-            backup_confirmed=body.backup_confirmed,
-            confirmation=body.confirmation,
-            reader_existing_password=body.existing_reader_password,
-            writer_existing_password=body.existing_writer_password)
-    except InstallationDenied as exc:
-        # Only safe, predefined error messages (never driver strings, SQL
-        # credentials, connection strings, user SQL or raw stack traces).
-        raise HTTPException(409,str(exc))
+        with open_production(body.model_dump()) as con:
+            # Inspect only schema/metadata; never print connection details.
+            query(con,'SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA FROM APPLICATION LIMIT 0')
+            query(con,'SELECT u.USR_UID,u.USR_FIRSTNAME,u.USR_LASTNAME,u.USR_EMAIL,u.USR_STATUS,d.DEP_TITLE FROM USERS u LEFT JOIN DEPARTMENT d ON d.DEP_UID=u.DEP_UID LIMIT 0')
+            rows=query(con,'SELECT PRO_UID FROM PROCESS WHERE PRO_UID IN (%s,%s)',(MEETING_PROCESS,ACTION_PROCESS))
+            if len(rows)!=2:raise ProductionUnavailable('Both meeting processes must be imported')
+        return {'connected':True,'source':'ProcessMaker/MySQL','read_only':True}
+    except ProductionUnavailable:raise HTTPException(503,'اتصال فقط‌خواندنی MySQL یا دو فرایند جلسه قابل تأیید نیست.')
 
+@router.post('/api/mysql/check')
+def mysql_check(body:MySQLConfig,session=Depends(_ready)):
+    return _mysql_check(body)
 
-class SqlConfig(BaseModel):
-    model_config=ConfigDict(extra="forbid")
-    server:str=Field(min_length=1,max_length=250)
-    database:str="EnterpriseProcess2"
-    username:str="AVAN_Reader"
-    password:str=Field(min_length=1,max_length=255)
-    trust_server_certificate:bool=False
-
-def _sql_connect(body:SqlConfig):
-    if body.database!="EnterpriseProcess2" or body.username.casefold()!="avan_reader":
-        raise HTTPException(422,"فقط EnterpriseProcess2 و حساب AVAN_Reader مجاز است.")
-    if any(c in body.server for c in ";{}\x00\r\n") or not body.server.strip():
-        raise HTTPException(422,"نام SQL Server معتبر نیست.")
-    from .production_store import _value
-    import pyodbc
-    try:
-        con=pyodbc.connect(
-            "DRIVER={ODBC Driver 17 for SQL Server};"+
-            "SERVER="+_value(body.server)+";DATABASE=EnterpriseProcess2;"+
-            "UID={AVAN_Reader};PWD="+_value(body.password)+";"+
-            "Encrypt=yes;TrustServerCertificate="+
-            ("yes" if body.trust_server_certificate else "no")+";Connection Timeout=8;",
-            timeout=8,autocommit=True,
-        )
-        cur=con.cursor()
-        cur.execute("SELECT DB_NAME(),OBJECT_ID(N'MTG.Meeting',N'U'),OBJECT_ID(N'AVAN.UserAccess',N'U')")
-        info=cur.fetchone()
-        return con,info
-    except Exception:
-        raise HTTPException(503,
-            "اتصال SQL برقرار نشد. حساب محدود، پورت، گواهی TLS و اسکریپت‌های دیتابیس بررسی شوند.")
-
-@router.post("/api/sql/check")
-def sql_check(body:SqlConfig,session=Depends(_ready)):
-    con,info=_sql_connect(body)
-    try:
-        if str(info[0])!="EnterpriseProcess2" or info[1] is None:
-            raise HTTPException(409,"ساختار جداول MTG در بانک مورد انتظار وجود ندارد.")
-        return {"connected":True,"database":str(info[0]),
-                "mtg_present":info[1] is not None,
-                "avan_schema_present":info[2] is not None}
-    finally:con.close()
-
-@router.post("/api/sql/save")
-def sql_save(body:SqlConfig,session=Depends(_ready)):
-    con,info=_sql_connect(body)
-    try:
-        if str(info[0])!="EnterpriseProcess2" or info[1] is None:
-            raise HTTPException(409,"جداول اصلی MTG باید پیش از ذخیره موجود باشند.")
-        current=setup.get_setting("sql") or {}
-        new_setting=body.model_dump()
-        if current.get("writer_password"):
-            if (current.get("server")!=body.server or
-                current.get("trust_server_certificate")!=body.trust_server_certificate):
-                raise HTTPException(409,
-                    "برای تغییر سرور یا سیاست TLS نصب کنترل‌شده SQL را مجدداً اجرا کنید.")
-            new_setting["writer_username"]="AVAN_ConfigWriter"
-            new_setting["writer_password"]=current["writer_password"]
-        setup.put_setting("sql",new_setting)
-    finally:con.close()
-    return {"saved":True,"database":"EnterpriseProcess2"}
+@router.post('/api/mysql/save')
+def mysql_save(body:MySQLConfig,session=Depends(_ready)):
+    result=_mysql_check(body)
+    setup.put_setting('mysql',body.model_dump())
+    return {**result,'saved':True}
 
 
 class CompanyConfig(BaseModel):
@@ -514,14 +451,11 @@ def activate_license(body:LicenseActivation,session=Depends(_ready)):
         raise HTTPException(503,"ابتدا کلید عمومی معتبر ناشر باید نصب شود.")
     installation=(setup.get_setting("installation") or {}).get("installation_id","")
     try:
-        with open_production() as con:
-            cur=con.cursor()
-            cur.execute("SELECT CompanyName FROM AVAN.Tenant WHERE TenantID=? AND IsEnabled=1",tenant_id)
-            tenant=cur.fetchone()
-            if tenant is None:raise HTTPException(404,"سازمان فعال با این شناسه ثبت نشده است.")
-            cur.execute("""SELECT COUNT_BIG(*) FROM AVAN.UserAccess
-                           WHERE TenantID=? AND IsEnabled=1 AND PMIsActive=1""",tenant_id)
-            used=int(cur.fetchone()[0])
+        from . import native_access
+        data=native_access.read()
+        if data['tenant_id']!=tenant_id:raise HTTPException(404,'سازمان فعال با این شناسه ثبت نشده است.')
+        tenant=(data['company_name'],)
+        used=native_access.seats(tenant_id)
         payload=verify_license(body.token,setup.PUBLIC.read_bytes(),
             tenant_id=tenant_id,installation_id=installation,
             active_users=used)
@@ -536,3 +470,74 @@ def activate_license(body:LicenseActivation,session=Depends(_ready)):
     except ProductionUnavailable:
         raise HTTPException(503,"اتصال امن به بانک عملیاتی برقرار نیست.")
 
+
+
+
+class AIConfig(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    enabled:bool=False
+    model:str=Field(default='gpt-4.1-mini',min_length=1,max_length=100,pattern=r'^[a-zA-Z0-9_.:-]+$')
+    api_key:str=Field(default='',max_length=1024)
+
+
+@router.post('/api/ai/save')
+def ai_save(body:AIConfig,session=Depends(_ready)):
+    config=body.model_dump()
+    previous=setup.get_setting('ai') or {}
+    if not config['api_key'] or config['api_key']=='********':config['api_key']=previous.get('api_key','')
+    if config['enabled'] and len(config['api_key'].strip())<16:
+        raise HTTPException(422,'کلید API معتبر وارد کنید.')
+    if any(c in config['api_key'] for c in ('\r','\n','\x00')):
+        raise HTTPException(422,'کلید API معتبر نیست.')
+    setup.put_setting('ai',config)
+    return {'saved':True,'enabled':config['enabled'],'model':config['model']}
+
+
+@router.post('/api/ai/check')
+def ai_check(session=Depends(_ready)):
+    from .meeting_agent import configured_client,AgentUnavailable
+    try:
+        client,model=configured_client()
+        try:
+            # Verifies model visibility and auth without sending organizational data.
+            client.models.retrieve(model)
+        finally:client.close()
+    except Exception:
+        raise HTTPException(503,'اتصال یا دسترسی به مدل تأیید نشد؛ کلید، مدل و ارتباط اینترنت بررسی شود.')
+    setup.audit('AI_CONNECTION_CHECKED')
+    return {'connected':True,'model':model,'generation_tested':False}
+
+class AgentSqlConfig(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    server:str=Field(min_length=1,max_length=253)
+    database:str=Field(default='AVANAgent',pattern=r'^AVANAgent$')
+    username:str=Field(default='AVAN_AgentApp',pattern=r'^AVAN_AgentApp$')
+    password:str=Field(min_length=1,max_length=512)
+    trust_server_certificate:bool=False
+
+class AgentDatabaseInstall(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    server:str=Field(min_length=1,max_length=253)
+    username:str=Field(min_length=1,max_length=128)
+    password:str=Field(min_length=1,max_length=512)
+    trust_server_certificate:bool=False
+    confirmation:str=Field(pattern=r'^AVANAgent$')
+
+@router.post('/api/agent-db/prepare')
+def prepare_agent_database(body:AgentDatabaseInstall,session=Depends(_ready)):
+    from .agent_install import prepare,InstallationDenied
+    try:return prepare(**body.model_dump())
+    except InstallationDenied:raise HTTPException(409,'نصب بانک اختصاصی انجام نشد؛ نام تأیید، مجوز نصب یا وجود حساب قبلی را بررسی کنید.')
+    except Exception:raise HTTPException(503,'نصب بانک اختصاصی Agent ناموفق بود؛ اتصال و مجوز حساب نصب بررسی شود.')
+
+@router.post('/api/agent-db/check')
+def check_agent_database(body:AgentSqlConfig,session=Depends(_ready)):
+    from .agent_install import check
+    try:return check(body.model_dump())
+    except Exception:raise HTTPException(503,'اتصال یا سطح دسترسی بانک اختصاصی Agent معتبر نیست.')
+
+@router.post('/api/agent-db/save')
+def save_agent_database(body:AgentSqlConfig,session=Depends(_ready)):
+    result=check_agent_database(body,session)
+    setup.put_setting('agent_sql',body.model_dump())
+    return {**result,'saved':True}
