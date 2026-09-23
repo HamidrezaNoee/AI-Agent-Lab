@@ -59,7 +59,7 @@ Compose به‌صورت پیش‌فرض SQL Server 2022 Express داخلی را 
 
 ### ۲. منبع ProcessMaker
 
-در تب «داده‌های ProcessMaker»، host و port واقعی MySQL، بانک workspace مانند `wf_workflow` و یک کاربر SELECT-only را وارد کنید. پورت ۸۱ مربوط به وب ProcessMaker است؛ پورت MySQL معمولاً ۳۳۰۶ است و باید توسط IT تأیید شود.
+در تب «داده‌های ProcessMaker»، host و port واقعی MySQL، بانک workspace مانند `wf_workflow` یا `bitnami_pm` و یک کاربر اختصاصی دارای حداقل مجوز SELECT را وارد کنید. پورت‌های وب ۸۱، ۸۴ یا ۴۴۳ مربوط به Apache هستند؛ پورت MySQL معمولاً ۳۳۰۶ است و باید تأیید شود.
 
 دسترسی لازم فقط SELECT روی `APPLICATION`، `APP_DELEGATION`، `TASK`، `USERS`، `DEPARTMENT` و `PROCESS` است. نام و واحد از USERS/DEPARTMENT خوانده می‌شود؛ اگر واحد در منبع ثبت نشده باشد، مقدار مصوب مدیر آوان به‌عنوان جایگزین استفاده می‌شود. رمزها یا hash رمز کاربران ProcessMaker خوانده نمی‌شوند.
 

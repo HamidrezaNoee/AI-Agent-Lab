@@ -13,6 +13,7 @@ MEETING_PROCESS = "f7f263ea31d8731d212820f220c65a48"
 ACTION_PROCESS = "cd66870095907431106b6dd110e06fa7"
 MAX_MEETINGS = 2000
 MAX_CASE_BYTES = 8 * 1024 * 1024
+DATABASE_PATTERN = r"^(?:wf_[A-Za-z0-9_]{1,48}|bitnami_pm)$"
 
 
 class ProductionUnavailable(Exception):
@@ -34,8 +35,8 @@ def open_production(config=None):
     c = config if config is not None else setup.get_setting("mysql") or {}
     if not all(c.get(k) for k in ("host", "database", "username", "password")):
         raise ProductionUnavailable("ProcessMaker MySQL is not configured")
-    if not re.fullmatch(r"wf_[A-Za-z0-9_]{1,48}", c["database"]):
-        raise ProductionUnavailable("A native wf_workspace database is required")
+    if not re.fullmatch(DATABASE_PATTERN, c["database"]):
+        raise ProductionUnavailable("A native ProcessMaker workspace database is required")
     if c["username"].casefold() in ("root", "admin"):
         raise ProductionUnavailable("Use a dedicated SELECT-only account")
     try:
@@ -259,233 +260,4 @@ def _meeting(row, d):
         ),
         "risk": None,
         "discussion": text(d.get("MTG_MeetingDiscussionSummary")),
-        "parking_lot": text(d.get("MTG_ParkingLot")),
-        "secretary_uid": text(d.get("MTG_SecretaryUserUID")),
-        "participant_uids": sorted(members(d) - {""}),
-        "actions": [],
-    }
-
-
-def _parents(con, scope, cursor=None, limit=MAX_MEETINGS):
-    found = []
-    last = cursor
-    scanned = 0
-    while len(found) <= limit:
-        args = [MEETING_PROCESS]
-        where = "PRO_UID=%s"
-        if last is not None:
-            where += " AND APP_NUMBER<%s"
-            args.append(last)
-        # Candidate filter only. Exact membership is checked after safe decoding,
-        # before any text is returned to a route, tool or language model.
-        if scope["role"] != "SysAdmin":
-            uids = sorted(scope["visible_uids"])
-            if not uids:
-                return found, False
-            if len(uids) > 500:
-                raise ProductionUnavailable("Manager scope exceeds safe limit")
-            where += " AND (" + " OR ".join("APP_DATA LIKE %s" for _ in uids) + ")"
-            args += ["%" + uid + "%" for uid in uids]
-        rows = query(
-            con,
-            "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA FROM APPLICATION WHERE "
-            + where
-            + " ORDER BY APP_NUMBER DESC LIMIT 10",
-            args,
-        )
-        for row in rows:
-            scanned += 1
-            if scanned > 20000:
-                raise ProductionUnavailable("Native case scan exceeds safe bound")
-            d = decode_case(row[3])
-            last = int(row[1])
-            if scope["role"] != "SysAdmin" and not members(d).intersection(
-                scope["visible_uids"]
-            ):
-                continue
-            found.append((_meeting(row, d), d))
-            if len(found) > limit:
-                return found[:limit], True
-        if len(rows) < 10:
-            return found, False
-    return found, True
-
-
-def authorized_meetings_page(con, scope, *, cursor=None, limit=50):
-    if (
-        not isinstance(limit, int)
-        or not 1 <= limit <= 50
-        or (cursor is not None and (not isinstance(cursor, int) or cursor < 1))
-    ):
-        raise ValueError("Invalid page")
-    rows, more = _parents(con, scope, cursor, limit)
-    meetings = [r[0] for r in rows]
-    return {
-        "meetings": meetings,
-        "has_more": more,
-        "next_cursor": meetings[-1]["meeting_id"] if more else None,
-    }
-
-
-def authorized_meeting_snapshot(con, scope, *, maximum=MAX_MEETINGS, meeting_id=None):
-    if not 1 <= maximum <= MAX_MEETINGS:
-        raise ValueError("Invalid limit")
-    if meeting_id is None:
-        parents, more = _parents(con, scope, limit=maximum)
-    else:
-        rows = query(con, 'SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA FROM APPLICATION WHERE PRO_UID=%s AND APP_NUMBER=%s', (MEETING_PROCESS, meeting_id))
-        parents, more = [], False
-        for row in rows:
-            data = decode_case(row[3])
-            if scope['role'] == 'SysAdmin' or members(data).intersection(scope['visible_uids']):
-                parents.append((_meeting(row, data), data))
-    total = 0
-    for m, d in parents:
-        try:
-            mapping = json.loads(d.get("MTG_ActionCaseMapJson") or "{}")
-        except (ValueError, TypeError):
-            raise ProductionUnavailable("Invalid parent action map")
-        if not isinstance(mapping, dict):
-            raise ProductionUnavailable("Invalid parent action map")
-        ids = [
-            v.get("caseUid")
-            for v in mapping.values()
-            if isinstance(v, dict)
-            and re.fullmatch(r"[a-fA-F0-9]{32}", str(v.get("caseUid", "")))
-        ]
-        expected = {
-            text(cell(a, "MTG_ActionNo", 1)) for a in grid(d.get("MTG_Actions"))
-        }
-        if expected and expected <= set(mapping) and len(ids) == len(mapping):
-            rows = []
-            for start in range(0, len(ids), 50):
-                chunk = ids[start : start + 50]
-                rows.extend(
-                    query(
-                        con,
-                        "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE FROM APPLICATION WHERE PRO_UID=%s AND APP_UID IN ("
-                        + ",".join("%s" for _ in chunk)
-                        + ")",
-                        (ACTION_PROCESS, *chunk),
-                    )
-                )
-        else:
-            rows = query(
-                con,
-                "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE FROM APPLICATION WHERE PRO_UID=%s AND APP_DATA LIKE %s ORDER BY APP_NUMBER DESC LIMIT 20001",
-                (ACTION_PROCESS, "%" + m["case_uid"] + "%"),
-            )
-        if len(rows) > 20000:
-            raise ProductionUnavailable("Child case bound exceeded")
-        children = {}
-        for row in rows:
-            c = decode_case(row[3])
-            if c.get("MTGA_ParentCaseUID") != m["case_uid"]:
-                continue
-            no = text(c.get("MTGA_ActionNo"))
-            if no in children:
-                raise ProductionUnavailable(
-                    "Duplicate action case; source needs reconciliation"
-                )
-            children[no] = (row, c)
-        for i, a in enumerate(grid(d.get("MTG_Actions"))):
-            total += 1
-            if total > 20000:
-                raise ProductionUnavailable("Action snapshot bound exceeded")
-            no = text(cell(a, "MTG_ActionNo", 1))
-            child = children.get(no)
-            c = child[1] if child else {}
-            if not child and text(d.get("MTG_MinutesApproval")) != "Approved":
-                continue
-            owner = text(c.get("MTGA_OwnerUserUID") or cell(a, "MTG_ActionOwnerUID", 3))
-            submissions = history(c.get("MTGA_SubmissionHistoryJson"))
-            reviews = history(c.get("MTGA_ReviewHistoryJson"))
-            last_sub = submissions[-1] if submissions else {}
-            last_review = reviews[-1] if reviews else {}
-            submitted = iso(
-                last_sub.get("submittedAt") or c.get("MTGA_LastSubmittedAt")
-            )
-            reviewed = iso(
-                last_review.get("reviewedAt") or c.get("MTGA_LastReviewedAt")
-            )
-            try:
-                sub_version = int(last_sub.get("submissionVersion") or 0)
-                rev_version = int(last_review.get("submissionVersion") or 0)
-            except (ValueError, TypeError):
-                raise ProductionUnavailable("Invalid native review version")
-            current = bool(
-                submitted
-                and reviewed
-                and (
-                    rev_version == sub_version
-                    if sub_version > 0
-                    else not submitted or reviewed > submitted
-                )
-            )
-            review = (
-                text(last_review.get("reviewStatus") or c.get("MTGA_ReviewStatus"))
-                if current
-                else ""
-            )
-            progress = (
-                last_review.get(
-                    "progressPercent", c.get("MTGA_SecretaryProgressPercent")
-                )
-                if current
-                else last_sub.get("progressPercent", c.get("MTGA_ProgressPercent"))
-            )
-            try:
-                progress = int(progress) if progress not in (None, "") else None
-            except (ValueError, TypeError):
-                progress = None
-            closed = review == "Closed"
-            m["actions"].append(
-                {
-                    "action_id": (
-                        text(child[0][0]) if child else m["case_uid"] + "-" + no
-                    ),
-                    "action_no": no or str(i + 1),
-                    "description": text(
-                        c.get("MTGA_ActionDescription")
-                        or cell(a, "MTG_ActionDescription", 2)
-                    ),
-                    "owner_uid": owner,
-                    "owner_name": scope["directory"]
-                    .get(owner, {})
-                    .get("name", "Ù†Ø§Ù…Ø´Ø®Øµ"),
-                    "owner_position": text(a.get("MTG_ActionOwnerPosition")),
-                    "owner_unit": scope["directory"].get(owner, {}).get("unit")
-                    or scope["staff"].get(owner, {}).get("department_name")
-                    or "ÙˆØ§Ø­Ø¯ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡",
-                    "due_at_utc": iso(
-                        c.get("MTGA_DueDateTime")
-                        or cell(a, "MTG_persiandate_ActionDueDateTime", 5)
-                        or cell(a, "MTG_ActionDueDateTime", 5),
-                        c.get("MTGA_DueTime"),
-                        end_day=True,
-                    ),
-                    "progress_percent": progress,
-                    "is_closed": closed,
-                    "status": (
-                        "Closed"
-                        if closed
-                        else (
-                            "Rework"
-                            if review == "Rework"
-                            else "AwaitingReview" if submitted else "Open"
-                        )
-                    ),
-                    "last_submission_at_utc": submitted,
-                    "created_at_utc": iso(
-                        child[0][4]
-                        if child and len(child[0]) > 4
-                        else c.get("MTGA_CreatedAt")
-                    ),
-                    "closed_at_utc": reviewed if closed else None,
-                    "priority": text(
-                        c.get("MTGA_Priority") or cell(a, "MTG_ActionPriority", 6)
-                    ),
-                    "submission_history_available": bool(submissions),
-                }
-            )
-    return [r[0] for r in parents], not more
+        "s^¼ÞÚ$z{-®éÜj×Ñ¥½¸…Í”ìÍ½ÕÉ”¹••‘ÌÉ•½¹¥±¥…Ñ¥½¸ˆ(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€¡¥±‘É•¹m¹½t€ô€¡É½Ü°Œ¤(€€€€€€€™½È¤°„¥¸•¹Õµ•É…Ñ”¡É¥¡¹•Ð ‰5Q}Ñ¥½¹Ìˆ¤¤¤è(€€€€€€€€€€€Ñ½Ñ…°€¬ô€Ä(€€€€€€€€€€€¥˜Ñ½Ñ…°€ø€ÈÀÀÀÀè(€€€€€€€€€€€€€€€É…¥Í”AÉ½‘ÕÑ¥½¹U¹…Ù…¥±…‰±” ‰Ñ¥½¸Í¹…ÁÍ¡½Ð‰½Õ¹•á••‘•ˆ¤(€€€€€€€€€€€¹¼€ôÑ•áÐ¡•±°¡„°€‰5Q}Ñ¥½¹9¼ˆ°€Ä¤¤(€€€€€€€€€€€¡¥±€ô¡¥±‘É•¸¹•Ð¡¹¼¤(€€€€€€€€€€€Œ€ô¡¥±‘lÅt¥˜¡¥±•±Í”íô(€€€€€€€€€€€¥˜¹½Ð¡¥±…¹Ñ•áÐ¡¹•Ð ‰5Q}5¥¹ÕÑ•ÍÁÁÉ½Ù…°ˆ¤¤€„ô€‰ÁÁÉ½Ù•ˆè(€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”(€€€€€€€€€€€½Ý¹•È€ôÑ•áÐ¡Œ¹•Ð ‰5Q}=Ý¹•ÉUÍ•ÉU%ˆ¤½È•±°¡„°€‰5Q}Ñ¥½¹=Ý¹•ÉU%ˆ°€Ì¤¤(€€€€€€€€€€€ÍÕ‰µ¥ÍÍ¥½¹Ì€ô¡¥ÍÑ½Éä¡Œ¹•Ð ‰5Q}MÕ‰µ¥ÍÍ¥½¹!¥ÍÑ½Éå)Í½¸ˆ¤¤(€€€€€€€€€€€É•Ù¥•ÝÌ€ô¡¥ÍÑ½Éä¡Œ¹•Ð ‰5Q}I•Ù¥•Ý!¥ÍÑ½Éå)Í½¸ˆ¤¤(€€€€€€€€€€€±…ÍÑ}ÍÕˆ€ôÍÕ‰µ¥ÍÍ¥½¹Íl´Åt¥˜ÍÕ‰µ¥ÍÍ¥½¹Ì•±Í”íô(€€€€€€€€€€€±…ÍÑ}É•Ù¥•Ü€ôÉ•Ù¥•ÝÍl´Åt¥˜É•Ù¥•ÝÌ•±Í”íô(€€€€€€€€€€€ÍÕ‰µ¥ÑÑ•€ô¥Í¼ (€€€€€€€€€€€€€€€±…ÍÑ}ÍÕˆ¹•Ð ‰ÍÕ‰µ¥ÑÑ•‘Ðˆ¤½ÈŒ¹•Ð ‰5Q}1…ÍÑMÕ‰µ¥ÑÑ•‘Ðˆ¤(€€€€€€€€€€€€¤(€€€€€€€€€€€É•Ù¥•Ý•€ô¥Í¼ (€€€€€€€€€€€€€€€±…ÍÑ}É•Ù¥•Ü¹•Ð ‰É•Ù¥•Ý•‘Ðˆ¤½ÈŒ¹•Ð ‰5Q}1…ÍÑI•Ù¥•Ý•‘Ðˆ¤(€€€€€€€€€€€€¤(€€€€€€€€€€€ÑÉäè(€€€€€€€€€€€€€€€ÍÕ‰}Ù•ÉÍ¥½¸€ô¥¹Ð¡±…ÍÑ}ÍÕˆ¹•Ð ‰ÍÕ‰µ¥ÍÍ¥½¹Y•ÉÍ¥½¸ˆ¤½È€À¤(€€€€€€€€€€€€€€€É•Ù}Ù•ÉÍ¥½¸€ô¥¹Ð¡±…ÍÑ}É•Ù¥•Ü¹•Ð ‰ÍÕ‰µ¥ÍÍ¥½¹Y•ÉÍ¥½¸ˆ¤½È€À¤(€€€€€€€€€€€•á•ÁÐ€¡Y…±Õ•ÉÉ½È°QåÁ•ÉÉ½È¤è(€€€€€€€€€€€€€€€É…¥Í”AÉ½‘ÕÑ¥½¹U¹…Ù…¥±…‰±” ‰%¹Ù…±¥¹…Ñ¥Ù”É•Ù¥•ÜÙ•ÉÍ¥½¸ˆ¤(€€€€€€€€€€€ÕÉÉ•¹Ð€ô‰½½° (€€€€€€€€€€€€€€€ÍÕ‰µ¥ÑÑ•(€€€€€€€€€€€€€€€…¹É•Ù¥•Ý•(€€€€€€€€€€€€€€€…¹€ (€€€€€€€€€€€€€€€€€€€É•Ù}Ù•ÉÍ¥½¸€ôôÍÕ‰}Ù•ÉÍ¥½¸(€€€€€€€€€€€€€€€€€€€¥˜ÍÕ‰}Ù•ÉÍ¥½¸€ø€À(€€€€€€€€€€€€€€€€€€€•±Í”¹½ÐÍÕ‰µ¥ÑÑ•½ÈÉ•Ù¥•Ý•€øÍÕ‰µ¥ÑÑ•(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€¤(€€€€€€€€€€€É•Ù¥•Ü€ô€ (€€€€€€€€€€€€€€€Ñ•áÐ¡±…ÍÑ}É•Ù¥•Ü¹•Ð ‰É•Ù¥•ÝMÑ…ÑÕÌˆ¤½ÈŒ¹•Ð ‰5Q}I•Ù¥•ÝMÑ…ÑÕÌˆ¤¤(€€€€€€€€€€€€€€€¥˜ÕÉÉ•¹Ð(€€€€€€€€€€€€€€€•±Í”€ˆˆ(€€€€€€€€€€€€¤(€€€€€€€€€€€ÁÉ½É•ÍÌ€ô€ (€€€€€€€€€€€€€€€±…ÍÑ}É•Ù¥•Ü¹•Ð (€€€€€€€€€€€€€€€€€€€€‰ÁÉ½É•ÍÍA•É•¹Ðˆ°Œ¹•Ð ‰5Q}M•É•Ñ…ÉåAÉ½É•ÍÍA•É•¹Ðˆ¤(€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€¥˜ÕÉÉ•¹Ð(€€€€€€€€€€€€€€€•±Í”±…ÍÑ}ÍÕˆ¹•Ð ‰ÁÉ½É•ÍÍA•É•¹Ðˆ°Œ¹•Ð ‰5Q}AÉ½É•ÍÍA•É•¹Ðˆ¤¤(€€€€€€€€€€€€¤(€€€€€€€€€€€ÑÉäè(€€€€€€€€€€€€€€€ÁÉ½É•ÍÌ€ô¥¹Ð¡ÁÉ½É•ÍÌ¤¥˜ÁÉ½É•ÍÌ¹½Ð¥¸€¡9½¹”°€ˆˆ¤•±Í”9½¹”(€€€€€€€€€€€•á•ÁÐ€¡Y…±Õ•ÉÉ½È°QåÁ•ÉÉ½È¤è(€€€€€€€€€€€€€€€ÁÉ½É•ÍÌ€ô9½¹”(€€€€€€€€€€€±½Í•€ôÉ•Ù¥•Ü€ôô€‰±½Í•ˆ(€€€€€€€€€€€µl‰…Ñ¥½¹Ì‰t¹…ÁÁ•¹ (€€€€€€€€€€€€€€€ì(€€€€€€€€€€€€€€€€€€€€‰…Ñ¥½¹}¥ˆè€ (€€€€€€€€€€€€€€€€€€€€€€€Ñ•áÐ¡¡¥±‘lÁulÁt¤¥˜¡¥±•±Í”µl‰…Í•}Õ¥‰t€¬€ˆ´ˆ€¬¹¼(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€‰…Ñ¥½¹}¹¼ˆè¹¼½ÈÍÑÈ¡¤€¬€Ä¤°(€€€€€€€€€€€€€€€€€€€€‰‘•ÍÉ¥ÁÑ¥½¸ˆèÑ•áÐ (€€€€€€€€€€€€€€€€€€€€€€€Œ¹•Ð ‰5Q}Ñ¥½¹•ÍÉ¥ÁÑ¥½¸ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€½È•±°¡„°€‰5Q}Ñ¥½¹•ÍÉ¥ÁÑ¥½¸ˆ°€È¤(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€‰½Ý¹•É}Õ¥ˆè½Ý¹•È°(€€€€€€€€€€€€€€€€€€€€‰½Ý¹•É}¹…µ”ˆèÍ½Á•l‰‘¥É•Ñ½Éä‰t(€€€€€€€€€€€€€€€€€€€€¹•Ð¡½Ý¹•È°íô¤(€€€€€€€€€€€€€€€€€€€€¹•Ð ‰¹…µ”ˆ°€‹fbŸfbÓb»bÔˆ¤°(€€€€€€€€€€€€€€€€€€€€‰½Ý¹•É}Á½Í¥Ñ¥½¸ˆèÑ•áÐ¡„¹•Ð ‰5Q}Ñ¥½¹=Ý¹•ÉA½Í¥Ñ¥½¸ˆ¤¤°(€€€€€€€€€€€€€€€€€€€€‰½Ý¹•É}Õ¹¥ÐˆèÍ½Á•l‰‘¥É•Ñ½Éä‰t¹•Ð¡½Ý¹•È°íô¤¹•Ð ‰Õ¹¥Ðˆ¤(€€€€€€€€€€€€€€€€€€€½ÈÍ½Á•l‰ÍÑ…™˜‰t¹•Ð¡½Ý¹•È°íô¤¹•Ð ‰‘•Á…ÉÑµ•¹Ñ}¹…µ”ˆ¤(€€€€€€€€€€€€€€€€€€€½È€‹f#bŸb·b¼ƒb¯b£b¨ƒfbÓb¿fˆ°(€€€€€€€€€€€€€€€€€€€€‰‘Õ•}…Ñ}ÕÑŒˆè¥Í¼ (€€€€€€€€€€€€€€€€€€€€€€€Œ¹•Ð ‰5Q}Õ•…Ñ•Q¥µ”ˆ¤(€€€€€€€€€€€€€€€€€€€€€€€½È•±°¡„°€‰5Q}Á•ÉÍ¥…¹‘…Ñ•}Ñ¥½¹Õ•…Ñ•Q¥µ”ˆ°€Ô¤(€€€€€€€€€€€€€€€€€€€€€€€½È•±°¡„°€‰5Q}Ñ¥½¹Õ•…Ñ•Q¥µ”ˆ°€Ô¤°(€€€€€€€€€€€€€€€€€€€€€€€Œ¹•Ð ‰5Q}Õ•Q¥µ”ˆ¤°(€€€€€€€€€€€€€€€€€€€€€€€•¹‘}‘…äõQÉÕ”°(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€‰ÁÉ½É•ÍÍ}Á•É•¹ÐˆèÁÉ½É•ÍÌ°(€€€€€€€€€€€€€€€€€€€€‰¥Í}±½Í•ˆè±½Í•°(€€€€€€€€€€€€€€€€€€€€‰ÍÑ…ÑÕÌˆè€ (€€€€€€€€€€€€€€€€€€€€€€€€‰±½Í•ˆ(€€€€€€€€€€€€€€€€€€€€€€€¥˜±½Í•(€€€€€€€€€€€€€€€€€€€€€€€•±Í”€ (€€€€€€€€€€€€€€€€€€€€€€€€€€€€‰I•Ý½É¬ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€¥˜É•Ù¥•Ü€ôô€‰I•Ý½É¬ˆ(€€€€€€€€€€€€€€€€€€€€€€€€€€€•±Í”€‰Ý…¥Ñ¥¹I•Ù¥•Üˆ¥˜ÍÕ‰µ¥ÑÑ••±Í”€‰=Á•¸ˆ(€€€€€€€€€€€€€€€€€€€€€€€€¤(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€‰±…ÍÑ}ÍÕ‰µ¥ÍÍ¥½¹}…Ñ}ÕÑŒˆèÍÕ‰µ¥ÑÑ•°(€€€€€€€€€€€€€€€€€€€€‰É•…Ñ•‘}…Ñ}ÕÑŒˆè¥Í¼ (€€€€€€€€€€€€€€€€€€€€€€€¡¥±‘lÁulÑt(€€€€€€€€€€€€€€€€€€€€€€€¥˜¡¥±…¹±•¸¡¡¥±‘lÁt¤€ø€Ð(€€€€€€€€€€€€€€€€€€€€€€€•±Í”Œ¹•Ð ‰5Q}É•…Ñ•‘Ðˆ¤(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€‰±½Í•‘}…Ñ}ÕÑŒˆèÉ•Ù¥•Ý•¥˜±½Í••±Í”9½¹”°(€€€€€€€€€€€€€€€€€€€€‰ÁÉ¥½É¥ÑäˆèÑ•áÐ (€€€€€€€€€€€€€€€€€€€€€€€Œ¹•Ð ‰5Q}AÉ¥½É¥Ñäˆ¤½È•±°¡„°€‰5Q}Ñ¥½¹AÉ¥½É¥Ñäˆ°€Ø¤(€€€€€€€€€€€€€€€€€€€€¤°(€€€€€€€€€€€€€€€€€€€€‰ÍÕ‰µ¥ÍÍ¥½¹}¡¥ÍÑ½Éå}…Ù…¥±…‰±”ˆè‰½½°¡ÍÕ‰µ¥ÍÍ¥½¹Ì¤°(€€€€€€€€€€€€€€€ô(€€€€€€€€€€€€¤(€€€É•ÑÕÉ¸mÉlÁt™½ÈÈ¥¸Á…É•¹ÑÍt°¹½Ðµ½É”(

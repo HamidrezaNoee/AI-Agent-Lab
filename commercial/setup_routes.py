@@ -232,7 +232,7 @@ class MySQLConfig(BaseModel):
     model_config=ConfigDict(extra='forbid')
     host:str=Field(min_length=1,max_length=253,pattern=r'^[A-Za-z0-9_.:-]+$')
     port:int=Field(default=3306,ge=1,le=65535)
-    database:str=Field(default='wf_workflow',pattern=r'^wf_[A-Za-z0-9_]{1,48}$')
+    database:str=Field(default='wf_workflow',pattern=r'^(?:wf_[A-Za-z0-9_]{1,48}|bitnami_pm)$')
     username:str=Field(min_length=1,max_length=128)
     password:str=Field(min_length=1,max_length=512)
     tls:bool=True

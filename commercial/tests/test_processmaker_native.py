@@ -93,6 +93,14 @@ def test_sql_server_admin_routes_are_removed():
     assert not any('/sql/' in r.path for r in router.routes)
     assert any(r.path.endswith('/mysql/save') for r in router.routes)
 
+
+def test_native_database_names_include_bitnami_workspace():
+    import re
+    assert re.fullmatch(store.DATABASE_PATTERN,'wf_workflow')
+    assert re.fullmatch(store.DATABASE_PATTERN,'bitnami_pm')
+    assert not re.fullmatch(store.DATABASE_PATTERN,'mysql')
+    assert not re.fullmatch(store.DATABASE_PATTERN,'bitnami_pm;DROP')
+
 def test_review_version_beats_equal_second_timestamp():
     import json
     child={'MTGA_ParentCaseUID':PARENT,'MTGA_ActionNo':'A-1','MTGA_ReviewStatus':'Closed',
