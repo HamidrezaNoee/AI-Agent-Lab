@@ -119,7 +119,7 @@ def _unseal(name:str,blob:bytes)->dict:
     return json.loads(AESGCM(KEYFILE.read_bytes()).decrypt(blob[:12],blob[12:],name.encode()).decode())
 
 def put_setting(name:str,value:dict):
-    if name not in ("installation","mysql","oidc","processmaker","company","license","ai","agent_sql","agent_sql_pending"):
+    if name not in ("installation","mysql","oidc","processmaker","company","license","ai","agent_sql","agent_sql_pending","agent_sql_connections"):
         raise SetupError("Unsupported setup setting")
     enc=_seal(name,value)
     with _db() as con:
@@ -264,5 +264,4 @@ if __name__=="__main__":
         reset_from_docker_host()
     else:
         raise SystemExit("Usage: python -m commercial.setup_console --take-bootstrap")
-
 

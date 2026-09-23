@@ -14,6 +14,11 @@ class DockerPreviewTests(unittest.TestCase):
         self.assertIn('127.0.0.1:8188:8188',source)
         self.assertIn('commercial/Dockerfile.production',source)
         self.assertIn('file: ./.secrets/keycloak-db-password',source)
+        self.assertIn('mcr.microsoft.com/mssql/server:2022-latest',source)
+        self.assertIn('MSSQL_PID: Express',source)
+        self.assertIn('file: ./.secrets/avan-sql-sa-password',source)
+        self.assertIn('avan-agent-sql:/var/opt/mssql',source)
+        self.assertNotIn('1433:1433',source)
         self.assertIn('avan-state:/var/lib/avan',source)
         self.assertNotIn('COMMERCIAL_SQL_PASSWORD',source)
         self.assertNotIn('OPENAI_API_KEY',source)
@@ -68,4 +73,3 @@ class DockerPreviewTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
-

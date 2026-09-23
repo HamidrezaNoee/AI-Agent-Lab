@@ -526,6 +526,22 @@ class AgentSqlConfig(BaseModel):
     password:str=Field(min_length=1,max_length=512)
     trust_server_certificate:bool=False
 
+class AgentConnectionSave(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    connection_id:str|None=Field(default=None,max_length=24,pattern=r'^(?:[a-f0-9]{24}|legacy)$')
+    name:str=Field(min_length=1,max_length=100)
+    server:str=Field(min_length=1,max_length=253)
+    password:str=Field(default='',max_length=512)
+    trust_server_certificate:bool=False
+
+class AgentConnectionSelect(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    connection_id:str=Field(min_length=1,max_length=24,pattern=r'^(?:bundled|[a-f0-9]{24}|legacy)$')
+
+class AgentConnectionDisconnect(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    confirmation:str=Field(pattern=r'^DISCONNECT$')
+
 class AgentDatabaseInstall(BaseModel):
     model_config=ConfigDict(extra='forbid')
     server:str=Field(min_length=1,max_length=253)
@@ -550,8 +566,72 @@ def check_agent_database(body:AgentSqlConfig,session=Depends(_ready)):
 @router.post('/api/agent-db/save')
 def save_agent_database(body:AgentSqlConfig,session=Depends(_ready)):
     result=check_agent_database(body,session)
-    setup.put_setting('agent_sql',body.model_dump())
-    return {**result,'saved':True}
+    from .agent_connections import save_external,activate
+    connection_id=save_external(name='SQL Server خارجی '+body.server,
+        config=body.model_dump())
+    activate(connection_id)
+    return {**result,'saved':True,'connection_id':connection_id}
+
+
+@router.get('/api/agent-db/connections')
+def agent_database_connections(session=Depends(_ready)):
+    from .agent_connections import public_status
+    return public_status()
+
+
+@router.post('/api/agent-db/connections/save')
+def save_agent_database_connection(body:AgentConnectionSave,session=Depends(_ready)):
+    from .agent_connections import save_external,ConnectionCatalogError
+    config={'server':body.server,'database':'AVANAgent','username':'AVAN_AgentApp',
+        'password':body.password,'trust_server_certificate':body.trust_server_certificate}
+    try:
+        connection_id=save_external(name=body.name,config=config,
+            connection_id=body.connection_id)
+        return {'saved':True,'connection_id':connection_id,'active':False}
+    except ConnectionCatalogError:
+        raise HTTPException(409,'اتصال قابل ذخیره یا ویرایش نیست.')
+    except Exception:
+        raise HTTPException(503,'اتصال جدید معتبر نیست؛ نشانی، رمز، TLS و ساختار AVANAgent بررسی شود.')
+
+
+@router.post('/api/agent-db/connections/activate')
+def activate_agent_database_connection(body:AgentConnectionSelect,session=Depends(_ready)):
+    from .agent_connections import activate,ConnectionCatalogError
+    try:
+        row=activate(body.connection_id)
+        return {'activated':True,'connection_id':body.connection_id,'name':row.get('name')}
+    except ConnectionCatalogError:
+        raise HTTPException(404,'اتصال انتخاب‌شده وجود ندارد.')
+    except Exception:
+        raise HTTPException(503,'اتصال انتخاب‌شده در دسترس یا دارای سطح دسترسی معتبر نیست.')
+
+
+@router.post('/api/agent-db/connections/check')
+def check_saved_agent_database_connection(body:AgentConnectionSelect,session=Depends(_ready)):
+    from .agent_connections import check_saved,ConnectionCatalogError
+    try:
+        result=check_saved(body.connection_id)
+        return {**result,'connection_id':body.connection_id}
+    except ConnectionCatalogError:
+        raise HTTPException(404,'اتصال انتخاب‌شده وجود ندارد.')
+    except Exception:
+        raise HTTPException(503,'اتصال انتخاب‌شده در دسترس یا دارای سطح دسترسی معتبر نیست.')
+
+
+@router.post('/api/agent-db/connections/disconnect')
+def disconnect_agent_database_connection(body:AgentConnectionDisconnect,session=Depends(_ready)):
+    from .agent_connections import disconnect
+    disconnect()
+    return {'disconnected':True}
+
+
+@router.post('/api/agent-db/connections/delete')
+def delete_agent_database_connection(body:AgentConnectionSelect,session=Depends(_ready)):
+    from .agent_connections import delete,ConnectionCatalogError
+    try:delete(body.connection_id)
+    except ConnectionCatalogError:
+        raise HTTPException(409,'اتصال داخلی یا اتصال فعال قابل حذف نیست؛ ابتدا اتصال دیگری را فعال کنید.')
+    return {'deleted':True,'connection_id':body.connection_id}
 
 
 @router.get('/api/license/status')

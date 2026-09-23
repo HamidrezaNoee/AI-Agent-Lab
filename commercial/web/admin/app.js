@@ -131,7 +131,7 @@ async function showSettings(page=state.page){
  append(tabs,btn("خروج امن",async()=>{
    try{await api("logout",{})}catch{}state.csrf=null;await start()
  },"secondary"));append(m,tabs);
- if(page==="agentdb")renderAgentDatabase(m,settings.agent_sql||{});
+ if(page==="agentdb")await renderAgentDatabase(m);
  else if(page==="mysql")renderMysql(m,settings.mysql||{});
  else if(page==="company")await renderCompany(m);
  else if(page==="identity")await renderIdentity(m);
@@ -370,27 +370,60 @@ function renderAI(m,config){
  },"secondary"),out);append(p,f);append(m,p);
 }
 
-function renderAgentDatabase(m,config){
- const p=panel("SQL Server اختصاصی آوان", "بانک AVANAgent برای دسترسی کاربران، پیش‌نویس‌ها، سوابق Agent و پایش است. اطلاعات اصلی جلسه از ProcessMaker خوانده می‌شود.");
- const f=node("form","grid");
- append(f,field("نشانی SQL Server","server",config.server||"host.docker.internal,1433"),
- field("رمز حساب AVAN_AgentApp برای اتصال موجود","password","",{secret:true,required:false}),
- field("اعتماد به گواهی داخلی: yes یا no","trust",config.trust_server_certificate?"yes":"no"));
- const out=node("div","full"),actions=node("div","actions full");
- const base=()=>({server:formValue(f,"server"),trust_server_certificate:formValue(f,"trust").toLowerCase()==="yes"});
- async function connect(action){
-  busy(f,true);out.replaceChildren();
-  try{await api("agent-db/"+action,{...base(),database:"AVANAgent",username:"AVAN_AgentApp",password:formValue(f,"password")});append(out,info(action==="save"?"اتصال بانک اختصاصی ذخیره شد.":"اتصال بانک اختصاصی تأیید شد."));}
-  catch(e){showError(out,e)}finally{busy(f,false)}
+async function renderAgentDatabase(m){
+ const p=panel("بانک اختصاصی آوان", "SQL Server داخلی Docker به‌صورت خودکار ساخته می‌شود. از این صفحه می‌توانید اتصال سازمانی دیگری را ثبت، ویرایش یا فعال کنید؛ اطلاعات جلسات همچنان فقط از MySQL پروسس‌میکر خوانده می‌شود.");
+ const statusOut=node("div");append(p,statusOut);append(m,p);
+ let status;
+ try{status=await api("agent-db/connections")}catch(err){showError(statusOut,err);return}
+ if(!status.active_id)append(statusOut,info("در حال حاضر هیچ بانک فعالی وجود ندارد؛ قابلیت‌های Agent تا فعال‌سازی یک اتصال متوقف هستند.",true));
+ const list=panel("اتصال‌های ثبت‌شده","تنها یک اتصال می‌تواند فعال باشد. فعال‌سازی فقط پس از تست ساختار و دسترسی حساب محدود انجام می‌شود.");
+ for(const c of status.connections){
+  const row=node("div","connection-row"),details=node("div");
+  append(details,node("strong","",c.name),node("p","hint",c.server+" · AVANAgent · "+(c.managed?"مدیریت‌شده توسط Docker":"اتصال خارجی")+(c.active?" · فعال":"")));
+  const actions=node("div","actions");
+  append(actions,btn("بررسی",async()=>{
+   try{await api("agent-db/connections/check",{connection_id:c.id});statusOut.replaceChildren(info("اتصال «"+c.name+"» و سطح دسترسی حساب محدود تأیید شد."))}catch(err){showError(statusOut,err)}
+  },"secondary"));
+  if(!c.active)append(actions,btn("فعال‌سازی",async()=>{
+   try{await api("agent-db/connections/activate",{connection_id:c.id});await showSettings("agentdb")}catch(err){showError(statusOut,err)}
+  }));
+  if(!c.managed)append(actions,btn("ویرایش",()=>showConnectionEditor(p,c),"secondary"));
+  if(!c.managed&&!c.active)append(actions,btn("حذف",async()=>{
+   if(!confirm("این اتصال ذخیره‌شده حذف شود؟ داده‌های خود SQL Server حذف نمی‌شوند."))return;
+   try{await api("agent-db/connections/delete",{connection_id:c.id});await showSettings("agentdb")}catch(err){showError(statusOut,err)}
+  },"secondary"));
+  append(row,details,actions);append(list,row);
  }
- append(actions,btn("بررسی اتصال موجود",()=>connect("check"),"secondary"),btn("ذخیره اتصال موجود",()=>connect("save")));
- append(f,actions,field("حساب مدیر SQL برای نصب اولیه","install_user","",{required:false}),
- field("رمز مدیر SQL؛ ذخیره نمی‌شود","install_password","",{secret:true,required:false}),
- field("برای ساخت بانک اختصاصی، AVANAgent را وارد کنید","confirmation","",{required:false}));
- append(f,btn("ساخت و اتصال بانک AVANAgent",async()=>{
-  busy(f,true);out.replaceChildren();
-  try{await api("agent-db/prepare",{...base(),username:formValue(f,"install_user"),password:formValue(f,"install_password"),confirmation:formValue(f,"confirmation")});
-   append(out,info("بانک و حساب محدود Agent آماده و تنظیمات اتصال ذخیره شدند."));
-  }catch(e){showError(out,e)}finally{f.querySelector('[name="install_password"]').value="";busy(f,false)}
- }),out);append(p,f);append(m,p);
+ append(p,list,btn("افزودن اتصال خارجی",()=>showConnectionEditor(p,null),"secondary"));
+ if(status.active_id)append(p,btn("قطع اتصال فعال",async()=>{
+  if(!confirm("با قطع اتصال، گفتگو، پایش، پیش‌نویس و گزارش‌های Agent تا فعال‌سازی مجدد در دسترس نخواهند بود. ادامه می‌دهید؟"))return;
+  try{await api("agent-db/connections/disconnect",{confirmation:"DISCONNECT"});await showSettings("agentdb")}catch(err){showError(statusOut,err)}
+ },"secondary"));
+ const manual=panel("ساخت AVANAgent روی SQL Server خارجی","این بخش فقط برای بانک سازمانی خارجی است. برای SQL Server داخلی Docker هیچ حساب مدیری لازم نیست.");
+ const install=node("form","grid"),installOut=node("div","full");
+ append(install,field("نشانی SQL Server","server","host.docker.internal,1433"),
+  field("اعتماد به گواهی داخلی: yes یا no","trust","no"),
+  field("حساب مدیر SQL","install_user","",{required:false}),
+  field("رمز مدیر SQL؛ ذخیره نمی‌شود","install_password","",{secret:true,required:false}),
+  field("برای تأیید ساخت، AVANAgent را وارد کنید","confirmation","",{required:false}),
+  btn("ساخت بانک خارجی و فعال‌سازی",async()=>{
+   busy(install,true);installOut.replaceChildren();
+   try{await api("agent-db/prepare",{server:formValue(install,"server"),trust_server_certificate:formValue(install,"trust").toLowerCase()==="yes",username:formValue(install,"install_user"),password:formValue(install,"install_password"),confirmation:formValue(install,"confirmation")});await showSettings("agentdb")}
+   catch(err){showError(installOut,err)}finally{const password=install.querySelector('[name="install_password"]');if(password)password.value="";busy(install,false)}
+  }),installOut);append(manual,install);append(p,manual);
+}
+
+function showConnectionEditor(parent,current){
+ const existing=parent.querySelector(".connection-editor");if(existing)existing.remove();
+ const box=panel(current?"ویرایش اتصال خارجی":"اتصال خارجی جدید","حساب باید AVAN_AgentApp و بانک باید AVANAgent باشد. رمز خالی هنگام ویرایش، رمز قبلی را حفظ می‌کند.");
+ box.classList.add("connection-editor");const f=node("form","grid"),out=node("div","full");
+ append(f,field("نام اتصال","name",current?.name||"SQL Server سازمان"),
+  field("نشانی SQL Server","server",current?.server||"host.docker.internal,1433"),
+  field(current?"رمز جدید؛ برای حفظ رمز قبلی خالی بگذارید":"رمز AVAN_AgentApp","password","",{secret:true,required:!current}),
+  field("اعتماد به گواهی داخلی: yes یا no","trust",current?.trust_server_certificate?"yes":"no"),
+  btn("تست و ذخیره اتصال",async()=>{
+   busy(f,true);out.replaceChildren();
+   try{await api("agent-db/connections/save",{connection_id:current?.id||null,name:formValue(f,"name"),server:formValue(f,"server"),password:formValue(f,"password"),trust_server_certificate:formValue(f,"trust").toLowerCase()==="yes"});await showSettings("agentdb")}
+   catch(err){showError(out,err)}finally{busy(f,false)}
+  }),btn("انصراف",()=>box.remove(),"secondary"),out);append(box,f);parent.append(box);
 }

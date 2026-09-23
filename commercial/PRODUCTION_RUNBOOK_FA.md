@@ -6,7 +6,7 @@
 
 - اجرای تک‌رایانه و پذیرش اولیه: Docker Desktop با Linux containers روی Windows پشتیبانی‌شده؛ نشانی localhost.
 - اجرای کاربران سازمان: Docker Engine و Compose v2 روی VM لینوکسی مستقل، دو نام DNS و HTTPS. روی Windows Server 2012 میزبان ProcessMaker، این کانتینرهای لینوکسی را مستقیم نصب نکنید.
-- برای شروع VM با ۴ vCPU، ۸ GB RAM و ۴۰ GB فضای آزاد در نظر بگیرید؛ این ظرفیت پیشنهادی شروع است و تست بار واقعی انجام نشده است. SQL Server و MySQL روی سرورهای موجود می‌مانند. PostgreSQL همراه Docker فقط برای هویت Keycloak است.
+- برای شروع VM با ۴ vCPU، ۸ GB RAM و ۴۰ GB فضای آزاد در نظر بگیرید؛ این ظرفیت پیشنهادی شروع است و تست بار واقعی انجام نشده است. SQL Server Express داخلی آوان و PostgreSQL هویت همراه Docker اجرا می‌شوند و MySQL پروسس‌میکر روی سرور موجود می‌ماند. در استقرار پرترافیک می‌توان از GodAdmin به SQL Server سازمانی مهاجرت کرد.
 
 ## ۱. دریافت سورس
 
@@ -21,7 +21,7 @@ cd AI-Agent-Lab-Release
 
 ## ۲. نصب موجود روی رایانه شما
 
-پیش از ارتقا از AVANAgent و volume `avan-production_avan-state` پشتیبان سازگار بگیرید. `.secrets` و کلید رمزگذاری volume را حفظ کنید. ارتقا به منبع بومی، داده یا نگاشت دسترسی قدیمی EnterpriseProcess را خودکار منتقل نمی‌کند؛ دسترسی‌ها در AVANAgent تنظیم می‌شوند.
+پیش از ارتقا از AVANAgent و volume `avan-production_avan-state` پشتیبان سازگار بگیرید. بعد از فعال‌شدن بانک داخلی، volumeهای `avan-production_avan-agent-sql` و `avan-production_avan-keycloak-db` را نیز در برنامه پشتیبان قرار دهید. `.secrets` و کلید رمزگذاری volume را حفظ کنید. ارتقا به منبع بومی، داده یا نگاشت دسترسی قدیمی EnterpriseProcess را خودکار منتقل نمی‌کند؛ دسترسی‌ها در AVANAgent تنظیم می‌شوند.
 
 ```powershell
 $repo = 'D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab-GitHub'
@@ -34,7 +34,7 @@ powershell -ExecutionPolicy Bypass -File $upgrade -SourceRepo $repo -Destination
 
 پوشه مقصد باید جدید باشد. این روش فقط سرویس آوان را بازسازی می‌کند. فایل‌های محرمانه، volume و fingerprint معتبر ناشر حفظ می‌شوند. اگر نصب قبلی HTTPS است، این اسکریپت عمداً متوقف می‌شود؛ روش ارتقای HTTPS پایین را استفاده کنید.
 
-## ۳. نصب تازه و کلید ناشر
+## ۳. نصب تازه، SQL داخلی و کلید ناشر
 
 در Windows از ریشه checkout:
 
@@ -47,6 +47,10 @@ powershell -ExecutionPolicy Bypass -File scripts/init-security.ps1
 ```bash
 sh scripts/init-security.sh
 ```
+
+این مرحله علاوه بر Secretهای هویت، رمز تصادفی SQL Server داخلی را ایجاد می‌کند. رمز `sa` در `.env` یا UI قرار نمی‌گیرد. با اجرای Compose، نسخه SQL Server 2022 Express، بانک `AVANAgent` و حساب محدود `AVAN_AgentApp` به‌صورت خودکار ساخته می‌شوند. پورت ۱۴۳۳ روی میزبان منتشر نمی‌شود و داده در volume دائمی `avan-agent-sql` باقی می‌ماند. اجرای Image به معنی پذیرش EULA مایکروسافت است.
+
+Express برای شروع و استقرار کوچک مناسب است و سقف اندازه هر بانک آن ۱۰ GB است. پیش از نزدیک‌شدن به این سقف یا برای HA/بار سازمانی، یک SQL Server Standard/Enterprise دارای لایسنس آماده کنید، بانک را با روش DBA منتقل کنید و اتصال خارجی را در GodAdmin فعال نمایید؛ تغییر اتصال به‌تنهایی داده را منتقل نمی‌کند.
 
 اگر کلید ناشر قبلاً دارید، همان کلید عمومی را استفاده کنید. در غیر این صورت، روی رایانه **صادرکننده** طبق [راهنمای لایسنس](licensing/ISSUER_GUIDE_FA.md) کلید خصوصی رمزدار بسازید. فقط کلید عمومی و fingerprint آن وارد نسخه مشتری می‌شود.
 
@@ -111,14 +115,14 @@ ssh -N -L 8188:127.0.0.1:8188 admin@YOUR_LINUX_SERVER
 
 ترتیب:
 
-1. **بانک اختصاصی Agent**: SQL host/port و TLS واقعی را بدهید. نصب‌کننده با تأیید `AVANAgent` فقط بانک مستقل و حساب محدود `AVAN_AgentApp` را می‌سازد. رمز مدیر SQL ذخیره نمی‌شود. اگر قبلاً بانک ساخته شده، اتصال حساب برنامه را ثبت کنید.
+1. **بانک اختصاصی Agent**: اتصال «SQL Server داخلی Docker» از قبل ساخته و فعال است. در این صفحه می‌توان اتصال‌های خارجی را تست و ذخیره، ویرایش، فعال، حذف یا اتصال فعال را قطع کرد. اتصال داخلی حذف نمی‌شود. قطع اتصال، ProcessMaker را متوقف نمی‌کند ولی گفتگو، پیش‌نویس، پایش و گزارش‌های Agent تا فعال‌سازی مجدد در دسترس نیستند. برای ساخت `AVANAgent` روی SQL Server خارجی، حساب مدیر فقط همان لحظه استفاده می‌شود و ذخیره نمی‌گردد.
 2. **داده‌های ProcessMaker**: IP/DNS واقعی MySQL، پورت واقعی (معمولاً ۳۳۰۶)، workspace database مانند `wf_workflow`، کاربر SELECT-only و timezone واقعی PHP/PM. `localhost` داخل کانتینر خود کانتینر است؛ برای دیتابیس روی میزبان Docker Desktop از `host.docker.internal` استفاده کنید.
 3. **اطلاعات سازمان**: نام را ثبت کنید و Tenant ID و Installation ID را برای صدور لایسنس بردارید.
 4. **لایسنس**: کلید عمومی pin‌شده و لایسنس امضاشده مخصوص همین نصب را فعال کنید؛ سپس پذیرش کاربران امکان‌پذیر است.
 5. **هویت سازمانی**: اتصال Keycloak را بررسی کنید. ثبت/نگاشت کاربران از مسیر فعلی پنل انجام می‌شود. ایمیل، کاربر فعال ProcessMaker، نقش و مدیر مستقیم باید درست باشند. حساب‌های بدون نگاشت به اطلاعات دسترسی ندارند.
 6. **هوش مصنوعی**: API key، مدل مجاز حساب خود و در صورت نیاز مدل‌های صوت را تنظیم و اتصال را آزمایش کنید. بی‌نیازی از API key سرویس AI ادعا نمی‌شود.
 
-Agent به SQL Server قبلی جلسات وصل نمی‌شود. تنظیم REST ProcessMaker برای بررسی اتصال موجود است؛ مسیر خواندن عملیاتی این نسخه MySQL است. برای Import مجموعه، REST جداگانه فقط در workspace آزمایشی استفاده می‌شود.
+Agent به SQL Server قبلی جلسات وصل نمی‌شود. SQL Server داخلی فقط داده‌های خود آوان را نگه می‌دارد. تنظیم REST ProcessMaker برای بررسی اتصال موجود است؛ مسیر خواندن عملیاتی این نسخه MySQL است. برای Import مجموعه، REST جداگانه فقط در workspace آزمایشی استفاده می‌شود.
 
 DBA باید SELECT روی این شش جدول workspace بدهد: `APPLICATION`, `APP_DELEGATION`, `TASK`, `PROCESS`, `USERS`, `DEPARTMENT`. حساب Agent نباید مجوز تغییر داده این بانک داشته باشد. نمونه قدیمی MTG SQL را اجرا نکنید.
 
@@ -150,7 +154,7 @@ docker compose -f compose.yaml -f compose.https.yaml exec avan python -m commerc
 
 ## ۸. ارتقا، سلامت و بازیابی
 
-در نصب HTTPS، ابتدا از بانک AVANAgent، volume آوان، PostgreSQL هویت و `.secrets` پشتیبان بگیرید؛ کلید رمزگذاری باید همراه داده قابل بازیابی باشد. image فعلی را tag کنید و commit فعلی را ثبت کنید. تغییرات محلی fingerprint را حفظ کنید.
+در نصب HTTPS، ابتدا از بانک AVANAgent، volumeهای `avan-state`، `avan-agent-sql` و PostgreSQL هویت و همچنین `.secrets` پشتیبان بگیرید؛ کلید رمزگذاری باید همراه داده قابل بازیابی باشد. image فعلی را tag کنید و commit فعلی را ثبت کنید. تغییرات محلی fingerprint را حفظ کنید.
 
 ```bash
 docker image tag avan-enterprise:local avan-enterprise:before-update

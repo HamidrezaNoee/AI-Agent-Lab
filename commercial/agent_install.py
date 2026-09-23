@@ -10,11 +10,8 @@ class InstallationDenied(Exception):
     pass
 
 
-def prepare(
-    *, server, username, password, trust_server_certificate=False, confirmation=""
-):
-    if confirmation != DATABASE:
-        raise InstallationDenied("Confirm AVANAgent database creation")
+def provision(*, server, username, password, trust_server_certificate=False,
+              app_password=None, reset_existing_login=False):
     if not server or any(c in server for c in ";{}\x00\r\n"):
         raise InstallationDenied("Invalid SQL endpoint")
     if username.casefold() == LOGIN.casefold():
@@ -42,19 +39,14 @@ def prepare(
             raise InstallationDenied(
                 "Initial provisioning requires a SQL administrator"
             )
-        current = (
-            setup.get_setting("agent_sql")
-            or setup.get_setting("agent_sql_pending")
-            or {}
-        )
         exists = cur.execute("SELECT SUSER_ID(?)", LOGIN).fetchone()[0] is not None
-        if exists and not (current.get("server") == server and current.get("password")):
+        if exists and not app_password and not reset_existing_login:
             raise InstallationDenied(
                 "Login already exists; use connection settings with its existing password"
             )
-        app_password = (
-            current["password"] if exists else "Aa1!" + secrets.token_urlsafe(40)
-        )
+        app_password = app_password or "Aa1!" + secrets.token_urlsafe(40)
+        if len(app_password) > 128 or any(c in app_password for c in "'\x00\r\n"):
+            raise InstallationDenied("Invalid application credential")
         config = {
             "server": server,
             "database": DATABASE,
@@ -62,7 +54,6 @@ def prepare(
             "password": app_password,
             "trust_server_certificate": trust_server_certificate,
         }
-        setup.put_setting("agent_sql_pending", config)
         cur.execute("IF DB_ID(N'AVANAgent') IS NULL CREATE DATABASE [AVANAgent]")
         for batch in re.split(
             r"(?im)^\s*GO\s*$",
@@ -70,7 +61,11 @@ def prepare(
         ):
             if batch.strip():
                 cur.execute(batch)
-        if not exists:
+        if exists and reset_existing_login:
+            cur.execute(
+                "ALTER LOGIN [AVAN_AgentApp] WITH PASSWORD='" + app_password + "'"
+            )
+        elif not exists:
             # Generated ASCII only, never request text interpolated into DDL.
             cur.execute(
                 "USE [master]; CREATE LOGIN [AVAN_AgentApp] WITH PASSWORD='"
@@ -90,11 +85,36 @@ def prepare(
             "trust_server_certificate": trust_server_certificate,
         }
         check(config)
-        setup.put_setting("agent_sql", config)
-        setup.put_setting("agent_sql_pending", {})
-        return {"installed": True, "database": DATABASE, "meeting_data_copied": False}
+        return config
     finally:
         con.close()
+
+
+def prepare(
+    *, server, username, password, trust_server_certificate=False, confirmation=""
+):
+    if confirmation != DATABASE:
+        raise InstallationDenied("Confirm AVANAgent database creation")
+    current = (
+        setup.get_setting("agent_sql")
+        or setup.get_setting("agent_sql_pending")
+        or {}
+    )
+    same_endpoint = current.get("server") == server and current.get("password")
+    config = provision(
+        server=server,
+        username=username,
+        password=password,
+        trust_server_certificate=trust_server_certificate,
+        app_password=current.get("password") if same_endpoint else None,
+    )
+    from .agent_connections import save_external, activate
+    connection_id = save_external(
+        name="SQL Server خارجی " + server,
+        config=config,
+    )
+    activate(connection_id)
+    return {"installed": True, "database": DATABASE, "meeting_data_copied": False}
 
 
 def check(config):

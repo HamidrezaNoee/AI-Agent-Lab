@@ -19,6 +19,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Git fetch failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Could not create an isolated worktree.' }
 # Reuse installation identity; never regenerate secrets or remove volumes.
 Copy-Item -LiteralPath $secretSource -Destination (Join-Path $Destination '.secrets') -Recurse
+# Add newly introduced product secrets without changing any existing value.
+& (Join-Path $Destination 'scripts\init-security.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the bundled database secret.' }
 $sourcePin = Join-Path $SourceRepo 'commercial/licensing/publisher-key.sha256'
 $targetPin = Join-Path $Destination 'commercial/licensing/publisher-key.sha256'
 if (Test-Path $sourcePin) {
@@ -42,8 +45,9 @@ if ($running) {
     $localHttp = $localHttp -or (($configuration | ConvertFrom-Json) -contains 'AVAN_PM_ALLOW_LOCAL_HTTP=1')
 }
 if ($localHttp) { $composeArgs += @('-f',(Join-Path $Destination 'compose.pm-local.yaml')) }
-# --no-deps updates only AVAN; SQL, identity service, MTG and named volumes stay intact.
-& docker @composeArgs up -d --build --no-deps --wait avan
+# Compose starts the managed SQL dependency once, preserves all named volumes,
+# and keeps an already selected external Agent SQL connection active.
+& docker @composeArgs up -d --build --wait
 if ($LASTEXITCODE -ne 0) { throw 'AVAN update failed. Review docker compose logs; do not remove volumes.' }
 Write-Host "Updated source: $Destination"
-Write-Host 'Open http://127.0.0.1:8188. Configure the dedicated Agent SQL database, ProcessMaker MySQL, then AI in GodAdmin.'
+Write-Host 'Open http://127.0.0.1:8188/admin/. The bundled AVANAgent SQL database is provisioned automatically; configure ProcessMaker MySQL, organization, license and AI.'
