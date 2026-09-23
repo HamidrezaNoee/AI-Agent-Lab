@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 from datetime import datetime,timezone
 from ipaddress import ip_address
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 import hmac
 import os
@@ -46,7 +47,7 @@ def _local(request:Request):
 
 def _origin(request:Request):
     origin=request.headers.get("origin")
-    expected=os.getenv("AVAN_PUBLIC_ORIGIN","http://127.0.0.1:8188").rstrip("/")
+    expected=os.getenv("AVAN_ADMIN_ORIGIN","http://127.0.0.1:8188").rstrip("/")
     allowed={expected}
     if expected=="http://127.0.0.1:8188":
         allowed.add("http://localhost:8188")
@@ -59,7 +60,7 @@ def _prune():
         if s["expires"]<now:_sessions.pop(sid,None)
 
 def _cookie(response,token:str):
-    secure=os.getenv("AVAN_PUBLIC_ORIGIN","http://127.0.0.1:8188").startswith("https://")
+    secure=os.getenv("AVAN_ADMIN_ORIGIN","http://127.0.0.1:8188").startswith("https://")
     response.set_cookie("avan_godadmin",token,httponly=True,secure=secure,
                         samesite="strict",path="/admin",max_age=1800)
 
@@ -249,6 +250,10 @@ def _mysql_check(body):
             # Inspect only schema/metadata; never print connection details.
             query(con,'SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA FROM APPLICATION LIMIT 0')
             query(con,'SELECT u.USR_UID,u.USR_FIRSTNAME,u.USR_LASTNAME,u.USR_EMAIL,u.USR_STATUS,d.DEP_TITLE FROM USERS u LEFT JOIN DEPARTMENT d ON d.DEP_UID=u.DEP_UID LIMIT 0')
+            query(con,'SELECT APP_INIT_USER,APP_CREATE_DATE,APP_FINISH_DATE FROM APPLICATION LIMIT 0')
+            query(con,'SELECT DEL_INDEX,APP_UID,TAS_UID,USR_UID,DEL_THREAD_STATUS,DEL_DELEGATE_DATE,DEL_INIT_DATE,DEL_FINISH_DATE,DEL_TASK_DUE_DATE FROM APP_DELEGATION LIMIT 0')
+            query(con,'SELECT TAS_UID,TAS_TITLE FROM TASK LIMIT 0')
+            query(con,'SELECT PRO_TITLE FROM PROCESS LIMIT 0')
             rows=query(con,'SELECT PRO_UID FROM PROCESS WHERE PRO_UID IN (%s,%s)',(MEETING_PROCESS,ACTION_PROCESS))
             if len(rows)!=2:raise ProductionUnavailable('Both meeting processes must be imported')
         return {'connected':True,'source':'ProcessMaker/MySQL','read_only':True}
@@ -419,7 +424,7 @@ def public_key(body:PublicKey,session=Depends(_ready)):
     # PUBLISHER, outside the customer-admin UI. Otherwise a customer GodAdmin
     # could replace the verifier key and self-issue arbitrary licenses.
     import hashlib
-    pin_file=Path("/app/commercial/licensing/publisher-key.sha256")
+    pin_file=Path(__file__).parent/"licensing"/"publisher-key.sha256"
     if not pin_file.is_file():
         raise HTTPException(503,"کلید مرجع ناشر باید در نسخه معتبر نرم‌افزار نصب شود.")
     pin=pin_file.read_text(encoding="ascii").strip().lower()
@@ -453,8 +458,10 @@ def activate_license(body:LicenseActivation,session=Depends(_ready)):
     try:
         from . import native_access
         data=native_access.read()
-        if data['tenant_id']!=tenant_id:raise HTTPException(404,'سازمان فعال با این شناسه ثبت نشده است.')
-        tenant=(data['company_name'],)
+        configured=setup.get_setting('company') or {}
+        if configured.get('tenant_id')!=tenant_id or data.get('tenant_id') not in (None,tenant_id):
+            raise HTTPException(404,'سازمان فعال با این شناسه ثبت نشده است.')
+        tenant=(data.get('company_name') or configured.get('company_name'),)
         used=native_access.seats(tenant_id)
         payload=verify_license(body.token,setup.PUBLIC.read_bytes(),
             tenant_id=tenant_id,installation_id=installation,
@@ -478,6 +485,10 @@ class AIConfig(BaseModel):
     enabled:bool=False
     model:str=Field(default='gpt-4.1-mini',min_length=1,max_length=100,pattern=r'^[a-zA-Z0-9_.:-]+$')
     api_key:str=Field(default='',max_length=1024)
+    voice_enabled:bool=False
+    transcription_model:Literal['gpt-4o-mini-transcribe','gpt-4o-transcribe','whisper-1']='gpt-4o-mini-transcribe'
+    speech_model:Literal['gpt-4o-mini-tts','tts-1','tts-1-hd']='gpt-4o-mini-tts'
+    voice:Literal['alloy','coral','onyx','nova','shimmer']='alloy'
 
 
 @router.post('/api/ai/save')
@@ -541,3 +552,52 @@ def save_agent_database(body:AgentSqlConfig,session=Depends(_ready)):
     result=check_agent_database(body,session)
     setup.put_setting('agent_sql',body.model_dump())
     return {**result,'saved':True}
+
+
+@router.get('/api/license/status')
+def license_status(session=Depends(_ready)):
+    from . import native_access
+    from .production_license import capacity, ProductionLicenseDenied
+    company=setup.get_setting('company') or {}
+    tenant=company.get('tenant_id')
+    used=native_access.seats(tenant) if tenant else 0
+    try:
+        payload=capacity(tenant,company.get('company_name',''),used)
+        expiry=payload['expires_at']
+        days=max(0,(datetime.fromisoformat(expiry.replace('Z','+00:00'))-datetime.now(timezone.utc)).days) if expiry else None
+        return {'valid':True,'active_users':used,'max_users':payload['max_users'],'remaining_seats':payload['max_users']-used,
+                'expires_at':expiry,'remaining_days':days,'modules':payload['modules'],'license_id':payload['license_id']}
+    except ProductionLicenseDenied:
+        return {'valid':False,'active_users':used,'reason':'لایسنس فعال نیست، منقضی شده یا ظرفیت کاربران رعایت نشده است.'}
+
+
+@router.get('/api/users/mapped')
+def mapped_users(session=Depends(_ready)):
+    from . import native_access
+    data=native_access.read()
+    return {'users':[{k:u.get(k) for k in ('subject','pm_uid','name','role','department_name','enabled','pm_active')} for u in data['users']]}
+
+
+class UserEnabled(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    subject:str=Field(min_length=1,max_length=180)
+    enabled:bool
+
+
+@router.post('/api/users/enabled')
+def user_enabled(body:UserEnabled,session=Depends(_ready)):
+    from . import native_access
+    from .production_license import capacity,ProductionLicenseDenied
+    with native_access.edit() as data:
+        user=next((u for u in data['users'] if u['subject']==body.subject),None)
+        if not user:raise HTTPException(404,'کاربر ثبت نشده است.')
+        if body.enabled:
+            from .production_onboarding import _directory
+            active=any(u.pm_uid==user['pm_uid'] and u.status=='ACTIVE' for u in _directory())
+            if not active:raise HTTPException(409,'کاربر ProcessMaker فعال نیست.')
+            used=sum(u['subject']!=body.subject and u.get('enabled') and u.get('pm_active') for u in data['users'])+1
+            try:capacity(data['tenant_id'],data['company_name'],used)
+            except ProductionLicenseDenied:raise HTTPException(409,'اعتبار زمانی یا ظرفیت لایسنس اجازه فعال‌سازی نمی‌دهد.')
+            user['pm_active']=True
+        user['enabled']=body.enabled
+    return {'saved':True,'enabled':body.enabled}

@@ -137,7 +137,7 @@ async function showSettings(page=state.page){
  else if(page==="identity")await renderIdentity(m);
  else if(page==="processmaker")renderPm(m,settings.processmaker||{});
  else if(page==="ai")renderAI(m,settings.ai||{});
- else if(page==="license")renderLicense(m,settings);
+ else if(page==="license")await renderLicense(m,settings);
  else if(page==="users")await renderUsers(m);
  else await renderCompany(m);
 }
@@ -197,7 +197,7 @@ function renderPm(m,config){
    btn("ذخیره تنظیمات",()=>run("save")));
  append(f,actions,out);append(p,f);append(m,p);
 }
-function renderLicense(m,settings){
+async function renderLicense(m,settings){
  const p=panel("شناسه نصب و مجوز نرم‌افزار",
    "لایسنس باید توسط ناشر امضا شده و برای همین نصب و سازمان صادر شده باشد.");
  append(p,node("p","hint","شناسه نصب پایدار این سرور:"),
@@ -237,6 +237,7 @@ function renderLicense(m,settings){
  });
  append(p,node("h2","","فعالسازی مجوز سازمان"),licenseForm);
  append(m,p);
+ try{const status=await api("license/status");if(status.valid)append(p,info("کاربران فعال: "+status.active_users+" از "+status.max_users+" · ظرفیت باقی‌مانده: "+status.remaining_seats+" · اعتبار: "+(status.remaining_days===null?"بدون انقضا":status.remaining_days+" روز")+" · پایان: "+(status.expires_at||"بدون انقضا")));else append(p,info(status.reason,true))}catch(e){append(p,info(e.message,true))}
 }
 async function renderUsers(m){
  const p=panel("کاربران و سازمان",
@@ -254,6 +255,8 @@ async function renderUsers(m){
          " · حساب‌های غیرفعال‌شده: "+r.disabled_unverified_users));
    }catch(err){showError(syncResult,err)}
  },"secondary"),syncResult);
+ try{const mapped=await api("users/mapped");const list=panel("حساب‌های ثبت‌شده","کاربر غیرفعال از ظرفیت لایسنس خارج می‌شود و دسترسی اطلاعات ندارد.");
+ for(const u of mapped.users){const row=node("div","actions");append(row,node("span","",(u.name||u.subject)+" · "+u.role+" · "+(u.enabled?"فعال":"غیرفعال")),btn(u.enabled?"غیرفعال‌کردن":"فعال‌کردن",async()=>{try{await api("users/enabled",{subject:u.subject,enabled:!u.enabled});await showSettings("users")}catch(e){showError(syncResult,e)}}));append(list,row)}append(p,list)}catch(e){append(p,info(e.message,true))}
  let pending=[];
  try{
    const response=await api("users/pending");
@@ -350,10 +353,15 @@ function renderAI(m,config){
  const f=node("form"),out=node("div");f.addEventListener("submit",e=>e.preventDefault());
  const enabled=node("input");enabled.type="checkbox";enabled.checked=!!config.enabled;
  const label=node("label");append(label,enabled,node("span","","فعال‌سازی دستیار هوشمند"));
- append(f,label,field("نام مدل","model",config.model||"gpt-4.1-mini"),
-  field("کلید API؛ برای حفظ کلید قبلی خالی بگذارید","api_key","",{type:"password"}));
+ const voiceEnabled=node("input");voiceEnabled.type="checkbox";voiceEnabled.checked=!!config.voice_enabled;
+ const voiceLabel=node("label");append(voiceLabel,voiceEnabled,node("span","","فعال‌سازی تبدیل صوت به متن و خواندن پاسخ (مصرف API جداگانه)"));
+ append(f,label,voiceLabel,field("نام مدل","model",config.model||"gpt-4.1-mini"),
+  field("کلید API؛ برای حفظ کلید قبلی خالی بگذارید","api_key","",{type:"password"}),
+  field("مدل تبدیل صوت (gpt-4o-mini-transcribe / gpt-4o-transcribe / whisper-1)","transcription_model",config.transcription_model||"gpt-4o-mini-transcribe"),
+  field("مدل خواندن پاسخ (gpt-4o-mini-tts / tts-1 / tts-1-hd)","speech_model",config.speech_model||"gpt-4o-mini-tts"),
+  field("صدا (alloy / coral / onyx / nova / shimmer)","voice",config.voice||"alloy"));
  append(f,btn("ذخیره تنظیمات",async()=>{
-  busy(f,true);try{await api("ai/save",{enabled:enabled.checked,model:formValue(f,"model"),api_key:formValue(f,"api_key")});
+  busy(f,true);try{await api("ai/save",{enabled:enabled.checked,model:formValue(f,"model"),api_key:formValue(f,"api_key"),voice_enabled:voiceEnabled.checked,transcription_model:formValue(f,"transcription_model"),speech_model:formValue(f,"speech_model"),voice:formValue(f,"voice")});
    f.elements.namedItem("api_key").value="";out.replaceChildren(info("تنظیمات ذخیره شد."));
   }catch(e){showError(out,e)}finally{busy(f,false)}
  }),btn("بررسی اتصال ذخیره‌شده",async()=>{

@@ -122,6 +122,9 @@ def approve_employee(
             raise ProvisioningDenied("OIDC or PM user already linked")
         data["tenant_id"] = tenant_id
         data["company_name"] = company_name.strip()
+        from .production_license import capacity, ProductionLicenseDenied
+        try:capacity(tenant_id,company_name.strip(),sum(u.get('enabled') and u.get('pm_active') for u in users)+1)
+        except ProductionLicenseDenied as exc:raise ProvisioningDenied(str(exc)) from exc
         users.append(
             {
                 "subject": subject,

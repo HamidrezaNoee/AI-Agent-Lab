@@ -46,3 +46,19 @@ def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
         "license_id":payload["license_id"],
     }
 
+
+
+def capacity(tenant_id, company_name, active_users):
+    """Verify the next seat count inside the locked organization update."""
+    from .setup_console import get_setting, PUBLIC
+    local=get_setting('license') or {}
+    installation=(get_setting('installation') or {}).get('installation_id','')
+    if local.get('tenant_id')!=tenant_id or not PUBLIC.is_file():
+        raise ProductionLicenseDenied('Activate a signed license before enabling users')
+    try:
+        payload=verify_license(local.get('token',''),PUBLIC.read_bytes(),tenant_id=tenant_id,
+            installation_id=installation,active_users=active_users)
+        if payload['customer'].strip()!=company_name.strip():raise LicenseInvalid('Company mismatch')
+        return payload
+    except LicenseInvalid as exc:
+        raise ProductionLicenseDenied('License expired or licensed seat count exceeded') from exc

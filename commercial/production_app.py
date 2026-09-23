@@ -53,7 +53,7 @@ async def production_lifespan(_app):
     from .setup_console import initialize
     initialize()
     import asyncio
-    from .agent_routes import monitor_worker
+    from .agent_monitor import worker as monitor_worker
     task=asyncio.create_task(monitor_worker())
     try:
         yield
@@ -81,7 +81,7 @@ async def security_headers(request:Request,call_next):
     response.headers["Referrer-Policy"]="no-referrer"
     response.headers["Content-Security-Policy"]=(
         "default-src 'none'; script-src 'self'; style-src 'self'; "
-        "connect-src 'self'; img-src 'self' data:; font-src 'self'; "
+        "connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; font-src 'self'; "
         "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
     )
     return response
@@ -308,7 +308,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         return response
     except ProductionUnavailable:
         raise HTTPException(status_code=503,
-            detail="حساب Keycloak تأیید شد اما اتصال عملیاتی SQL آوان برقرار نیست؛ تنظیمات SQL و ساختار AVAN در GodAdmin بررسی شود.")
+            detail="حساب Keycloak تأیید شد اما اتصال به MySQL پروسس‌میکر برقرار نیست؛ تنظیمات منبع در GodAdmin بررسی شود.")
     except ProductionAccessDenied:
         raise HTTPException(status_code=403,
             detail="هویت سازمانی تأیید شد اما دسترسی اطلاعات جلسات هنوز فعال نیست؛ وضعیت سازمان، نقش کاربر و لایسنس امضاشده آوان در GodAdmin بررسی شود.")
@@ -324,7 +324,8 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     session_id=secrets.token_urlsafe(48)
     csrf=secrets.token_urlsafe(32)
     sessions[session_id]={"access_token":access,"csrf":csrf,
-                          "expires":min(float(exp),time.time()+3600)}
+                          "expires":min(float(exp),time.time()+3600),
+                          "refresh_token": data.get("refresh_token")}
     response=RedirectResponse("/",status_code=303)
     response.set_cookie("avan_session",session_id,max_age=3600,**_cookie_options())
     response.delete_cookie("avan_login_state",path="/")
@@ -443,6 +444,8 @@ def _normalise_dates(records:list[dict])->None:
 
 from .agent_routes import register as register_agent_routes
 register_agent_routes(app,_authorized,_csrf)
+from .process_bi_routes import register as register_bi_routes
+register_bi_routes(app,_csrf)
 
 
 from .agent_storage import AgentStorageUnavailable

@@ -3,6 +3,12 @@ name: AVAN operational source and Docker installation checks
 on:
   push:
     paths:
+      - "commercial/**"
+      - "compose.https.yaml"
+      - "infra/**"
+      - ".dockerignore"
+      - "scripts/init-security.sh"
+      - "scripts/pin-license-public-key.ps1"
       - "commercial/production_*.py"
       - "commercial/setup_*.py"
       - "commercial/meeting_questions.py"
@@ -28,6 +34,12 @@ on:
       - ".github/workflows/commercial-preview-ci.yml"
   pull_request:
     paths:
+      - "commercial/**"
+      - "compose.https.yaml"
+      - "infra/**"
+      - ".dockerignore"
+      - "scripts/init-security.sh"
+      - "scripts/pin-license-public-key.ps1"
       - "commercial/production_*.py"
       - "commercial/setup_*.py"
       - "commercial/meeting_questions.py"
@@ -75,9 +87,15 @@ jobs:
         run: |
           node --check commercial/web/production/app.js
           node --check commercial/web/admin/app.js
+      - name: Browser smoke test with isolated API fixtures
+        run: |
+          npm install --no-save --package-lock=false playwright
+          npx playwright install --with-deps chromium
+          node commercial/tests/ui_smoke.cjs
       - name: Validate env-free first-run Compose
         run: |
           docker compose config --quiet
+          AVAN_APP_HOST=agent.example.com AVAN_AUTH_HOST=auth.example.com docker compose -f compose.yaml -f compose.https.yaml config --quiet
           python - <<'PY'
           from pathlib import Path
           c=Path("compose.yaml").read_text()
@@ -97,3 +115,13 @@ jobs:
           docker build -f commercial/Dockerfile.production -t avan-agent:ci .
           docker run --rm --entrypoint python avan-agent:ci -c "from commercial.production_app import app; assert app.title == 'AVAN'"
           docker run --rm --tmpfs /var/lib/avan:uid=10001,gid=10001 --entrypoint python avan-agent:ci -c "from commercial.setup_console import initialize; initialize(); from commercial.production_app import app; assert app.title == 'AVAN'; from commercial.setup_console import get_setting; assert not get_setting('agent_sql'); print('First-run setup ready without configured databases')"
+
+      - name: Build offline license issuer and scenario importer
+        run: |
+          docker build -f commercial/Dockerfile.license -t avan-issuer:ci .
+          docker run --rm avan-issuer:ci --help
+          docker build -f commercial/Dockerfile.scenarios -t avan-scenarios:ci .
+          docker run --rm avan-scenarios:ci --help
+
+      - name: Validate HTTPS gateway configuration
+        run: docker run --rm -e AVAN_APP_HOST=agent.example.com -e AVAN_AUTH_HOST=auth.example.com -v "$PWD/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile

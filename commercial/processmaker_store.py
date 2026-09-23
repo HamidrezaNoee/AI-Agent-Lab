@@ -261,6 +261,7 @@ def _meeting(row, d):
         "discussion": text(d.get("MTG_MeetingDiscussionSummary")),
         "parking_lot": text(d.get("MTG_ParkingLot")),
         "secretary_uid": text(d.get("MTG_SecretaryUserUID")),
+        "participant_uids": sorted(members(d) - {""}),
         "actions": [],
     }
 
@@ -326,10 +327,18 @@ def authorized_meetings_page(con, scope, *, cursor=None, limit=50):
     }
 
 
-def authorized_meeting_snapshot(con, scope, *, maximum=MAX_MEETINGS):
+def authorized_meeting_snapshot(con, scope, *, maximum=MAX_MEETINGS, meeting_id=None):
     if not 1 <= maximum <= MAX_MEETINGS:
         raise ValueError("Invalid limit")
-    parents, more = _parents(con, scope, limit=maximum)
+    if meeting_id is None:
+        parents, more = _parents(con, scope, limit=maximum)
+    else:
+        rows = query(con, 'SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA FROM APPLICATION WHERE PRO_UID=%s AND APP_NUMBER=%s', (MEETING_PROCESS, meeting_id))
+        parents, more = [], False
+        for row in rows:
+            data = decode_case(row[3])
+            if scope['role'] == 'SysAdmin' or members(data).intersection(scope['visible_uids']):
+                parents.append((_meeting(row, data), data))
     total = 0
     for m, d in parents:
         try:

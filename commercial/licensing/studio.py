@@ -5,13 +5,11 @@ ProcessMaker or public portal. Store it outside the source checkout and use
 an encrypted PEM with a passphrase of at least 12 characters. No network calls.
 """
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from getpass import getpass
 import json
 import os
 from pathlib import Path
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -91,6 +89,14 @@ def issue(*, private_path: str, output_path: str, password: str,
     return {k:v for k,v in payload.items() if k!="signature"}
 
 
+def expiry(days=None, expires='unlimited'):
+    if days is not None:
+        if type(days) is not int or not 1<=days<=36500:
+            raise ValueError('License duration must be 1..36500 days')
+        return (datetime.now(timezone.utc)+timedelta(days=days)).isoformat()
+    return None if expires=='unlimited' else expires
+
+
 def cli(args):
     if args.command=="keygen":
         pw=getpass("Signing-key passphrase (never stored): ")
@@ -105,7 +111,7 @@ def cli(args):
                       tenant_id=args.tenant,installation_id=args.installation,
                       customer=args.customer,max_users=args.max_users,
                       modules=[int(x.strip()) for x in args.modules.split(",")],
-                      expires_at=None if args.expires=="unlimited" else args.expires)
+                      expires_at=expiry(args.days, args.expires))
         print("PASS: tenant- and installation-bound ECDSA license generated.")
         print("License ID:",payload["license_id"],"Output:",args.out)
     elif args.command=="inspect":
@@ -120,6 +126,8 @@ def cli(args):
 
 
 def launch_gui():
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
     app=tk.Tk()
     app.title("LIMAK License Studio — Meeting Agent")
     app.geometry("710x730")
@@ -148,7 +156,8 @@ def launch_gui():
     field("customer","نام شرکت مشتری")
     field("max_users","حداکثر کاربران فعال","100")
     field("modules","ماژول‌های مجاز، جداشده با ویرگول","1,2,3,4")
-    field("expires","انقضا ISO با منطقه زمانی یا unlimited","unlimited")
+    field("days","مدت اعتبار (روز، برای تاریخ دقیق خالی)","365")
+    field("expires","تاریخ دقیق ISO یا unlimited (در صورت خالی‌بودن روز)","unlimited")
     field("output","مسیر فایل لایسنس خروجی")
     def choose(key,save=False):
         selected=(filedialog.asksaveasfilename(defaultextension=".license.txt")
@@ -172,7 +181,7 @@ def launch_gui():
                customer=values["customer"].get(),
                max_users=int(values["max_users"].get()),
                modules=[int(x.strip()) for x in values["modules"].get().split(",")],
-               expires_at=None if values["expires"].get()=="unlimited" else values["expires"].get())
+               expires_at=expiry(int(values["days"].get()) if values["days"].get().strip() else None, values["expires"].get()))
             messagebox.showinfo("صدور موفق","لایسنس امضاشده ذخیره شد.\nLicense ID: "+payload["license_id"])
         except Exception as exc:
             messagebox.showerror("خطا",str(exc))
@@ -190,7 +199,9 @@ def main():
         i.add_argument("--"+arg,required=True)
     i.add_argument("--max-users",type=int,required=True)
     i.add_argument("--modules",default="1")
-    i.add_argument("--expires",default="unlimited")
+    term=i.add_mutually_exclusive_group()
+    term.add_argument("--expires",default="unlimited")
+    term.add_argument("--days",type=int)
     inspect=sub.add_parser("inspect")
     for arg in ("public","license","tenant","installation"):
         inspect.add_argument("--"+arg,required=True)
@@ -204,3 +215,4 @@ def main():
 
 if __name__=="__main__":
     main()
+

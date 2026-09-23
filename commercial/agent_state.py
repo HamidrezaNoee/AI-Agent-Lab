@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from collections import Counter
 import secrets
 from . import agent_storage
+from .agent_workspace import user_key, RevisionConflict
 from .agent_tools import source, instant
 
 
@@ -87,10 +88,14 @@ def save_draft(scope, actor, meeting_id, payload):
                 "meeting_id": meeting_id,
                 "payload": payload,
                 "status": "draft",
+                "revision": 1,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "approved_at": None,
             },
         )
+        index_key = user_key('drafts', scope, actor)
+        index = tx.get(index_key, [], lock=True)
+        tx.put(index_key, ([identifier] + index)[:200])
         audit(scope, actor, "SECRETARY_DRAFT_CREATED", {"draft_id": identifier}, tx)
     return identifier
 
@@ -112,10 +117,12 @@ def get_draft(scope, actor, identifier, allowed_meetings):
     return _allowed(row, scope, actor, allowed_meetings)
 
 
-def approve_draft(scope, actor, identifier, allowed_meetings):
+def approve_draft(scope, actor, identifier, allowed_meetings, revision=None):
     with agent_storage.transaction() as tx:
         row = tx.get("draft:" + identifier, lock=True)
         _allowed(row, scope, actor, allowed_meetings)
+        if revision is not None and revision != row.get('revision', 1):
+            raise RevisionConflict('Draft changed; reload before approval')
         if row["status"] == "draft":
             row["status"] = "approved"
             row["approved_at"] = datetime.now(timezone.utc).isoformat()
@@ -124,3 +131,81 @@ def approve_draft(scope, actor, identifier, allowed_meetings):
                 scope, actor, "SECRETARY_DRAFT_APPROVED", {"draft_id": identifier}, tx
             )
     return _allowed(row, scope, actor, allowed_meetings)
+
+
+def list_drafts(scope, actor, allowed_meetings):
+    with agent_storage.transaction() as tx:
+        ids = tx.get(user_key('drafts', scope, actor), [])
+        result = []
+        for identifier in ids:
+            row = tx.get('draft:' + identifier)
+            try:
+                data = _allowed(row, scope, actor, allowed_meetings)
+            except PermissionError:
+                continue
+            result.append({k: data[k] for k in ('id', 'meeting_id', 'status', 'created_at')}
+                          | {'meeting_no': data['payload'].get('meeting_no', ''),
+                             'summary': data['payload'].get('summary', '')[:160],
+                             'revision': data.get('revision', 1)})
+        return result
+
+
+def update_draft(scope, actor, identifier, allowed_meetings, payload, revision):
+    with agent_storage.transaction() as tx:
+        row = tx.get('draft:' + identifier, lock=True)
+        _allowed(row, scope, actor, allowed_meetings)
+        if row.get('revision', 1) != revision or row['status'] != 'draft':
+            raise RevisionConflict('Approved or changed draft cannot be overwritten')
+        row['payload'] = payload
+        row['revision'] = revision + 1
+        row['updated_at'] = datetime.now(timezone.utc).isoformat()
+        tx.put('draft:' + identifier, row)
+        audit(scope, actor, 'SECRETARY_DRAFT_EDITED', {'draft_id': identifier}, tx)
+        return _allowed(row, scope, actor, allowed_meetings)
+
+
+def alert_id(alert):
+    import hashlib
+    return hashlib.sha256((alert['kind'] + ':' + alert['source']['id']).encode()).hexdigest()[:32]
+
+
+def alert_status(scope, actor, result):
+    key = user_key('alert_status', scope, actor)
+    with agent_storage.transaction() as tx:
+        data = tx.get(key, {}, lock=True)
+        now = datetime.now(timezone.utc).isoformat()
+        for alert in result['alerts']:
+            identifier = alert_id(alert)
+            item = data.get(identifier) or {'first_seen': now, 'acknowledged': False}
+            item['last_seen'] = now
+            data[identifier] = item
+            alert.update({'id': identifier, **item})
+        # Retain recent acknowledgements across omitted/truncated result pages.
+        data = dict(sorted(data.items(), key=lambda pair: pair[1]['last_seen'], reverse=True)[:5000])
+        tx.put(key, data)
+    return result
+
+
+def acknowledge(scope, actor, identifier):
+    key = user_key('alert_status', scope, actor)
+    with agent_storage.transaction() as tx:
+        data = tx.get(key, {}, lock=True)
+        if identifier not in data:
+            raise PermissionError('Alert unavailable')
+        data[identifier]['acknowledged'] = True
+        data[identifier]['acknowledged_at'] = datetime.now(timezone.utc).isoformat()
+        tx.put(key, data)
+        audit(scope, actor, 'MONITOR_ALERT_ACKNOWLEDGED', {'status': 'acknowledged'}, tx)
+
+
+def reopen_draft(scope, actor, identifier, allowed_meetings, revision):
+    with agent_storage.transaction() as tx:
+        row = tx.get('draft:' + identifier, lock=True)
+        _allowed(row, scope, actor, allowed_meetings)
+        if row.get('revision', 1) != revision:
+            raise RevisionConflict('Draft changed')
+        if row['status'] == 'approved':
+            row.update({'status': 'draft', 'approved_at': None, 'revision': revision + 1})
+            tx.put('draft:' + identifier, row)
+            audit(scope, actor, 'SECRETARY_DRAFT_REOPENED', {'draft_id': identifier}, tx)
+        return _allowed(row, scope, actor, allowed_meetings)

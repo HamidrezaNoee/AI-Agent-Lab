@@ -1,0 +1,42 @@
+# Fresh production installation. Set two real DNS names before using.
+# docker compose -f compose.yaml -f compose.https.yaml up -d --build
+services:
+  keycloak:
+    command:
+      - |
+        export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
+        export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
+        export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
+        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=https://$${AVAN_AUTH_HOST} --hostname-backchannel-dynamic=true
+    environment:
+      AVAN_AUTH_HOST: ${AVAN_AUTH_HOST:?Set the authentication DNS name}
+      AVAN_PUBLIC_ORIGIN: https://${AVAN_APP_HOST:?Set the application DNS name}
+    volumes:
+      - ./infra/keycloak/avan-realm-https.json:/opt/keycloak/data/import/avan-realm.json:ro
+  avan:
+    environment:
+      AVAN_PUBLIC_ORIGIN: https://${AVAN_APP_HOST:?Set the application DNS name}
+      AVAN_ADMIN_ORIGIN: http://127.0.0.1:8188
+      AVAN_ALLOWED_HOSTS: ${AVAN_APP_HOST},127.0.0.1,localhost
+      AVAN_BUNDLED_IDP: "1"
+      AVAN_OIDC_ISSUER: https://${AVAN_AUTH_HOST}/realms/avan
+      AVAN_OIDC_JWKS_URL: https://${AVAN_AUTH_HOST}/realms/avan/protocol/openid-connect/certs
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      AVAN_APP_HOST: ${AVAN_APP_HOST:?Set the application DNS name}
+      AVAN_AUTH_HOST: ${AVAN_AUTH_HOST:?Set the authentication DNS name}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - avan-caddy-data:/data
+      - avan-caddy-config:/config
+    depends_on:
+      - avan
+      - keycloak
+volumes:
+  avan-caddy-data:
+  avan-caddy-config:
