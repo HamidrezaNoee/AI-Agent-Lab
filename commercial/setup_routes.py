@@ -66,9 +66,15 @@ def _cookie(response,token:str):
 
 def _required(request:Request):
     _local(request);_origin(request);_prune()
-    sid=request.cookies.get("avan_godadmin","")
-    row=_sessions.get(sid)
-    if not row:raise HTTPException(401,"ورود GodAdmin لازم است.")
+    if setup.godadmin_identity():
+        from .production_app import _principal_for_request
+        sid,row,principal=_principal_for_request(request)
+        if not setup.is_godadmin(principal):
+            raise HTTPException(403,"این حساب مجوز تنظیمات GodAdmin را ندارد.")
+    else:
+        sid=request.cookies.get("avan_godadmin","")
+        row=_sessions.get(sid)
+        if not row:raise HTTPException(401,"ورود GodAdmin لازم است.")
     if request.method in ("POST","PUT","PATCH","DELETE"):
         csrf=request.headers.get("X-AVAN-ADMIN-CSRF","")
         if not csrf or not hmac.compare_digest(row["csrf"],csrf):
@@ -78,6 +84,8 @@ def _required(request:Request):
 
 def _ready(request:Request):
     sid,row=_required(request)
+    if setup.godadmin_identity():
+        return sid,row
     state=setup.password_state()
     if not state["changed"] or not state["totp"] or not row.get("mfa"):
         raise HTTPException(403,"ابتدا رمز اولیه را تغییر دهید و احراز هویت دومرحله‌ای را فعال کنید.")
@@ -103,12 +111,20 @@ def admin_js(request:Request):
 def state(request:Request):
     _local(request)
     _prune()
-    session=_sessions.get(request.cookies.get("avan_godadmin",""))
+    bound=bool(setup.godadmin_identity())
+    if bound:
+        try:
+            _,session=_required(request)
+        except HTTPException:
+            session=None
+    else:
+        session=_sessions.get(request.cookies.get("avan_godadmin",""))
     p=setup.password_state()
     return {"authenticated":bool(session),"password_changed":p["changed"],
             "mfa_enrolled":p["totp"],
-            "mfa_authenticated":bool(session and session.get("mfa")),
+            "mfa_authenticated":bool(session and (bound or session.get("mfa"))),
             "csrf":session["csrf"] if session else None,
+            "auth_mode":"oidc" if bound else "bootstrap",
             "configured":bool(setup.get_setting("mysql") and setup.get_setting("agent_sql") and setup.get_setting("oidc"))}
 
 class Login(BaseModel):
@@ -120,6 +136,8 @@ class Login(BaseModel):
 @router.post("/api/login")
 def login(request:Request,body:Login):
     _local(request);_origin(request);_prune()
+    if setup.godadmin_identity():
+        raise HTTPException(403,"ورود GodAdmin با حساب سازمانی انجام می‌شود.")
     remote=request.client.host if request.client else "unknown"
     attempts=_attempts[remote]
     while attempts and attempts[0]<time.time()-900:attempts.popleft()
@@ -217,6 +235,8 @@ def totp_confirm(body:Totp,session=Depends(_required)):
 
 @router.post("/api/logout")
 def logout(session=Depends(_required)):
+    if setup.godadmin_identity():
+        raise HTTPException(409,"برای خروج از حساب سازمانی از خروج اصلی آوان استفاده کنید.")
     sid,_=session
     _sessions.pop(sid,None)
     response=JSONResponse({"signed_out":True})
@@ -226,6 +246,67 @@ def logout(session=Depends(_required)):
 @router.get("/api/settings")
 def settings(session=Depends(_ready)):
     return setup.masked_settings()
+
+
+class GodAdminBinding(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    tenant_id:str=Field(min_length=1,max_length=80)
+    subject:str=Field(min_length=1,max_length=255)
+    otp:str=Field(min_length=6,max_length=6)
+
+@router.post("/api/identity/bind-godadmin")
+def bind_godadmin(body:GodAdminBinding,session=Depends(_ready)):
+    if setup.godadmin_identity():
+        raise HTTPException(409,"حساب GodAdmin قبلاً متصل شده است.")
+    if not setup.totp_ok(body.otp):
+        raise HTTPException(403,"کد جدید برنامه Authenticator معتبر نیست.")
+    from .pending_identities import find,approve
+    candidate=find(body.tenant_id,body.subject)
+    company=setup.get_setting("company") or {}
+    if not candidate or candidate["tenant_id"]!=company.get("tenant_id"):
+        raise HTTPException(404,"حساب سازمانی تأییدشده در انتظار یافت نشد.")
+    try:setup.bind_godadmin_identity(body.tenant_id,body.subject)
+    except setup.SetupError:raise HTTPException(409,"اتصال این حساب ممکن نیست.")
+    approve(body.tenant_id,body.subject)
+    _sessions.clear()
+    response=JSONResponse({"bound":True,"login_url":"/auth/login"})
+    response.delete_cookie("avan_godadmin",path="/admin")
+    return response
+
+class GodAdminAccount(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    username:str=Field(min_length=3,max_length=80,pattern=r"^[A-Za-z0-9_.@-]+$")
+    email:str=Field(min_length=5,max_length=250,pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+    name:str=Field(min_length=2,max_length=200)
+    password:str=Field(min_length=16,max_length=128)
+    otp:str=Field(min_length=6,max_length=6)
+
+@router.post("/api/identity/create-godadmin-account")
+def create_godadmin_account(body:GodAdminAccount,session=Depends(_ready)):
+    if setup.godadmin_identity():
+        raise HTTPException(409,"GodAdmin قبلاً ثبت شده است.")
+    if not setup.totp_ok(body.otp):
+        raise HTTPException(403,"کد جدید برنامه Authenticator معتبر نیست.")
+    company=setup.get_setting("company") or {}
+    config=setup.get_setting("oidc") or {}
+    if not company.get("tenant_id") or config.get("managed_by_product") is not True:
+        raise HTTPException(409,"ابتدا سازمان و هویت داخلی آوان را آماده کنید.")
+    from .identity_operator import create
+    secret_path=Path(os.getenv("AVAN_PROVISIONER_CLIENT_SECRET_PATH",
+                            "/run/secrets/avan_provisioner_client_secret"))
+    try:
+        secret=secret_path.read_text(encoding="utf-8").strip()
+        if len(secret)<16:raise ValueError("Invalid service credentials")
+        with httpx.Client(timeout=15,follow_redirects=False,trust_env=False) as client:
+            subject=create(client,config["issuer"],secret,company["tenant_id"],
+                           body.username,body.email,body.name,"GodAdmin",body.password)
+    except (OSError,KeyError,httpx.HTTPError):
+        raise HTTPException(503,"ساخت حساب در سرویس هویت داخلی انجام نشد.")
+    except ValueError:
+        raise HTTPException(409,"ساخت حساب ممکن نیست؛ نام کاربری، سازمان یا وضعیت سرویس هویت را بررسی کنید.")
+    setup.audit("GODADMIN_OIDC_ACCOUNT_CREATED_PENDING_BIND")
+    return {"created":True,"subject":subject,
+            "next":"با حساب تازه وارد شوید؛ رمز موقت را تغییر دهید و کد دومرحله‌ای را فعال کنید، سپس حساب را در این پنل تأیید کنید."}
 
 
 class MySQLConfig(BaseModel):

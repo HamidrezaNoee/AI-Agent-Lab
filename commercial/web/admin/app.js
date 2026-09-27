@@ -1,5 +1,5 @@
 "use strict";
-const state={csrf:null,user:null,settings:null,stage:"login",page:"agentdb"};
+const state={csrf:null,user:null,settings:null,stage:"login",page:"agentdb",authMode:"bootstrap"};
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n}
 function append(parent,...items){for(const item of items.flat())if(item!==null&&item!==undefined)parent.append(item);return parent}
@@ -32,8 +32,14 @@ function showError(out,err){out.replaceChildren(info(err.message||String(err),tr
 async function start(){
  try{
   const s=await api("state");
-  state.csrf=s.csrf;
-  if(!s.authenticated)showLogin(s.mfa_enrolled);
+  state.csrf=s.csrf;state.authMode=s.auth_mode;
+  if(!s.authenticated && s.auth_mode==="oidc"){
+   const p=panel("ورود یکپارچهٔ GodAdmin",
+     "برای مدیریت تنظیمات، با حساب سازمانی ثبت‌شده به‌عنوان GodAdmin وارد شوید.");
+   const a=node("a","visit","ورود با حساب سازمانی ←");a.href="/auth/login";
+   append(p,a);append(main(),p);
+  }
+  else if(!s.authenticated)showLogin(s.mfa_enrolled);
   else if(!s.password_changed)showChangePassword();
   else if(!s.mfa_enrolled)showTotpEnroll();
   else if(!s.mfa_authenticated)showLogin(true);
@@ -129,7 +135,19 @@ async function showSettings(page=state.page){
  const tabs=node("nav","tabs");
  for(const [code,title] of menu)append(tabs,btn(title,()=>showSettings(code),state.page===code?"active":""));
  append(tabs,btn("خروج امن",async()=>{
-   try{await api("logout",{})}catch{}state.csrf=null;await start()
+   if(state.authMode==="oidc"){
+    try{
+     const response=await fetch("/auth/logout",{method:"POST",credentials:"same-origin",
+       headers:{"X-AVAN-CSRF":state.csrf,"Accept":"application/json"}});
+     if(!response.ok)throw Error("خروج انجام نشد؛ دوباره تلاش کنید.");
+     const result=await response.json();state.csrf=null;
+     try{localStorage.setItem("avan-logout",String(Date.now()))}catch(_){}
+     window.location.assign(result.logout_url||"/auth/signed-out");
+    }catch(err){append(m,info(err.message,true))}
+   }else{
+    try{await api("logout",{});state.csrf=null;await start()}
+    catch(err){append(m,info(err.message,true))}
+   }
  },"secondary"));append(m,tabs);
  if(page==="agentdb")await renderAgentDatabase(m);
  else if(page==="mysql")renderMysql(m,settings.mysql||{});
@@ -171,6 +189,54 @@ async function renderIdentity(m){
       "سرویس هویت داخلی آوان فعال است · Realm: "+status.realm:
       "سرویس هویت داخلی هنوز آماده نیست.",!status.connected));
  }catch(err){showError(result,err)}
+ if(state.authMode==="bootstrap"){
+   const company=await api("company");
+   const bind=panel("تکمیل ورود واحد GodAdmin",
+     "پس از ثبت سازمان، با حساب سازمانی موردنظر یک‌بار وارد شوید. این حساب تا تأیید شما هیچ دسترسی ندارد؛ سپس آن را در اینجا با کد تازهٔ Authenticator به GodAdmin متصل کنید.");
+   if(!company.tenant_id)append(bind,info("ابتدا در بخش اطلاعات سازمان نام سازمان را ثبت کنید.",true));
+   else{
+     append(bind,info("شناسه سازمانی که باید برای حساب Keycloak ثبت شده باشد: "+company.tenant_id));
+     const create=node("form","grid"),created=node("div","full");
+     append(create,field("نام کاربری جدید GodAdmin","username"),
+       field("ایمیل حساب سازمانی","email"),field("نام مدیر سامانه","name"),
+       field("رمز موقت حساب جدید (حداقل ۱۶ کاراکتر)","password","",{secret:true}),
+       field("کد تازه Authenticator حساب اولیه","otp"));
+     const createButton=node("button","","ساخت حساب سازمانی GodAdmin");
+     createButton.type="submit";append(create,createButton,created);
+     create.addEventListener("submit",async e=>{
+       e.preventDefault();busy(create,true);
+       try{const account=await api("identity/create-godadmin-account",{
+         username:formValue(create,"username"),email:formValue(create,"email"),
+         name:formValue(create,"name"),password:formValue(create,"password"),
+         otp:formValue(create,"otp")});
+         create.elements.namedItem("password").value="";
+         created.replaceChildren(info(account.next));
+       }catch(err){showError(created,err)}finally{busy(create,false)}
+     });
+     append(bind,info("اگر هنوز حساب سازمانی ندارید، آن را اینجا بسازید. پس از اولین ورود باید رمز موقت و تأیید دومرحله‌ای حساب جدید را تکمیل کنید."),create);
+     const start=node("a","visit","ورود حساب سازمانی در پنجرهٔ جدید ←");
+     start.href="/auth/login";start.target="_blank";start.rel="noopener noreferrer";
+     append(bind,start,btn("به‌روزرسانی حساب‌های واردشده",()=>showSettings("identity"),"secondary"));
+     const pending=(await api("users/pending")).pending||[];
+     for(const account of pending.filter(u=>u.tenant_id===company.tenant_id)){
+       const f=node("form"),out=node("div");
+       const otp=field("کد جدید Authenticator حساب اولیه GodAdmin","otp","",{secret:false});
+       append(f,node("p","",account.name+" · "+(account.email_verified?account.email||"":"ایمیل تأیید نشده")+" · "+account.subject),otp);
+       const button=node("button","","تأیید این حساب به‌عنوان GodAdmin");button.type="submit";
+       append(f,button,out);append(bind,f);
+       f.addEventListener("submit",async e=>{
+         e.preventDefault();if(!confirm("حساب «"+account.name+"» مدیر کل این نصب شود؟"))return;
+         busy(f,true);
+         try{await api("identity/bind-godadmin",{tenant_id:account.tenant_id,
+           subject:account.subject,otp:formValue(f,"otp")});
+           window.location.assign("/auth/login");
+         }catch(err){showError(out,err)}finally{busy(f,false)}
+       });
+     }
+     if(!pending.length)append(bind,info("پس از ورود حساب سازمانی، این صفحه را به‌روزرسانی کنید."));
+   }
+   append(m,bind);
+ }
  append(m,p);
 }
 

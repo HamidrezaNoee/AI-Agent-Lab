@@ -17,6 +17,7 @@ def create(client, issuer, secret, tenant, username, email, name, role, password
         "Expert",
         "Manager",
         "SysAdmin",
+        "GodAdmin",
     ):
         raise ValueError("Invalid account name or role")
     tenant = str(UUID(tenant))
@@ -69,7 +70,10 @@ def create(client, issuer, secret, tenant, username, email, name, role, password
         raise ValueError(
             "Account already exists; refusing to alter its password, role or identity"
         )
-    selected = checked("GET", base + "/roles/" + role, headers=headers).json()
+    # The installation owner is authorized by AVAN's exact-subject binding,
+    # never by a realm-wide role that could be assigned outside the product.
+    selected = (checked("GET", base + "/roles/" + role, headers=headers).json()
+                if role != "GodAdmin" else None)
     first, _, last = name.strip().partition(" ")
     payload = {
         "username": username,
@@ -94,12 +98,13 @@ def create(client, issuer, secret, tenant, username, email, name, role, password
         raise ValueError(
             "Identity remains DISABLED: configure admin-only tenant_id in the realm user profile before recovery"
         )
-    checked(
-        "POST",
-        base + "/users/" + subject + "/role-mappings/realm",
-        json=[selected],
-        headers=headers,
-    )
+    if selected is not None:
+        checked(
+            "POST",
+            base + "/users/" + subject + "/role-mappings/realm",
+            json=[selected],
+            headers=headers,
+        )
     checked("PUT", base + "/users/" + subject, json={"enabled": True}, headers=headers)
     return subject
 

@@ -138,6 +138,38 @@ def get_setting(name:str)->dict|None:
     try:return _unseal(name,row[0])
     except Exception as exc:raise SetupError("Encrypted configuration unreadable; restore the original state volume") from exc
 
+def godadmin_identity()->dict|None:
+    return get_setting("godadmin_identity")
+
+def is_godadmin(principal)->bool:
+    identity=godadmin_identity()
+    oidc=get_setting("oidc") or {}
+    return bool(identity and identity.get("subject")==principal.subject and
+                identity.get("tenant_id")==str(principal.tenant_id) and
+                identity.get("issuer")==str(oidc.get("issuer","")).rstrip("/"))
+
+def bind_godadmin_identity(tenant_id:str,subject:str):
+    """One-time promotion of an independently verified OIDC subject by bootstrap admin."""
+    company=get_setting("company") or {}
+    oidc=get_setting("oidc") or {}
+    issuer=str(oidc.get("issuer","")).rstrip("/")
+    if not (company.get("tenant_id")==tenant_id and issuer and
+            isinstance(subject,str) and 1<=len(subject)<=255):
+        raise SetupError("Verified organization and identity service are required")
+    payload={"tenant_id":tenant_id,"subject":subject,"issuer":issuer}
+    # Unlike ordinary settings, a second request cannot replace the first owner.
+    with _db() as con:
+        con.execute("BEGIN IMMEDIATE")
+        exists=con.execute("SELECT 1 FROM settings WHERE name='godadmin_identity'").fetchone()
+        if exists:
+            con.rollback()
+            raise SetupError("GodAdmin identity is already bound")
+        con.execute("INSERT INTO settings(name,ciphertext,modified_utc) VALUES(?,?,?)",
+                    ("godadmin_identity",_seal("godadmin_identity",payload),
+                     datetime.now(timezone.utc).isoformat()))
+        con.commit()
+    audit("GODADMIN_OIDC_IDENTITY_BOUND")
+
 def audit(code:str):
     if not SQLITE.is_file():return
     with _db() as con:
@@ -245,12 +277,15 @@ def reset_from_docker_host():
     replacement=secrets.token_urlsafe(28)
     salt=secrets.token_bytes(16)
     with _db() as con:
+        con.execute("BEGIN IMMEDIATE")
         con.execute("""UPDATE godadmin SET password_hash=?,salt=?,password_changed=0,
                        totp_secret=NULL,totp_verified=0 WHERE username='godadmin'""",
                     (_hash(replacement,salt),salt))
+        con.execute("DELETE FROM settings WHERE name='godadmin_identity'")
+        con.commit()
     INITIAL.unlink(missing_ok=True)
     _write_private(INITIAL,(replacement+"\n").encode("utf-8"))
-    audit("GODADMIN_HOST_RECOVERY")
+    audit("GODADMIN_HOST_RECOVERY_IDENTITY_UNBOUND")
     print("GodAdmin recovery completed. Collect new password through --take-bootstrap.")
     print("All existing HTTP sessions should be terminated by restarting the AVAN container.")
 
@@ -264,4 +299,3 @@ if __name__=="__main__":
         reset_from_docker_host()
     else:
         raise SystemExit("Usage: python -m commercial.setup_console --take-bootstrap")
-

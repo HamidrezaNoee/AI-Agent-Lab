@@ -198,8 +198,9 @@ def health():
 
 @app.get("/")
 def home():
-    from .setup_console import get_setting
-    if not get_setting("mysql") or not get_setting("agent_sql") or not get_setting("oidc"):
+    from .setup_console import get_setting,godadmin_identity
+    if (not get_setting("mysql") or not get_setting("agent_sql") or
+        not get_setting("oidc") or not godadmin_identity()):
         return RedirectResponse("/admin/",status_code=303)
     return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
 
@@ -239,6 +240,11 @@ def login(request:Request):
     if (_public_origin()=="http://127.0.0.1:8188"
         and request.url.hostname=="localhost"):
         return RedirectResponse("http://127.0.0.1:8188/auth/login",status_code=303)
+    from .setup_console import password_state
+    first_run=password_state()
+    if not first_run["changed"] or not first_run["totp"]:
+        raise HTTPException(status_code=403,
+                            detail="ابتدا GodAdmin باید راه‌اندازی اولیه و تأیید دومرحله‌ای را تکمیل کند.")
     try:
         origin=_public_origin()
         authorization,_,client_id,_,_= _oidc_config()
@@ -322,41 +328,24 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         raise HTTPException(status_code=403,
             detail="شناسه سازمان امضاشده حساب Keycloak با سازمان ثبت‌شده در GodAdmin برابر نیست؛ ویژگی tenant_id حساب ardalan را بررسی کنید.")
 
+    from .setup_console import godadmin_identity,is_godadmin
+    bound=godadmin_identity()
+    platform_admin=bool(bound and is_godadmin(principal))
+    if not bound:
+        # Setup owner selects this already signature-verified identity in the
+        # admin console. Until then no OIDC user obtains an application session.
+        _stage_verified_identity(principal,claims,access)
+        response=RedirectResponse("/auth/pending",status_code=303)
+        response.delete_cookie("avan_login_state",path="/")
+        return response
     try:
-        with open_production() as con:
-            verified_scope(con,principal)
+        if not platform_admin:
+            with open_production() as con:
+                verified_scope(con,principal)
     except EmployeeMappingRequired:
         # No meeting read or organizational role is granted here. A verified
         # identity is staged for explicit GodAdmin + active PM user approval.
-        from .pending_identities import stage
-        user_claims=claims
-        issuer=(get_setting("oidc") or {}).get("issuer","").rstrip("/")
-        try:
-            with httpx.Client(timeout=7,follow_redirects=False,
-                              trust_env=False) as http:
-                userinfo_response=http.get(
-                   issuer+"/protocol/openid-connect/userinfo",
-                   headers={"Authorization":"Bearer "+access,
-                            "Accept":"application/json"})
-                userinfo_response.raise_for_status()
-                if len(userinfo_response.content)>20000:
-                    raise ValueError("OIDC UserInfo too large")
-                received=userinfo_response.json()
-                if received.get("sub")!=principal.subject:
-                    raise AuthenticationFailed("UserInfo subject mismatch")
-                user_claims=received
-        except AuthenticationFailed:
-            raise HTTPException(status_code=403,
-                detail="شناسه حساب در پاسخ سرویس هویت با حساب امضاشده برابر نیست.")
-        except (httpx.HTTPError,ValueError,TypeError):
-            # Signed access-token claims are a fallback only after successful
-            # signature verification; never accept browser-submitted email.
-            user_claims=claims
-        stage(principal,name=str(user_claims.get("name") or
-              claims.get("preferred_username") or principal.subject),
-              email=user_claims.get("email")
-                  if isinstance(user_claims.get("email"),str) else None,
-              email_verified=user_claims.get("email_verified") is True)
+        _stage_verified_identity(principal,claims,access)
         response=RedirectResponse("/auth/pending",status_code=303)
         response.delete_cookie("avan_login_state",path="/")
         return response
@@ -384,10 +373,42 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
                           "subject":principal.subject,"tenant_id":str(principal.tenant_id),
                           "id_token":data.get("id_token"),
                           "refresh_token":data.get("refresh_token")}
-    response=RedirectResponse("/",status_code=303)
+    response=RedirectResponse("/admin/" if platform_admin else "/",status_code=303)
     response.set_cookie("avan_session",session_id,max_age=SESSION_MAX_SECONDS,**_cookie_options())
     response.delete_cookie("avan_login_state",path="/")
     return response
+
+
+def _stage_verified_identity(principal,claims:dict,access:str):
+    from .pending_identities import stage
+    from .setup_console import get_setting
+    user_claims=claims
+    issuer=(get_setting("oidc") or {}).get("issuer","").rstrip("/")
+    try:
+        with httpx.Client(timeout=7,follow_redirects=False,
+                          trust_env=False) as http:
+            userinfo_response=http.get(
+               issuer+"/protocol/openid-connect/userinfo",
+               headers={"Authorization":"Bearer "+access,
+                        "Accept":"application/json"})
+            userinfo_response.raise_for_status()
+            if len(userinfo_response.content)>20000:
+                raise ValueError("OIDC UserInfo too large")
+            received=userinfo_response.json()
+            if received.get("sub")!=principal.subject:
+                raise AuthenticationFailed("UserInfo subject mismatch")
+            user_claims=received
+    except AuthenticationFailed:
+        raise HTTPException(status_code=403,
+            detail="شناسه حساب در پاسخ سرویس هویت با حساب امضاشده برابر نیست.")
+    except (httpx.HTTPError,ValueError,TypeError):
+        # Only verified access-token claims may be used as a fallback.
+        user_claims=claims
+    stage(principal,name=str(user_claims.get("name") or
+          claims.get("preferred_username") or principal.subject),
+          email=user_claims.get("email")
+              if isinstance(user_claims.get("email"),str) else None,
+          email_verified=user_claims.get("email_verified") is True)
 
 
 @app.get("/auth/pending")
@@ -446,6 +467,7 @@ def logout(request:Request):
             pass
     response=JSONResponse({"signed_out":True,"logout_url":logout_url})
     response.delete_cookie("avan_session",path="/")
+    response.delete_cookie("avan_godadmin",path="/admin")
     return response
 
 
@@ -455,10 +477,21 @@ def signed_out():
 
 
 def _authorized(request:Request):
-    return _principal_for_request(request)
+    from .setup_console import godadmin_identity
+    if not godadmin_identity():
+        raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
+    value=_principal_for_request(request)
+    from .setup_console import is_godadmin
+    if is_godadmin(value[2]):
+        raise HTTPException(status_code=403,
+                            detail="نقش GodAdmin مجوز مشاهده داده‌های مشتری را ندارد.")
+    return value
 
 
 def _csrf(request:Request):
+    from .setup_console import godadmin_identity
+    if not godadmin_identity():
+        raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
     sid,value,principal=_principal_for_request(request)
     got=request.headers.get("X-AVAN-CSRF","")
     if not got or not hmac.compare_digest(got,value["csrf"]):
@@ -468,6 +501,10 @@ def _csrf(request:Request):
     origin=request.headers.get("origin")
     if origin and origin!=_public_origin():
         raise HTTPException(status_code=403,detail="منشأ درخواست مجاز نیست.")
+    from .setup_console import is_godadmin
+    if request.url.path!="/auth/heartbeat" and is_godadmin(principal):
+        raise HTTPException(status_code=403,
+                            detail="GodAdmin به گزارش‌های سازمانی دسترسی ندارد.")
     return sid,value,principal
 
 
@@ -495,8 +532,18 @@ def _store_response(action, principal):
 
 
 @app.get("/api/me")
-def current_user(value=Depends(_authorized)):
+def current_user(value=Depends(_principal_for_request)):
     _,session,principal=value
+    from .setup_console import get_setting,is_godadmin,godadmin_identity
+    if not godadmin_identity():
+        raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
+    if is_godadmin(principal):
+        company=get_setting("company") or {}
+        return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
+                "role":"GodAdmin","department":"مدیریت سامانه",
+                "csrf":session["csrf"],"subject":principal.subject,
+                "modules":[],"is_godadmin":True,
+                "license_expires_at":None,"license_mode":"platform"}
     scope=_store_response(lambda con,scope:scope,principal)
     license_data=scope["license"]
     return {"name":scope["name"],"company":scope["company"],
@@ -504,7 +551,8 @@ def current_user(value=Depends(_authorized)):
             "csrf":session["csrf"],"subject":principal.subject,
             "modules":sorted(license_data["modules"]),
             "license_expires_at":license_data["expires_at"],
-            "license_mode":license_data.get("mode", "licensed")}
+            "license_mode":license_data.get("mode", "licensed"),
+            "is_godadmin":False}
 
 
 @app.get("/api/questions")

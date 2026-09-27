@@ -29,7 +29,7 @@ function sessionExpired(){
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  if(app.idleTimer){clearTimeout(app.idleTimer);app.idleTimer=null}
- app.user=null;app.csrf=null;$("nav").hidden=true;$("logout").hidden=true;
+ app.user=null;app.csrf=null;$("nav").hidden=true;$("logout").hidden=true;$("admin-entry").hidden=true;
  document.body.classList.add("auth-screen");
  const m=root(),login=el("section","login-card"),a=el("a","button primary","ورود امن به فضای کار ←");
  a.href="/auth/login";
@@ -41,7 +41,8 @@ function sessionExpired(){
 function statusName(value){return {TO_DO:"در جریان",COMPLETED:"تکمیل‌شده",DRAFT:"پیش‌نویس",CANCELLED:"لغوشده",PAUSED:"متوقف",Open:"باز",Closed:"بسته‌شده"}[value]||value}
 function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم"}[role]||role}
 function setupUser(user){
- app.user=user;app.csrf=user.csrf;$("nav").hidden=false;$("logout").hidden=false;
+ app.user=user;app.csrf=user.csrf;$("nav").hidden=!!user.is_godadmin;
+ $("admin-entry").hidden=!user.is_godadmin;$("logout").hidden=false;
  document.body.classList.remove("auth-screen");
  $("person-name").textContent=user.name+" · "+titleCase(user.role);
  $("company-name").textContent=user.company;
@@ -177,7 +178,15 @@ async function askQuestion(question){
  }catch(err){if(target.isConnected)pending.replaceWith(note(err.message,true))}finally{app.sending=false}
 }
 async function init(){
- try{const user=await request("/api/me");setupUser(user);select("overview")}
+ try{
+  const user=await request("/api/me");setupUser(user);
+  if(user.is_godadmin){
+   const m=root();heading(m,"مدیریت سامانه آوان","حساب GodAdmin برای تنظیم اتصال‌ها و کاربران فعال است.");
+   const panel=card("تنظیمات GodAdmin","این نقش به اطلاعات جلسات مشتری دسترسی پیش‌فرض ندارد.");
+   const admin=el("a","button primary","ورود به تنظیمات ←");admin.href="/admin/";
+   add(panel,admin);add(m,panel);$("breadcrumb").textContent="GodAdmin";
+  }else select("overview");
+ }
  catch(err){
   if(err.message.includes("نشست سازمانی"))return;
   const m=root();add(m,note(err.message,true),link("ورود با حساب سازمانی",()=>{
