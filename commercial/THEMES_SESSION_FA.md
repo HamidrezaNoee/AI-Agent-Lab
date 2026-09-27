@@ -53,8 +53,11 @@ git -C $repo worktree add -b $localBranch $app "origin/$branch"
 if ($LASTEXITCODE -ne 0) { throw 'Worktree creation failed.' }
 git -C $app branch --set-upstream-to="origin/$branch" $localBranch
 if ($LASTEXITCODE -ne 0) { throw 'Branch tracking failed.' }
-$secrets = Join-Path $repo '.secrets'
-if (-not (Test-Path -LiteralPath $secrets)) { throw 'Original .secrets directory missing.' }
+$previous = 'D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab-Release-BundledSQL'
+$secrets = Join-Path $previous '.secrets'
+if (-not (Test-Path -LiteralPath (Join-Path $secrets 'avan-sql-sa-password'))) { throw 'Running SQL Server secret missing from previous installation.' }
+$runningHash = ((docker exec avan-production-agent-sql-1 sha256sum /run/secrets/avan_sql_sa_password) -split '\s+')[0].ToUpperInvariant()
+if ($LASTEXITCODE -ne 0 -or $runningHash -ne (Get-FileHash -LiteralPath (Join-Path $secrets 'avan-sql-sa-password') -Algorithm SHA256).Hash) { throw 'Previous installation SQL secret does not match the running database.' }
 Copy-Item -LiteralPath $secrets -Destination (Join-Path $app '.secrets') -Recurse
 Set-Location $app
 powershell -ExecutionPolicy Bypass -File .\scripts\init-security.ps1
@@ -71,6 +74,21 @@ Start-Process 'http://127.0.0.1:8188/'
 ```
 
 برای دریافت نسخه‌های بعدی، در همین پوشهٔ تمیز دستور `git pull --ff-only` و سپس `docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml up -d --build --wait` را اجرا کنید. Docker volumeها را پاک نکنید.
+
+## رفع خطای ورود SQL پس از ارتقا
+
+اگر کانتینر `agent-sql-init` با `Login failed for user sa` خارج شد و هش فایل `.secrets/avan-sql-sa-password` نصب قبلی با هش `/run/secrets/avan_sql_sa_password` در کانتینر `agent-sql` برابر است، فقط همان فایل را به نصب تازه منتقل کنید. ساخت worktree، رمزهای Keycloak و volumeها را دوباره ایجاد نکنید. از پوشهٔ نصب تازه:
+
+```powershell
+$previous = 'D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab-Release-BundledSQL'
+Copy-Item -LiteralPath (Join-Path $previous '.secrets\avan-sql-sa-password') -Destination '.\.secrets\avan-sql-sa-password' -Force
+docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml rm -sf agent-sql-init
+docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml up -d --no-build --wait
+if ($LASTEXITCODE -ne 0) { docker compose -p avan-production -f .\compose.yaml logs --no-color --tail 80 agent-sql-init; throw 'Agent SQL initialization failed.' }
+(Invoke-WebRequest 'http://127.0.0.1:8188/assets/theme.css' -UseBasicParsing).StatusCode
+```
+
+برای ارتقاهای بعدی با اسکریپت `scripts/update-meeting-agent.ps1`، پارامتر `-ExistingSecretsDirectory` را روی پوشهٔ `.secrets` همان نصبی تنظیم کنید که SQL Server جاری را راه انداخته است. اسکریپت پیش از ساخت worktree هش رمز SQL Server را بررسی می‌کند.
 
 ## رفتار نشست
 

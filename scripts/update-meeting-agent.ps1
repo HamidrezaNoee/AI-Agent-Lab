@@ -2,6 +2,7 @@
 param(
     [string]$SourceRepo = (Split-Path $PSScriptRoot -Parent),
     [string]$Destination = '',
+    [string]$ExistingSecretsDirectory = '',
     [switch]$ProcessMakerLocalHttp
 )
 $ErrorActionPreference = 'Stop'
@@ -9,9 +10,24 @@ $branch = 'feature/pm-native-agent-store-20260922'
 $SourceRepo = (Resolve-Path $SourceRepo).Path
 if (-not $Destination) { $Destination = Join-Path (Split-Path $SourceRepo -Parent) 'AI-Agent-Lab-Agent' }
 if (Test-Path $Destination) { throw "Destination already exists: $Destination. Choose a new -Destination; existing work will not be overwritten." }
-$secretSource = Join-Path $SourceRepo '.secrets'
+$secretSource = if ($ExistingSecretsDirectory) {
+    (Resolve-Path -LiteralPath $ExistingSecretsDirectory).Path
+} else {
+    Join-Path $SourceRepo '.secrets'
+}
 foreach ($name in @('keycloak-db-password','avan-bff-client-secret','avan-provisioner-client-secret')) {
-    if (-not (Test-Path (Join-Path $secretSource $name))) { throw "Existing installation secret is missing: $name. Use the original configured checkout as -SourceRepo." }
+    if (-not (Test-Path (Join-Path $secretSource $name))) { throw "Existing installation secret is missing: $name. Pass the existing installation .secrets folder as -ExistingSecretsDirectory." }
+}
+$runningSql = & docker ps --filter 'label=com.docker.compose.project=avan-production' --filter 'label=com.docker.compose.service=agent-sql' --format '{{.ID}}'
+if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop is not available.' }
+if ($runningSql) {
+    $sqlSecret = Join-Path $secretSource 'avan-sql-sa-password'
+    if (-not (Test-Path -LiteralPath $sqlSecret)) { throw 'Existing SQL Server is running, but its administrator secret is missing. Use -ExistingSecretsDirectory from the running installation.' }
+    $containerHash = & docker exec ($runningSql | Select-Object -First 1) sha256sum /run/secrets/avan_sql_sa_password
+    $hashMatch = [regex]::Match([string]$containerHash, '^([0-9a-fA-F]{64})\s')
+    if ($LASTEXITCODE -ne 0 -or -not $hashMatch.Success) { throw 'Cannot verify the existing SQL Server secret.' }
+    $sourceHash = (Get-FileHash -LiteralPath $sqlSecret -Algorithm SHA256).Hash
+    if ($sourceHash -ne $hashMatch.Groups[1].Value.ToUpperInvariant()) { throw 'The selected SQL administrator secret differs from the running database. Use -ExistingSecretsDirectory from the installation that started agent-sql.' }
 }
 & git -C $SourceRepo fetch origin $branch
 if ($LASTEXITCODE -ne 0) { throw 'Git fetch failed.' }
