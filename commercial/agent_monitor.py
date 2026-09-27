@@ -88,6 +88,9 @@ def subscribe(scope, actor, session, enabled, interval=300):
                 }
             )
         else:
+            if session.get("monitor_delegated") and job.get("refresh_token"):
+                session["refresh_token"] = job["refresh_token"]
+                session.pop("monitor_delegated", None)
             job.update({"enabled": False, "refresh_token": None, "last_count": None})
         tx.put(key, job)
         ids = tx.get(INDEX, [], lock=True)
@@ -99,11 +102,14 @@ def subscribe(scope, actor, session, enabled, interval=300):
             {"status": "enabled" if enabled else "disabled"},
         )
     if enabled:
+        session["monitor_delegated"] = True
+        session["tenant_id"] = str(scope["tenant_id"])
+        session["subject"] = actor
         session.pop("refresh_token", None)  # Only the job may rotate this credential.
     return public(job)
 
 
-def renewed_identity(job):
+def renewed_identity(job, return_tokens=False):
     import httpx
     from .production_app import _oidc_config
 
@@ -135,7 +141,37 @@ def renewed_identity(job):
     refresh = data.get("refresh_token") or job["refresh_token"]
     if not isinstance(refresh, str) or len(refresh) > 16000:
         raise AuthenticationFailed("Invalid delegated credential")
-    return principal, refresh
+    return (principal, refresh, data) if return_tokens else (principal, refresh)
+
+
+def renew_for_session(session):
+    """Rotate the delegated credential under the same lock as monitoring runs."""
+    scope = {"tenant_id": session["tenant_id"]}
+    key = user_key("monitor_job", scope, session["subject"])
+    with locked(key):
+        with agent_storage.transaction() as tx:
+            job = tx.get(key)
+        if not job or not job.get("enabled") or job.get("expires_at", 0) <= time.time():
+            raise AuthenticationFailed("Monitoring credential unavailable")
+        principal, refresh, tokens = renewed_identity(job, return_tokens=True)
+        if principal.subject != session["subject"] or str(principal.tenant_id) != session["tenant_id"]:
+            raise AuthenticationFailed("Monitoring identity changed")
+        job["refresh_token"] = refresh
+        with agent_storage.transaction() as tx:
+            tx.put(key, job)
+        return tokens
+
+
+def end_session_delegation(session):
+    if not session.get("monitor_delegated"):
+        return
+    key = user_key("monitor_job", {"tenant_id": session["tenant_id"]}, session["subject"])
+    with locked(key), agent_storage.transaction() as tx:
+        job = tx.get(key, {}, lock=True)
+        job.update(enabled=False, refresh_token=None, last_error="login_required")
+        tx.put(key, job)
+        ids = tx.get(INDEX, [], lock=True)
+        tx.put(INDEX, [value for value in ids if value != key])
 
 
 def run_job(key, now=None):

@@ -89,6 +89,7 @@ services:
       - avan_provisioner_client_secret
     volumes:
       - ./infra/keycloak/avan-realm.json:/opt/keycloak/data/import/avan-realm.json:ro
+      - ./infra/keycloak/themes/avan:/opt/keycloak/themes/avan:ro
     ports:
       - "127.0.0.1:8181:8080"
     depends_on:

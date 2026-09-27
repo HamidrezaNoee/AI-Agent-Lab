@@ -7,6 +7,7 @@ A tenant with no installed valid license cannot read meeting content.
 from pathlib import Path
 import os
 import re
+import uuid
 
 from .licensing.codec import LicenseInvalid, verify_license
 
@@ -15,7 +16,29 @@ class ProductionLicenseDenied(Exception):
     pass
 
 
+def local_evaluation_enabled():
+    """Localhost-only evaluation; the normal compose file never enables it."""
+    return (os.getenv('AVAN_LOCAL_EVALUATION') == '1'
+            and os.getenv('AVAN_PM_ALLOW_LOCAL_HTTP') == '1'
+            and os.getenv('AVAN_PUBLIC_ORIGIN') == 'http://127.0.0.1:8188')
+
+
+def _evaluation_entitlement(tenant_id, company_name, active_users):
+    try:
+        uuid.UUID(str(tenant_id))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ProductionLicenseDenied('Organization is not configured') from exc
+    if not str(company_name or '').strip() or not 0 <= active_users <= 10:
+        raise ProductionLicenseDenied('Evaluation user capacity exceeded')
+    return {'modules': frozenset((1, 2, 3, 4)), 'max_users': 10,
+            'active_users': active_users, 'expires_at': None,
+            'license_id': 'LOCAL-EVALUATION', 'mode': 'local_evaluation'}
+
+
 def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
+    if local_evaluation_enabled():
+        from .native_access import seats
+        return _evaluation_entitlement(tenant_id, company_name, seats(tenant_id))
     from .setup_console import PUBLIC, get_setting
     install=get_setting("installation") or {}
     installation=install.get("installation_id","")
@@ -50,6 +73,8 @@ def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
 
 def capacity(tenant_id, company_name, active_users):
     """Verify the next seat count inside the locked organization update."""
+    if local_evaluation_enabled():
+        return _evaluation_entitlement(tenant_id, company_name, active_users)
     from .setup_console import get_setting, PUBLIC
     local=get_setting('license') or {}
     installation=(get_setting('installation') or {}).get('installation_id','')

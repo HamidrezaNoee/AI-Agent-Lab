@@ -5,3 +5,4 @@ services:
   avan:
     environment:
       AVAN_PM_ALLOW_LOCAL_HTTP: "1"
+      AVAN_LOCAL_EVALUATION: "1"

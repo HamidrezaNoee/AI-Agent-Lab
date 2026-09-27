@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-import hashlib, hmac, os, secrets, time
+import hashlib, hmac, os, secrets, time, threading
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -44,6 +44,9 @@ PROD_QUESTIONS=(
 )
 sessions={}
 pending={}
+_session_lock=threading.RLock()
+SESSION_IDLE_SECONDS=600
+SESSION_MAX_SECONDS=28800
 
 
 @asynccontextmanager
@@ -130,7 +133,8 @@ def _purge():
     for key,val in list(pending.items()):
         if val["expires"]<now:pending.pop(key,None)
     for key,val in list(sessions.items()):
-        if val["expires"]<now:sessions.pop(key,None)
+        if val["expires"]<=now or val.get("idle_expires",val["expires"])<=now:
+            sessions.pop(key,None)
 
 
 def _cookie_options():
@@ -141,15 +145,47 @@ def _cookie_options():
 def _principal_for_request(request:Request):
     _purge()
     session_id=request.cookies.get("avan_session","")
-    value=sessions.get(session_id)
-    if not value:
-        raise HTTPException(status_code=401,detail="ورود سازمانی الزامی است.")
-    try:
-        _,_,_,_,authenticator=_oidc_config()
-        principal=authenticator.authenticate("Bearer "+value["access_token"])
-    except (ConfigurationFailed,AuthenticationFailed):
-        sessions.pop(session_id,None)
-        raise HTTPException(status_code=401,detail="نشست شما معتبر نیست؛ دوباره وارد شوید.")
+    with _session_lock:
+        value=sessions.get(session_id)
+        if not value or value.get("idle_expires",value["expires"])<=time.time():
+            sessions.pop(session_id,None)
+            raise HTTPException(status_code=401,detail="نشست ده‌دقیقه‌ای شما پایان یافته است؛ دوباره وارد شوید.")
+        try:
+            _,token_url,client_id,client_secret,authenticator=_oidc_config()
+            if value.get("access_expires",0) <= time.time()+25:
+                if value.get("refresh_token"):
+                    with httpx.Client(timeout=8,follow_redirects=False,trust_env=False) as client:
+                        result=client.post(token_url,data={
+                            "grant_type":"refresh_token",
+                            "refresh_token":value["refresh_token"],
+                            "client_id":client_id,"client_secret":client_secret})
+                    result.raise_for_status()
+                    if len(result.content)>65000:raise AuthenticationFailed("Oversize refresh response")
+                    tokens=result.json()
+                elif value.get("monitor_delegated"):
+                    from .agent_monitor import renew_for_session
+                    tokens=renew_for_session(value)
+                else:
+                    raise AuthenticationFailed("No refresh token")
+                access=tokens.get("access_token","")
+                principal=authenticator.authenticate("Bearer "+access)
+                if (principal.subject!=value.get("subject") or
+                    str(principal.tenant_id)!=value.get("tenant_id")):
+                    raise AuthenticationFailed("Refreshed identity changed")
+                claims=jwt.decode(access,options={"verify_signature":False},algorithms=["RS256"])
+                value["access_token"]=access
+                value["access_expires"]=float(claims["exp"])
+                if value.get("refresh_token"):
+                    value["refresh_token"]=tokens.get("refresh_token") or value["refresh_token"]
+                if tokens.get("id_token"):value["id_token"]=tokens["id_token"]
+            else:
+                principal=authenticator.authenticate("Bearer "+value["access_token"])
+        except (ConfigurationFailed,AuthenticationFailed,httpx.HTTPError,ValueError,KeyError,TypeError):
+            sessions.pop(session_id,None)
+            raise HTTPException(status_code=401,detail="نشست شما معتبر نیست؛ دوباره وارد شوید.")
+        # Automated monitoring requests do not count as human activity.
+        if request.headers.get("X-AVAN-BACKGROUND")!="1":
+            value["idle_expires"]=min(value["expires"],time.time()+SESSION_IDLE_SECONDS)
     return session_id,value,principal
 
 
@@ -178,6 +214,23 @@ def javascript():
     return FileResponse(ROOT/"app.js",media_type="text/javascript; charset=utf-8")
 
 
+@app.get("/assets/theme.css")
+def theme_css():
+    return FileResponse(ROOT/"theme.css",media_type="text/css; charset=utf-8")
+
+
+@app.get("/assets/theme.js")
+def theme_script():
+    return FileResponse(ROOT/"theme.js",media_type="text/javascript; charset=utf-8")
+
+
+@app.get("/assets/fonts/{name}")
+def font_asset(name:str):
+    if name not in ("YekanBakh-Regular.woff2", "YekanBakh-SemiBold.woff2", "YekanBakh-Bold.woff2"):
+        raise HTTPException(status_code=404)
+    return FileResponse(ROOT/"fonts"/name,media_type="font/woff2")
+
+
 @app.get("/auth/login")
 def login(request:Request):
     # OIDC state cookie is host-only. Normalize localhost to the configured
@@ -204,6 +257,7 @@ def login(request:Request):
         "response_type":"code","client_id":client_id,
         "redirect_uri":origin+"/auth/callback",
         "scope":"openid profile email","state":state,
+        "prompt":"login",
         "code_challenge":challenge,"code_challenge_method":"S256",
     })
     response=RedirectResponse(redirect_url,status_code=302)
@@ -324,10 +378,14 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     session_id=secrets.token_urlsafe(48)
     csrf=secrets.token_urlsafe(32)
     sessions[session_id]={"access_token":access,"csrf":csrf,
-                          "expires":min(float(exp),time.time()+3600),
-                          "refresh_token": data.get("refresh_token")}
+                          "expires":time.time()+SESSION_MAX_SECONDS,
+                          "idle_expires":time.time()+SESSION_IDLE_SECONDS,
+                          "access_expires":float(exp),
+                          "subject":principal.subject,"tenant_id":str(principal.tenant_id),
+                          "id_token":data.get("id_token"),
+                          "refresh_token":data.get("refresh_token")}
     response=RedirectResponse("/",status_code=303)
-    response.set_cookie("avan_session",session_id,max_age=3600,**_cookie_options())
+    response.set_cookie("avan_session",session_id,max_age=SESSION_MAX_SECONDS,**_cookie_options())
     response.delete_cookie("avan_login_state",path="/")
     return response
 
@@ -356,10 +414,44 @@ def logout(request:Request):
     if current and (not csrf or not hmac.compare_digest(csrf,current["csrf"])
                     or (origin and origin!=_public_origin())):
         raise HTTPException(status_code=403,detail="درخواست خروج معتبر نیست.")
-    if sid:sessions.pop(sid,None)
-    response=JSONResponse({"signed_out":True})
+    if sid:
+        with _session_lock:
+            # A deliberate sign-out invalidates every workspace tab/session
+            # of this account, not only the cookie on the current tab.
+            if current and current.get("subject") and current.get("tenant_id"):
+                for key,value in list(sessions.items()):
+                    if (value.get("subject")==current["subject"] and
+                        value.get("tenant_id")==current["tenant_id"]):
+                        sessions.pop(key,None)
+            else:
+                sessions.pop(sid,None)
+    if current and current.get("monitor_delegated"):
+        try:
+            from .agent_monitor import end_session_delegation
+            end_session_delegation(current)
+        except Exception:
+            # Session is already revoked locally; the IdP logout remains available.
+            pass
+    logout_url=None
+    if current:
+        try:
+            _,_,client_id,_,_=_oidc_config()
+            from .setup_console import get_setting
+            issuer=(get_setting("oidc") or {}).get("issuer","").rstrip("/")
+            if issuer and current.get("id_token"):
+                logout_url=issuer+"/protocol/openid-connect/logout?"+urlencode({
+                    "id_token_hint":current["id_token"],"client_id":client_id,
+                    "post_logout_redirect_uri":_public_origin()+"/auth/signed-out"})
+        except (ConfigurationFailed,ValueError):
+            pass
+    response=JSONResponse({"signed_out":True,"logout_url":logout_url})
     response.delete_cookie("avan_session",path="/")
     return response
+
+
+@app.get("/auth/signed-out")
+def signed_out():
+    return RedirectResponse("/",status_code=303)
 
 
 def _authorized(request:Request):
@@ -377,6 +469,11 @@ def _csrf(request:Request):
     if origin and origin!=_public_origin():
         raise HTTPException(status_code=403,detail="منشأ درخواست مجاز نیست.")
     return sid,value,principal
+
+
+@app.post("/auth/heartbeat")
+def heartbeat(value=Depends(_csrf)):
+    return {"active":True,"idle_seconds":SESSION_IDLE_SECONDS}
 
 
 def _store_response(action, principal):
@@ -406,7 +503,8 @@ def current_user(value=Depends(_authorized)):
             "role":scope["role"],"department":scope["department"],
             "csrf":session["csrf"],"subject":principal.subject,
             "modules":sorted(license_data["modules"]),
-            "license_expires_at":license_data["expires_at"]}
+            "license_expires_at":license_data["expires_at"],
+            "license_mode":license_data.get("mode", "licensed")}
 
 
 @app.get("/api/questions")

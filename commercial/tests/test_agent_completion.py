@@ -241,3 +241,21 @@ def test_grouped_report_still_provides_action_detail_rows():
     from commercial.agent_reports import report
     result=report(records(),SCOPE,True,ActionQuery(group_by='unit',limit=2))
     assert result['groups'] and len(result['rows'])==2 and result['has_more']
+
+
+def test_monitor_delegated_token_rotates_for_workspace_and_ends_on_logout(state_dir):
+    session = {"refresh_token": "first-credential"}
+    with patch.object(agent_monitor, "binding", return_value="bound"):
+        agent_monitor.subscribe(SCOPE, "actor", session, True)
+    assert session["monitor_delegated"] and "refresh_token" not in session
+    principal = Principal(UUID(SCOPE["tenant_id"]), "actor")
+    result = (principal, "rotated-credential", {"access_token": "new-access"})
+    with patch.object(agent_monitor, "renewed_identity", return_value=result):
+        assert agent_monitor.renew_for_session(session)["access_token"] == "new-access"
+    key = workspace.user_key("monitor_job", SCOPE, "actor")
+    with agent_storage.transaction() as tx:
+        assert tx.get(key)["refresh_token"] == "rotated-credential"
+    agent_monitor.end_session_delegation(session)
+    with agent_storage.transaction() as tx:
+        job = tx.get(key)
+        assert not job["enabled"] and job["refresh_token"] is None

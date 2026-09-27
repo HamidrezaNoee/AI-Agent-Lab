@@ -237,7 +237,9 @@ async function renderLicense(m,settings){
  });
  append(p,node("h2","","فعالسازی مجوز سازمان"),licenseForm);
  append(m,p);
- try{const status=await api("license/status");if(status.valid)append(p,info("کاربران فعال: "+status.active_users+" از "+status.max_users+" · ظرفیت باقی‌مانده: "+status.remaining_seats+" · اعتبار: "+(status.remaining_days===null?"بدون انقضا":status.remaining_days+" روز")+" · پایان: "+(status.expires_at||"بدون انقضا")));else append(p,info(status.reason,true))}catch(e){append(p,info(e.message,true))}
+ try{const status=await api("license/status");if(status.valid)append(p,info(status.mode==="local_evaluation"?
+   "حالت آزمایشی محلی · فقط همین رایانه · حداکثر "+status.max_users+" کاربر · بدون لایسنس فروش":
+   "کاربران فعال: "+status.active_users+" از "+status.max_users+" · ظرفیت باقی‌مانده: "+status.remaining_seats+" · اعتبار: "+(status.remaining_days===null?"بدون انقضا":status.remaining_days+" روز")+" · پایان: "+(status.expires_at||"بدون انقضا")));else append(p,info(status.reason,true))}catch(e){append(p,info(e.message,true))}
 }
 async function renderUsers(m){
  const p=panel("کاربران و سازمان",

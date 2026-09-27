@@ -336,9 +336,9 @@ def _pm_check(config:PMConfig)->int:
     local_lab_http=(os.getenv("AVAN_PM_ALLOW_LOCAL_HTTP")=="1" and
                     parsed.scheme=="http" and
                     parsed.hostname.lower()=="host.docker.internal" and
-                    parsed.port==84)
+                    parsed.port in (84, 443))
     if parsed.scheme!="https" and not local_lab_http:
-        raise HTTPException(422,"در نصب آزمایشی آدرس http://host.docker.internal:84 را وارد کنید؛ در نصب عملیاتی HTTPS الزامی است.")
+        raise HTTPException(422,"در نصب آزمایشی آدرس http://host.docker.internal:443 یا :84 را مطابق پورت واقعی ProcessMaker وارد کنید؛ در نصب عملیاتی HTTPS الزامی است.")
     url=base+"/api/1.0/"+config.workspace+"/users"
     try:
         with httpx.Client(timeout=8,follow_redirects=False,trust_env=False) as http:
@@ -646,7 +646,8 @@ def license_status(session=Depends(_ready)):
         expiry=payload['expires_at']
         days=max(0,(datetime.fromisoformat(expiry.replace('Z','+00:00'))-datetime.now(timezone.utc)).days) if expiry else None
         return {'valid':True,'active_users':used,'max_users':payload['max_users'],'remaining_seats':payload['max_users']-used,
-                'expires_at':expiry,'remaining_days':days,'modules':payload['modules'],'license_id':payload['license_id']}
+                'expires_at':expiry,'remaining_days':days,'modules':payload['modules'],'license_id':payload['license_id'],
+                'mode':payload.get('mode','licensed')}
     except ProductionLicenseDenied:
         return {'valid':False,'active_users':used,'reason':'لایسنس فعال نیست، منقضی شده یا ظرفیت کاربران رعایت نشده است.'}
 

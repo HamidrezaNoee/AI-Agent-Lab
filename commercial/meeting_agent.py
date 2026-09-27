@@ -44,6 +44,10 @@ repeat; use owner UIDs to distinguish people. A meeting NUMBER is not its intern
 Search related Persian terms separately for recurring themes and cite at least two distinct
 meetings for cross-meeting recurrence. Exact title repetition alone is not proof of root cause.
 Review discussion and parking_lot text for unresolved topics. A parking lot is not a risk register.
+Use search_meetings meeting_held to distinguish Held, NotHeld and unknown. Workflow completion
+does not prove the meeting took place. Missing attendance is unknown, never absence.
+Arrival times are local clock values; do not infer lateness without a reliable scheduled time.
+Attendance may be truncated. Never count displayed participants as a complete attendance report.
 Risk inference must be labelled analysis, with evidence and uncertainty; recommendations are
 proposals, never approved decisions. Prioritize by measured delay, concentration of open work,
 missing responsibility/deadlines and observed stagnation; never invent financial impact.

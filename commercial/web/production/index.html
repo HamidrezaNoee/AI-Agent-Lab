@@ -6,9 +6,11 @@
  <meta name="description" content="آوان | مدیریت هوشمند جلسات و مصوبات سازمان">
  <title>آوان | مدیریت هوشمند جلسات</title>
  <link rel="stylesheet" href="/assets/app.css">
+ <link rel="stylesheet" href="/assets/theme.css">
+ <script src="/assets/theme.js" defer></script>
  <script src="/assets/app.js" defer></script>
 </head>
-<body>
+<body class="avan-app auth-screen">
  <div class="shell">
   <aside class="sidebar" aria-label="منوی اصلی">
    <div class="brand"><span class="logo" aria-hidden="true">آ</span><div><strong>آوان</strong><small>مدیریت هوشمند جلسات</small></div></div>
@@ -25,12 +27,11 @@
    <p class="sidebar-foot">اطلاعات براساس سطح دسترسی حساب سازمانی نمایش داده می‌شود.</p>
   </aside>
   <div class="workspace">
-   <header class="topbar"><span id="breadcrumb">آوان</span><div class="top-user"><span id="person-name">ورود سازمانی</span><button type="button" id="logout" class="link-button" hidden>خروج</button></div></header>
-   <main id="main"><section class="login-card"><span class="eyebrow">AVAN / ORGANIZATION</span><h1>فضای کاری مدیریت جلسات</h1><p>برای مشاهده جلسات و اقدامات مربوط به خود، با حساب سازمانی وارد شوید.</p><a class="button primary" href="/auth/login">ورود با حساب سازمانی</a></section></main>
+   <header class="topbar"><span id="breadcrumb">آوان</span><div class="top-user"><label class="theme-control" for="theme-choice">پوسته <select id="theme-choice" aria-label="انتخاب پوسته"><option value="light">روشن</option><option value="dark">تیره</option><option value="green">سبز</option><option value="blue">آبی</option><option value="red">قرمز</option></select></label><a href="/admin/" class="admin-entry" aria-label="ورود به تنظیمات GodAdmin">⚙ تنظیمات GodAdmin</a><span id="person-name">ورود سازمانی</span><button type="button" id="logout" class="link-button" hidden>خروج</button></div></header>
+   <main id="main"><section class="login-card"><span class="eyebrow">AVAN · INTELLIGENT WORKSPACE</span><h1>تصمیم‌های بهتر، با هوش جلسات شما</h1><p>مصوبات را پیگیری کنید، از داده‌های مجاز سازمان سؤال بپرسید و برای جلسهٔ بعد با شناخت روشن‌تری آماده شوید.</p><div class="login-chips"><span>✦ دستیار مدیریتی</span><span>▦ تحلیل جلسات</span><span>◷ پایش اقدامات</span></div><a class="button primary" href="/auth/login">ورود امن به فضای کار ←</a></section></main>
    <footer>آوان · اطلاعات فقط براساس مجوزهای سازمانی و وضعیت جاری ثبت‌شده نمایش داده می‌شوند.</footer>
   </div>
  </div>
  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>
-

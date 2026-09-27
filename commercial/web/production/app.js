@@ -1,5 +1,5 @@
 "use strict";
-const app={user:null,csrf:null,page:"overview",cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,newConversation:true,conversationId:null,voiceEnabled:false,cleanup:[]};
+const app={user:null,csrf:null,page:"overview",cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,cleanup:[]};
 const $=id=>document.getElementById(id);
 function el(tag,klass,text){const n=document.createElement(tag);if(klass)n.className=klass;if(text!==undefined)n.textContent=String(text);return n}
 function add(parent,...children){for(const x of children.flat())if(x!==undefined&&x!==null)parent.append(x);return parent}
@@ -12,8 +12,10 @@ function fmt(value){return new Intl.NumberFormat("fa-IR").format(value)}
 function toast(text){const t=$("toast");t.textContent=text;t.hidden=false}
 async function request(url,options={}){
  const headers={"Accept":"application/json",...(options.headers||{})};
+ if(options.background)headers["X-AVAN-BACKGROUND"]="1";
  if(options.method==="POST" && app.csrf)headers["X-AVAN-CSRF"]=app.csrf;
- const response=await fetch(url,{...options,headers,credentials:"same-origin",cache:"no-store",redirect:"error"});
+ const {background,...fetchOptions}=options;
+ const response=await fetch(url,{...fetchOptions,headers,credentials:"same-origin",cache:"no-store",redirect:"error"});
  if(response.status===401){sessionExpired();throw Error("نشست سازمانی پایان یافته است. دوباره وارد شوید.")}
  if(!response.ok){
    let message="دریافت اطلاعات با خطا مواجه شد.";
@@ -26,23 +28,52 @@ function cleanMedia(){for(const fn of app.cleanup.splice(0)){try{fn()}catch{}}}
 function sessionExpired(){
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
+ if(app.idleTimer){clearTimeout(app.idleTimer);app.idleTimer=null}
  app.user=null;app.csrf=null;$("nav").hidden=true;$("logout").hidden=true;
- const m=root();add(m,add(el("section","login-card"),
-   el("h1","","ورود سازمانی"),el("p","","برای ادامه با حساب سازمانی وارد شوید."),
-   (()=>{const a=el("a","button primary","ورود با حساب سازمانی");a.href="/auth/login";return a})()));
+ document.body.classList.add("auth-screen");
+ const m=root(),login=el("section","login-card"),a=el("a","button primary","ورود امن به فضای کار ←");
+ a.href="/auth/login";
+ add(login,el("span","eyebrow","AVAN · INTELLIGENT WORKSPACE"),
+  el("h1","","هوش جلسات در کنار تصمیم‌های شما"),
+  el("p","","برای ادامه، با حساب سازمانی خود وارد شوید. زمان نشست پس از ده دقیقه بی‌فعالیتی پایان می‌یابد."),a);
+ add(m,login);
 }
 function statusName(value){return {TO_DO:"در جریان",COMPLETED:"تکمیل‌شده",DRAFT:"پیش‌نویس",CANCELLED:"لغوشده",PAUSED:"متوقف",Open:"باز",Closed:"بسته‌شده"}[value]||value}
 function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم"}[role]||role}
 function setupUser(user){
  app.user=user;app.csrf=user.csrf;$("nav").hidden=false;$("logout").hidden=false;
+ document.body.classList.remove("auth-screen");
  $("person-name").textContent=user.name+" · "+titleCase(user.role);
  $("company-name").textContent=user.company;
  $("company-sub").textContent=user.department||"مدیریت جلسات";
- $("logout").addEventListener("click",async()=>{
-  try{await request("/auth/logout",{method:"POST"})}catch{}window.location.replace("/");
- },{once:true});
+ $("logout").onclick=signOut;
+ recordActivity();
  document.querySelectorAll("#nav button").forEach(b=>b.addEventListener("click",()=>select(b.dataset.page)));
 }
+async function signOut(){
+ if(!app.csrf){sessionExpired();return}
+ try{
+  const response=await request("/auth/logout",{method:"POST"});
+  sessionExpired();
+  try{localStorage.setItem("avan-logout",String(Date.now()))}catch(_){}
+  window.location.assign(response.logout_url||"/auth/signed-out");
+ }catch(error){
+  if(!app.user){window.location.assign("/auth/signed-out");return}
+  toast(error.message||"خروج انجام نشد؛ دوباره تلاش کنید.");
+ }
+}
+function recordActivity(){
+ if(!app.user)return;
+ clearTimeout(app.idleTimer);
+ app.idleTimer=setTimeout(signOut,600000);
+ if(Date.now()-app.lastHeartbeat<60000)return;
+ app.lastHeartbeat=Date.now();
+ request("/auth/heartbeat",{method:"POST"}).catch(()=>{});
+}
+for(const eventName of ["pointerdown","keydown","touchstart"]){
+ document.addEventListener(eventName,recordActivity,{passive:true});
+}
+window.addEventListener("storage",event=>{if(event.key==="avan-logout"&&app.user)sessionExpired()});
 function select(page){
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
@@ -256,9 +287,9 @@ async function monitorPage(){
  const control=card("پایش پس‌زمینه","پس از فعال‌سازی، با بستن مرورگر هم ادامه می‌یابد؛ حداکثر ۳۰ روز و تا زمانی که سرویس هویت اجازه تمدید بدهد. در هر نوبت مجوزها دوباره بررسی می‌شوند.");
  const interval=inputField("فاصله بررسی (دقیقه)",5,"number");interval.input.min=5;interval.input.max=1440;const state=el("div"),out=el("div"),results=el("div");let running=false;
  const hide=el("input");hide.type="checkbox";const filter=el("label");add(filter,hide,el("span","","پنهان‌کردن هشدارهای دیده‌شده"));
- async function refresh(){
+ async function refresh(background=false){
   if(running||app.page!=="monitor")return;running=true;if(app.monitorTimer)clearTimeout(app.monitorTimer);
-  try{const r=await request("/api/monitor",{method:"POST"});if(!results.isConnected)return;results.replaceChildren();
+  try{const r=await request("/api/monitor",{method:"POST",background});if(!results.isConnected)return;results.replaceChildren();
    const subscription=r.subscription||{};state.replaceChildren(note(subscription.enabled?"پایش فعال است. آخرین بررسی پس‌زمینه: "+(subscription.last_run?dateText(subscription.last_run*1000):"در انتظار اجرا"):"پایش پس‌زمینه غیرفعال است."));
    if(subscription.last_error)add(state,note(({login_required:"مجوز تمدید پایان یافته؛ دوباره وارد شوید و پایش را فعال کنید.",access_denied:"دسترسی تغییر کرده و پایش متوقف شده است.",source_unavailable:"منبع داده موقتاً در دسترس نیست؛ بررسی دوباره انجام می‌شود."})[subscription.last_error]||"پایش نیازمند بررسی است.",true));
    add(results,note(fmt(r.total)+" هشدار · "+dateText(r.as_of_utc)));
@@ -269,7 +300,7 @@ async function monitorPage(){
     add(item,link("مشاهده جلسه",()=>showMeeting(a.source.meeting_id)),link("متن یادآوری",()=>{const t=el("textarea");t.readOnly=true;t.value="یادآوری اقدام "+a.source.action_no+" جلسه "+a.source.meeting_no+": "+a.description+". لطفاً وضعیت پیشرفت، موانع و زمان تکمیل را در فرایند ثبت کنید.";add(item,t);t.select()}));add(results,item)
    }
    for(const n of r.notes||[])add(results,note(n));if(!r.total)add(results,note("در دامنه بررسی‌شده هشداری مشاهده نشد."));
-  }catch(e){results.replaceChildren(note(e.message,true))}finally{running=false;if(app.page==="monitor")app.monitorTimer=setTimeout(refresh,60000)}
+  }catch(e){results.replaceChildren(note(e.message,true))}finally{running=false;if(app.page==="monitor")app.monitorTimer=setTimeout(()=>refresh(true),60000)}
  }
  async function subscribe(enabled){try{await request("/api/monitor/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled,interval_seconds:Number(interval.input.value)*60})});out.replaceChildren(note(enabled?"پایش پس‌زمینه فعال شد.":"پایش متوقف شد."));await refresh()}catch(e){out.replaceChildren(note(e.message,true))}}
  hide.addEventListener("change",refresh);add(control,interval.wrap,link("فعال‌سازی پایش",()=>subscribe(true),"button primary"),link("توقف پایش",()=>subscribe(false)),link("بررسی اکنون",refresh),filter,state,out);add(m,control,results);await refresh();

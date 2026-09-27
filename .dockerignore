@@ -28,6 +28,7 @@
 **/*.otf
 **/*.woff
 **/*.woff2
+!commercial/web/production/fonts/*.woff2
 **/*.log
 **/*.bak
 **/*.zip
