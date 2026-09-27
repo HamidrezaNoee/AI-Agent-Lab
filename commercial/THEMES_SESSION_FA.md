@@ -37,6 +37,41 @@ Start-Process 'http://127.0.0.1:8188/'
 
 این دستور همان پروژهٔ Docker با نام `avan-production` را به‌روزرسانی و volumeهای موجود را حفظ می‌کند. رمزها را در پیام یا Git منتشر نکنید. فونت‌های این مخزن خصوصی برای همین نصب در پروژه موجودند.
 
+## اگر مخزن محلی تغییرات ثبت‌نشده دارد
+
+در این حالت `git switch` و `git pull` عمداً متوقف می‌شوند. از همان remote یک worktree تمیز با شاخهٔ مستقل بسازید؛ شاخهٔ کاری و فایل‌های تغییرکردهٔ پوشهٔ قدیمی حفظ می‌شوند. پوشهٔ مقصد باید وجود نداشته باشد. از پروژهٔ Compose با نام یکسان استفاده کنید تا volumeهای فعلی حفظ شوند.
+
+```powershell
+$repo = 'D:\A Project\17 meeting ai agent\Azure\AI-Agent-Lab-GitHub'
+$app = 'D:\A Project\17 meeting ai agent\Azure\AVAN-Git-Live-20260927'
+$branch = 'feature/pm-native-agent-store-20260922'
+$localBranch = 'avan-live-20260927'
+if (Test-Path -LiteralPath $app) { throw 'A fresh destination is required.' }
+git -C $repo fetch origin $branch
+if ($LASTEXITCODE -ne 0) { throw 'Git fetch failed.' }
+git -C $repo worktree add -b $localBranch $app "origin/$branch"
+if ($LASTEXITCODE -ne 0) { throw 'Worktree creation failed.' }
+git -C $app branch --set-upstream-to="origin/$branch" $localBranch
+if ($LASTEXITCODE -ne 0) { throw 'Branch tracking failed.' }
+$secrets = Join-Path $repo '.secrets'
+if (-not (Test-Path -LiteralPath $secrets)) { throw 'Original .secrets directory missing.' }
+Copy-Item -LiteralPath $secrets -Destination (Join-Path $app '.secrets') -Recurse
+Set-Location $app
+powershell -ExecutionPolicy Bypass -File .\scripts\init-security.ps1
+if ($LASTEXITCODE -ne 0) { throw 'Secret initialization failed.' }
+docker info
+if ($LASTEXITCODE -ne 0) { throw 'Start Docker Desktop first.' }
+docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml up -d --build --wait
+if ($LASTEXITCODE -ne 0) { throw 'Container update failed.' }
+git rev-parse --short HEAD
+docker compose -p avan-production -f .\compose.yaml ps -a
+Invoke-RestMethod 'http://127.0.0.1:8188/health'
+(Invoke-WebRequest 'http://127.0.0.1:8188/assets/theme.css' -UseBasicParsing).StatusCode
+Start-Process 'http://127.0.0.1:8188/'
+```
+
+برای دریافت نسخه‌های بعدی، در همین پوشهٔ تمیز دستور `git pull --ff-only` و سپس `docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml up -d --build --wait` را اجرا کنید. Docker volumeها را پاک نکنید.
+
 ## رفتار نشست
 
 - بعد از ۱۰ دقیقه بدون فعالیت کاربر در فضای کار، نشست آوان پایان می‌یابد. تایمرهای پایش خودکار این مدت را تمدید نمی‌کنند. هنگام استفادهٔ فعال، آوان توکن کوتاه‌عمر Keycloak را سمت سرور تمدید می‌کند.
