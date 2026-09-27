@@ -12,7 +12,7 @@
 :root[data-theme='dark']{color-scheme:dark;--surface:#172333;--surface-soft:#1c2c40;--canvas:#101b2b;--ink:#e9f4fc;--subtle:#b3c4d5;--line:#34475b;--accent:#5bdec5;--accent-hover:#8ef1dd;--on-accent:#102a2b;--glow:#5de4ca;--accent-soft:#1a4548;--hero-start:#071525;--hero-end:#18384d;--danger:#ffa6a8;--shadow:0 18px 45px rgba(0,0,0,.3)}
 :root[data-theme='green']{--surface:#fff;--surface-soft:#edf7f0;--canvas:#eef7f0;--ink:#183b32;--subtle:#51766a;--line:#d3e8da;--accent:#168155;--accent-hover:#086644;--glow:#5fce8e;--accent-soft:#e3f5e9;--hero-start:#10382b;--hero-end:#177e5a}
 :root[data-theme='blue']{--surface:#fff;--surface-soft:#eff5fd;--canvas:#eef4fd;--ink:#20375c;--subtle:#557095;--line:#d9e5f4;--accent:#2868bc;--accent-hover:#164f99;--glow:#78b5ef;--accent-soft:#e5f0fd;--hero-start:#112b56;--hero-end:#256ab3}
-:root[data-theme='red']{--surface:#fff;--surface-soft:#fdf2f2;--canvas:#fbf2f2;--ink:#4b2832;--subtle:#8a6270;--line:#f0dce1;--accent:#b73550;--accent-hover:#992740;--glow:#ee8a9d;--accent-soft:#fce6ec;--hero-start:#48212e;--hero-end:#a03651}
+:root[data-theme='red']{--surface:#fff;--surface-soft:#f5f5f5;--canvas:#f8f8f8;--ink:#30343a;--subtle:#62666b;--line:#e2e2e2;--accent:#e4342b;--accent-hover:#c32c24;--glow:#ee8079;--accent-soft:#fff0ee;--hero-start:#751c18;--hero-end:#e4342b;--danger:#bf271f}
 html{background:var(--canvas);color:var(--ink)}body.avan-app,body.avan-admin{font-family:AVANYekan,Tahoma,sans-serif;background:var(--canvas);color:var(--ink)}
 body.avan-app button,body.avan-app input,body.avan-app select,body.avan-app textarea,body.avan-admin button,body.avan-admin input,body.avan-admin select,body.avan-admin textarea{font-family:inherit}
 body.avan-app .sidebar,body.avan-app .topbar,body.avan-app .stat,body.avan-app .panel,body.avan-app .meeting-row,body.avan-admin header,body.avan-admin .panel{background:var(--surface);border-color:var(--line);color:var(--ink);box-shadow:var(--shadow)}
@@ -37,6 +37,13 @@ body.avan-app .claim,body.avan-app blockquote,body.avan-app .voice-bar,body.avan
 .theme-control{display:flex;gap:7px;align-items:center;white-space:nowrap;font-size:12px;color:var(--subtle)}
 .theme-control select{width:auto!important;min-width:85px;padding:5px 8px!important;border:1px solid var(--line)!important;border-radius:8px;background:var(--surface)!important;color:var(--ink)!important;margin:0!important;min-height:auto!important}
 .theme-control select:focus-visible,a:focus-visible,button:focus-visible{outline:3px solid var(--glow);outline-offset:3px}
+:root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar,:root[data-theme='red'] body.avan-admin header{background:#e2e2e2;border-bottom:4px solid #e4342b;border-right:5px solid #e4342b;color:#30343a;box-shadow:0 5px 22px rgba(53,53,53,.08)}
+:root[data-theme='red'] body.avan-app .topbar .top-user,:root[data-theme='red'] body.avan-app .topbar .theme-control,:root[data-theme='red'] body.avan-admin header .theme-control,:root[data-theme='red'] body.avan-admin header .identity small{color:#30343a}
+:root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar #breadcrumb{color:#a3221c;font-weight:700}
+:root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar .admin-entry,:root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar .link-button,:root[data-theme='red'] body.avan-admin header .visit{background:#fff;color:#a3221c;border:1px solid #e4342b;border-radius:9px;padding:7px 11px}
+:root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar .admin-entry:hover,:root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar .link-button:hover,:root[data-theme='red'] body.avan-admin header .visit:hover{background:#fff0ee}
+:root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar .theme-control select,:root[data-theme='red'] body.avan-admin header .theme-control select{border-color:#e4342b!important}
+:root[data-theme='red'] body.avan-admin header .brand{background:#e4342b}
 body.avan-app.auth-screen .sidebar,body.avan-app.auth-screen footer{display:none}
 body.avan-app.auth-screen .shell{background:radial-gradient(circle at 12% 18%,color-mix(in srgb,var(--glow),transparent 75%),transparent 27%),linear-gradient(135deg,var(--hero-start),var(--hero-end));min-height:100vh}
 body.avan-app.auth-screen .workspace{min-height:100vh}
