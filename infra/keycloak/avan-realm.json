@@ -28,6 +28,25 @@
   "otpPolicyAlgorithm": "HmacSHA1",
   "otpPolicyDigits": 6,
   "otpPolicyPeriod": 30,
+  "browserFlow": "avan-browser",
+  "authenticationFlows": [
+    {
+      "alias": "avan-browser", "description": "AVAN protected password and conditional second factor",
+      "providerId": "basic-flow", "topLevel": true, "builtIn": false,
+      "authenticationExecutions": [
+        {"authenticator": "avan-captcha-password", "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false},
+        {"authenticatorFlow": true, "flowAlias": "avan-conditional-otp", "requirement": "CONDITIONAL", "priority": 20, "userSetupAllowed": false}
+      ]
+    },
+    {
+      "alias": "avan-conditional-otp", "description": "Ask for OTP only for accounts with OTP credential",
+      "providerId": "basic-flow", "topLevel": false, "builtIn": false,
+      "authenticationExecutions": [
+        {"authenticator": "conditional-user-configured", "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false},
+        {"authenticator": "auth-otp-form", "requirement": "REQUIRED", "priority": 20, "userSetupAllowed": false}
+      ]
+    }
+  ],
   "roles": {
     "realm": [
       {

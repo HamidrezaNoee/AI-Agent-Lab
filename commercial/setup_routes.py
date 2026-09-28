@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 import hmac
+import base64
+import html
 import os
 import re
 import secrets
@@ -29,6 +31,35 @@ WEB=Path(__file__).resolve().parent/"web"/"admin"
 router=APIRouter(prefix="/admin")
 _sessions={}
 _attempts=defaultdict(deque)
+_captcha={}
+
+def _captcha_image(code:str)->str:
+    # Self-hosted image. The answer is held only on the server; never in HTML or JS.
+    fragments=["<svg xmlns='http://www.w3.org/2000/svg' width='260' height='85' viewBox='0 0 260 85'><rect width='260' height='85' rx='12' fill='#edf5f7'/>" ]
+    for index in range(18):
+        x=secrets.randbelow(260);y=secrets.randbelow(85)
+        fragments.append("<path d='M%d %d l%d %d' stroke='#86acba' opacity='.55'/>" %
+                         (x,y,secrets.randbelow(100)-50,secrets.randbelow(60)-30))
+    for index,char in enumerate(code):
+        x=21+index*38+secrets.randbelow(6);y=50+secrets.randbelow(17)
+        fragments.append("<text x='%d' y='%d' transform='rotate(%d %d %d)' font-family='monospace' font-weight='bold' font-size='38' fill='#183d54'>%s</text>" %
+                         (x,y,secrets.randbelow(27)-13,x,y,html.escape(char)))
+    fragments.append("</svg>")
+    return "data:image/svg+xml;base64,"+base64.b64encode("".join(fragments).encode()).decode()
+
+@router.get("/api/captcha")
+def captcha(request:Request):
+    _local(request);_origin(request)
+    if setup.godadmin_identity():raise HTTPException(403,"ورود سازمانی فعال است.")
+    now=time.time()
+    for token,item in list(_captcha.items()):
+        if item["expires"]<now:_captcha.pop(token,None)
+    if len(_captcha)>1000:raise HTTPException(429,"کپچا موقتاً در دسترس نیست.")
+    token=secrets.token_urlsafe(32)
+    code="".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(6))
+    _captcha[token]={"answer":code,"expires":now+120,
+                     "remote":request.client.host if request.client else ""}
+    return {"challenge":token,"image":_captcha_image(code)}
 
 def _local(request:Request):
     # Docker Desktop maps host localhost through a private bridge gateway.
@@ -133,6 +164,8 @@ class Login(BaseModel):
     username:str=Field(min_length=1,max_length=40)
     password:str=Field(min_length=1,max_length=512)
     otp:str|None=Field(default=None,max_length=6)
+    challenge:str=Field(min_length=32,max_length=128)
+    captcha_answer:str=Field(min_length=6,max_length=6)
 
 @router.post("/api/login")
 def login(request:Request,body:Login):
@@ -144,6 +177,12 @@ def login(request:Request,body:Login):
     while attempts and attempts[0]<time.time()-900:attempts.popleft()
     if len(attempts)>=5:
         raise HTTPException(429,"تعداد تلاش‌های ورود بیش از حد مجاز است.")
+    item=_captcha.pop(body.challenge,None)
+    if (not item or item["expires"]<time.time() or
+        item["remote"]!=remote or
+        not hmac.compare_digest(item["answer"],body.captcha_answer.strip().upper())):
+        attempts.append(time.time())
+        raise HTTPException(401,"کد امنیتی تصویر اشتباه یا منقضی شده است.")
     state=setup.password_state()
     valid=(hmac.compare_digest(body.username,"godadmin") and
            setup.password_ok(body.password))

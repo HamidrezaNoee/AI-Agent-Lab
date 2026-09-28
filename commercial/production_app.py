@@ -197,10 +197,13 @@ def health():
 
 
 @app.get("/")
-def home():
+def home(request:Request):
     from .setup_console import get_setting,godadmin_identity
     if not get_setting("oidc") or not godadmin_identity():
         return RedirectResponse("/admin/",status_code=303)
+    _purge()
+    if request.cookies.get("avan_session","") not in sessions:
+        return RedirectResponse("/auth/login",status_code=303)
     return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
 
 
@@ -222,6 +225,11 @@ def theme_css():
 @app.get("/assets/theme.js")
 def theme_script():
     return FileResponse(ROOT/"theme.js",media_type="text/javascript; charset=utf-8")
+
+
+@app.get("/assets/agent-login.webp")
+def login_art():
+    return FileResponse(ROOT/"agent-login.webp",media_type="image/webp")
 
 
 @app.get("/assets/fonts/{name}")

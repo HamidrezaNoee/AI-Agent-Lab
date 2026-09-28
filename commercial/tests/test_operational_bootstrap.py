@@ -34,6 +34,7 @@ class GodAdminBootTests(unittest.TestCase):
         for p in self.patches:p.start()
         routes._sessions.clear()
         routes._attempts.clear()
+        routes._captcha.clear()
         setup.initialize()
         self.initial=setup.INITIAL.read_text(encoding="utf-8").strip()
         app=FastAPI()
@@ -41,9 +42,17 @@ class GodAdminBootTests(unittest.TestCase):
         self.client=TestClient(app,base_url="http://127.0.0.1:8188")
 
     def tearDown(self):
+        routes._captcha.clear()
         self.client.close()
         for p in reversed(self.patches):p.stop()
         self.tmp.cleanup()
+
+    def sign_in(self, password, otp=None, username="godadmin", answer=None):
+        issued=self.client.get("/admin/api/captcha").json()
+        real=routes._captcha[issued["challenge"]]["answer"]
+        return self.client.post("/admin/api/login",json={
+            "username":username,"password":password,"otp":otp,
+            "challenge":issued["challenge"],"captcha_answer":answer or real})
 
     def test_bootstrap_password_is_random_one_time_and_not_in_source_config(self):
         self.assertGreaterEqual(len(self.initial),24)
@@ -73,8 +82,7 @@ class GodAdminBootTests(unittest.TestCase):
         self.assertEqual(setup.masked_settings()["mysql"]["password"],"********")
 
     def test_initial_login_forces_password_rotation_and_mfa(self):
-        response=self.client.post("/admin/api/login",json={
-             "username":"godadmin","password":self.initial})
+        response=self.sign_in(self.initial)
         self.assertEqual(response.status_code,200)
         self.assertFalse(response.json()["password_changed"])
         self.assertEqual(self.client.get("/admin/api/settings").status_code,403)
@@ -87,10 +95,7 @@ class GodAdminBootTests(unittest.TestCase):
         self.assertEqual(rotated.status_code,200)
         self.assertFalse(setup.INITIAL.exists())
         self.assertFalse(setup.password_ok(self.initial))
-        new_login=self.client.post("/admin/api/login",json={
-            "username":"godadmin",
-            "password":"A-different-long-strong-passphrase-2026!"
-        })
+        new_login=self.sign_in("A-different-long-strong-passphrase-2026!")
         self.assertEqual(new_login.status_code,200)
         csrf=new_login.json()["csrf"]
         enrolled=self.client.post("/admin/api/totp/enrollment",
@@ -101,22 +106,17 @@ class GodAdminBootTests(unittest.TestCase):
                       headers={"X-AVAN-ADMIN-CSRF":csrf},json={"code":code})
         self.assertEqual(confirmed.status_code,200)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
-        self.assertEqual(self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":"A-different-long-strong-passphrase-2026!",
-            "otp":"000000"}).status_code,401)
-        signed=self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":"A-different-long-strong-passphrase-2026!",
-            "otp":setup._totp(enrolled.json()["secret"],int(time.time()))
-        })
+        self.assertEqual(self.sign_in("A-different-long-strong-passphrase-2026!","000000").status_code,401)
+        signed=self.sign_in("A-different-long-strong-passphrase-2026!",
+            setup._totp(enrolled.json()["secret"],int(time.time())))
         self.assertEqual(signed.status_code,200)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,200)
 
     def test_csrf_and_failed_login_rate_limit(self):
-        bad=self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":self.initial+"wrong"})
+        bad=self.sign_in(self.initial+"wrong")
         self.assertEqual(bad.status_code,401)
-        ok=self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":self.initial})
+        self.assertEqual(self.sign_in(self.initial,answer="AAAAAA").status_code,401)
+        ok=self.sign_in(self.initial)
         self.assertEqual(ok.status_code,200)
         self.assertEqual(self.client.post("/admin/api/change-password",json={
             "current":self.initial,"updated":"Another-secure-16-char-value!"
@@ -126,7 +126,20 @@ class GodAdminBootTests(unittest.TestCase):
                         headers={"X-AVAN-ADMIN-CSRF":"invalid"})
         self.assertEqual(self.client.get("/admin/api/settings").status_code,403)
 
+    def test_bootstrap_challenge_is_single_use_and_expires(self):
+        issued=self.client.get("/admin/api/captcha").json()
+        self.assertTrue(issued["image"].startswith("data:image/svg+xml;base64,"))
+        payload={"username":"godadmin","password":self.initial,
+                 "challenge":issued["challenge"],
+                 "captcha_answer":routes._captcha[issued["challenge"]]["answer"]}
+        self.assertEqual(self.client.post("/admin/api/login",json=payload).status_code,200)
+        self.assertEqual(self.client.post("/admin/api/login",json=payload).status_code,401)
+        issued=self.client.get("/admin/api/captcha").json()
+        routes._captcha[issued["challenge"]]["expires"]=time.time()-1
+        payload["challenge"]=issued["challenge"]
+        payload["captcha_answer"]=routes._captcha[issued["challenge"]]["answer"]
+        self.assertEqual(self.client.post("/admin/api/login",json=payload).status_code,401)
+
 
 if __name__=="__main__":
     unittest.main()
-

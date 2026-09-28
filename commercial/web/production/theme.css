@@ -45,7 +45,7 @@ body.avan-app .claim,body.avan-app blockquote,body.avan-app .voice-bar,body.avan
 :root[data-theme='red'] body.avan-app:not(.auth-screen) .topbar .theme-control select,:root[data-theme='red'] body.avan-admin header .theme-control select{border-color:#e4342b!important}
 :root[data-theme='red'] body.avan-admin header .brand{background:#e4342b}
 body.avan-app.auth-screen .sidebar,body.avan-app.auth-screen footer{display:none}
-body.avan-app.auth-screen .shell{background:radial-gradient(circle at 12% 18%,color-mix(in srgb,var(--glow),transparent 75%),transparent 27%),linear-gradient(135deg,var(--hero-start),var(--hero-end));min-height:100vh}
+body.avan-app.auth-screen .shell{background:linear-gradient(90deg,rgba(7,21,36,.72),rgba(7,21,36,.1)),url('/assets/agent-login.webp') center/cover no-repeat;min-height:100vh}
 body.avan-app.auth-screen .workspace{min-height:100vh}
 body.avan-app.auth-screen .topbar{background:transparent;border:0;color:white;box-shadow:none}
 body.avan-app.auth-screen .top-user,body.avan-app.auth-screen .admin-entry{color:#fff}

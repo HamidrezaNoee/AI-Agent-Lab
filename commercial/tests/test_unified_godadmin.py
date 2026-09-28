@@ -62,12 +62,12 @@ class UnifiedGodAdminTests(unittest.TestCase):
         setup.initialize()
         setup.put_setting("oidc",{"issuer":ISSUER})
         setup.put_setting("company",{"tenant_id":TENANT,"company_name":"ایران رور"})
-        admin._sessions.clear();app.sessions.clear();app.pending.clear()
+        admin._sessions.clear();admin._captcha.clear();app.sessions.clear();app.pending.clear()
         self.client=TestClient(app.app,base_url="http://127.0.0.1:8188")
 
     def tearDown(self):
         self.client.close()
-        admin._sessions.clear();app.sessions.clear();app.pending.clear()
+        admin._sessions.clear();admin._captcha.clear();app.sessions.clear();app.pending.clear()
         for p in reversed(self.patches):p.stop()
         self.tmp.cleanup()
 
@@ -77,6 +77,12 @@ class UnifiedGodAdminTests(unittest.TestCase):
         state=next(reversed(app.pending))
         return self.client.get("/auth/callback",params={"code":subject,"state":state},
                                follow_redirects=False)
+
+    def bootstrap_login(self,password,otp=None):
+        challenge=self.client.get("/admin/api/captcha").json()["challenge"]
+        return self.client.post("/admin/api/login",json={"username":"godadmin",
+                   "password":password,"otp":otp,"challenge":challenge,
+                   "captcha_answer":admin._captcha[challenge]["answer"]})
 
     def test_first_admin_binds_signed_identity_and_ordinary_user_is_denied(self):
         self.assertEqual(self.client.get("/",follow_redirects=False).headers["location"],"/admin/")
@@ -93,8 +99,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
         # A signed account is staged, with no PM data or workspace session.
         self.assertEqual(self.oidc_login("operator").headers["location"],"/auth/pending")
         self.assertFalse(app.sessions)
-        signed=self.client.post("/admin/api/login",json={"username":"godadmin",
-                  "password":rotated,"otp":code})
+        signed=self.bootstrap_login(rotated,code)
         self.assertEqual(signed.status_code,200)
         csrf={"X-AVAN-ADMIN-CSRF":signed.json()["csrf"]}
         payload={"tenant_id":TENANT,"subject":"operator","otp":"000000"}
@@ -105,11 +110,15 @@ class UnifiedGodAdminTests(unittest.TestCase):
                          json=payload,headers=csrf).status_code,200)
         self.assertEqual(setup.godadmin_identity()["subject"],"operator")
         self.assertEqual(self.client.post("/admin/api/login",json={"username":"godadmin",
-                  "password":rotated,"otp":payload["otp"]}).status_code,403)
+                  "password":rotated,"otp":payload["otp"],"challenge":"x"*32,
+                  "captcha_answer":"AAAAAA"}).status_code,403)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
 
         admitted=self.oidc_login("operator")
         self.assertEqual(admitted.headers["location"],"/")
+        guest=TestClient(app.app,base_url="http://127.0.0.1:8188")
+        try:self.assertEqual(guest.get("/",follow_redirects=False).headers["location"],"/auth/login")
+        finally:guest.close()
         state=self.client.get("/admin/api/state").json()
         self.assertTrue(state["authenticated"])
         self.assertEqual(state["auth_mode"],"oidc")
@@ -162,8 +171,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
         setup.put_setting("oidc",{"issuer":ISSUER,"managed_by_product":True})
         key=setup.ROOT/"provisioner"
         key.write_text("a-secret-only-used-in-tests")
-        login=self.client.post("/admin/api/login",json={"username":"godadmin",
-               "password":"A-different-long-strong-password!","otp":otp})
+        login=self.bootstrap_login("A-different-long-strong-password!",otp)
         self.assertEqual(login.status_code,200)
         from commercial import identity_operator
         with patch.dict("os.environ",{"AVAN_PROVISIONER_CLIENT_SECRET_PATH":str(key)}), \

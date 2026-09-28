@@ -67,7 +67,10 @@ services:
       retries: 15
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.3
+    image: avan-keycloak:local
+    build:
+      context: .
+      dockerfile: infra/keycloak/Dockerfile
     restart: unless-stopped
     entrypoint: ["/bin/bash","-ec"]
     command:

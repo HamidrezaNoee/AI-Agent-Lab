@@ -74,12 +74,7 @@ async function start(){
  try{
   const s=await api("state");
   state.csrf=s.csrf;state.authMode=s.auth_mode;
-  if(!s.authenticated && s.auth_mode==="oidc"){
-   const p=panel("ورود یکپارچهٔ GodAdmin",
-     "برای مدیریت تنظیمات، با حساب سازمانی ثبت‌شده به‌عنوان GodAdmin وارد شوید.");
-   const a=node("a","visit","ورود با حساب سازمانی ←");a.href="/auth/login";
-   append(p,a);append(main(),p);
-  }
+  if(!s.authenticated && s.auth_mode==="oidc")window.location.assign("/auth/login");
   else if(!s.authenticated)showLogin(s.mfa_enrolled);
   else if(!s.password_changed)showChangePassword();
   else if(!s.mfa_enrolled)showTotpEnroll();
@@ -88,24 +83,34 @@ async function start(){
  }catch(err){main().append(info(err.message||String(err),true))}
 }
 function showLogin(withMfa){
- const m=main(),p=panel("ورود مدیر کل سامانه","برای راه‌اندازی و مدیریت تنظیمات آوان، با حساب GodAdmin وارد شوید.");
+ const m=main(),p=panel("ورود به آوان","با حساب GodAdmin وارد شوید.");
  p.classList.add("login");const f=node("form");
- append(p,helpLamp("ورود اولیه",[
-  "در نصب تازه نام کاربری اولیه godadmin است. مسئول نصب، پس از اجرای Docker، رمز یک‌باره را با دستور docker compose -p avan-production -f compose.yaml -f compose.pm-local.yaml exec -T avan python -m commercial.setup_console --take-bootstrap دریافت می‌کند.",
-  "پس از تغییر رمز و اتصال Authenticator، کد شش‌رقمی فعلی برنامه را وارد کنید. پس از اتصال حساب سازمانی GodAdmin، ورود از صفحهٔ اصلی آوان انجام می‌شود."
- ]));
- append(f,field("نام کاربری","username","godadmin",{help:"در راه‌اندازی اولیه، نام ثابت godadmin است."}),
-   field("رمز عبور","password","",{secret:true,help:"رمز اولیه را از مسئول نصب یا خروجی امن راه‌اندازی بگیرید؛ پس از تغییر رمز، رمز جدید را وارد کنید."}));
- if(withMfa)append(f,field("کد شش‌رقمی برنامه Authenticator","otp","",{required:true,help:"کد زمان‌دار برنامه Authenticator مربوط به GodAdmin اولیه؛ هر بار کد تازه را وارد کنید."}));
+ append(f,field("نام کاربری","username","godadmin"),
+   field("رمز عبور","password","",{secret:true}));
+ if(withMfa)append(f,field("کد شش‌رقمی برنامه Authenticator","otp","",{required:true}));
  const out=node("div");
+ const captchaWrap=node("div","bootstrap-captcha");
+ const captchaImage=node("img");captchaImage.alt="کد امنیتی تصویر";captchaImage.width=260;captchaImage.height=85;
+ const answer=field("کد امنیتی تصویر","captcha_answer","",{required:true});
+ const refresh=btn("تصویر جدید",()=>loadCaptcha(),"secondary");
+ const challenge=node("input");challenge.type="hidden";challenge.name="challenge";
+ append(captchaWrap,captchaImage,refresh,answer,challenge);append(f,captchaWrap);
  const loginBtn=node("button","","ورود به تنظیمات");loginBtn.type="submit";
  append(f,loginBtn,out);append(p,f);append(m,p);
+ async function loadCaptcha(){
+  loginBtn.disabled=true;challenge.value="";captchaImage.removeAttribute("src");
+  try{const result=await api("captcha");captchaImage.src=result.image;challenge.value=result.challenge;
+      answer.querySelector("input").value="";out.replaceChildren();}
+  catch(err){showError(out,err)}finally{loginBtn.disabled=!challenge.value}
+ }
+ loadCaptcha();
  f.addEventListener("submit",async e=>{
   e.preventDefault();busy(f,true);out.replaceChildren();
   try{const result=await api("login",{username:formValue(f,"username"),
-    password:formValue(f,"password"),otp:withMfa?formValue(f,"otp"):null});
+    password:formValue(f,"password"),otp:withMfa?formValue(f,"otp"):null,
+    challenge:formValue(f,"challenge"),captcha_answer:formValue(f,"captcha_answer")});
     state.csrf=result.csrf;await start()
-  }catch(err){showError(out,err)}finally{busy(f,false)}
+  }catch(err){await loadCaptcha();showError(out,err)}finally{busy(f,false);loginBtn.disabled=!challenge.value}
  });
 }
 function showChangePassword(){
