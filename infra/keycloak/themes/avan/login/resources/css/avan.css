@@ -418,3 +418,13 @@ body.avan-signin{margin:0;min-height:100vh;background:#081c2c url('../img/agent-
  .avan-signin .signin-panel.login-reveal-card .signin-brand{transition:none!important;animation:none!important}
  .avan-signin .login-reveal-card.is-expanded .login-expand-body>*{animation:none!important}
 }
+
+.avan-signin .captcha-provider{
+ display:inline-flex;align-items:center;justify-content:center;
+ padding:4px 9px;border-radius:999px;
+ border:1px solid rgba(94,215,239,.14);
+ background:rgba(8,42,62,.42);color:#6eaabd;
+ font:700 8px/1 Tahoma,"Segoe UI",sans-serif;letter-spacing:1.15px;direction:ltr;
+}
+.avan-signin .login-reveal-card.is-collapsed{cursor:pointer}
+.avan-signin .login-reveal-card.is-expanded{cursor:default}
