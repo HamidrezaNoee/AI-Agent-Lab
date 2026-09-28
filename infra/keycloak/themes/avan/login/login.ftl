@@ -64,8 +64,12 @@
      <div class="avan-captcha-progress" aria-hidden="true"><span></span></div>
      <div class="avan-captcha-challenge"><span class="captcha-provider">ALTCHA · SELF-HOSTED</span></div>
     </div>
+    <#else>
+    <div class="avan-captcha is-error" aria-label="سرویس ضدربات در دسترس نیست">
+     <div class="avan-captcha-copy"><strong>سرویس امنیتی آماده نیست</strong><span class="avan-captcha-status">کانتینر Anti-Bot آوان را بررسی کنید.</span></div>
+    </div>
     </#if>
-    <button id="kc-login" type="submit"<#if antibotChallenge??> disabled="disabled"</#if>>ورود به آوان <span aria-hidden="true">←</span></button>
+    <button id="kc-login" type="submit" disabled="disabled">ورود به آوان <span aria-hidden="true">←</span></button>
    </form>
   </section>
   <div class="signin-art" aria-hidden="true"></div>
