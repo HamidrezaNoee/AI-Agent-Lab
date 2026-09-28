@@ -11,11 +11,13 @@ services:
     environment:
       AVAN_AUTH_HOST: ${AVAN_AUTH_HOST:?Set the authentication DNS name}
       AVAN_PUBLIC_ORIGIN: https://${AVAN_APP_HOST:?Set the application DNS name}
+      AVAN_TURNSTILE_REQUIRE_PRODUCTION: "1"
     volumes:
       - ./infra/keycloak/avan-realm-https.json:/opt/keycloak/data/import/avan-realm.json:ro
   avan:
     environment:
       AVAN_PUBLIC_ORIGIN: https://${AVAN_APP_HOST:?Set the application DNS name}
+      AVAN_TURNSTILE_REQUIRE_PRODUCTION: "1"
       AVAN_ADMIN_ORIGIN: http://127.0.0.1:8188
       AVAN_ALLOWED_HOSTS: ${AVAN_APP_HOST},127.0.0.1,localhost
       AVAN_BUNDLED_IDP: "1"
