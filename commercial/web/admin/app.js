@@ -182,21 +182,88 @@ function showLogin(){
   }
  });
 }
+function normalizeOtpDigits(value){
+ const fa="۰۱۲۳۴۵۶۷۸۹",ar="٠١٢٣٤٥٦٧٨٩";
+ return String(value||"").replace(/[۰-۹]/g,c=>String(fa.indexOf(c)))
+   .replace(/[٠-٩]/g,c=>String(ar.indexOf(c))).replace(/\D/g,"").slice(0,6);
+}
+function createOtpMotionField(title,name,onComplete){
+ const wrap=node("div","form-field otp-motion-field"),label=node("label","",title);
+ const motion=node("div","otp-motion"),input=node("input","otp-motion-native");
+ const stage=node("div","otp-stage"),ring=node("span","otp-orbit-ring");
+ const digits=node("div","otp-digits"),verified=node("div","otp-verified");
+ const status=node("span","otp-motion-status","");
+ input.type="text";input.name=name;input.id="avan-"+name+"-motion";
+ input.inputMode="numeric";input.pattern="[0-9]{6}";input.maxLength=6;
+ input.autocomplete="one-time-code";input.required=true;
+ label.htmlFor=input.id;motion.tabIndex=-1;
+ stage.setAttribute("aria-hidden","true");status.setAttribute("aria-live","polite");
+ for(let i=0;i<6;i++){const d=node("span","otp-digit","");d.style.setProperty("--i",String(i));append(digits,d)}
+ verified.innerHTML='<svg viewBox="0 0 48 48" focusable="false"><circle cx="24" cy="24" r="20"></circle><path d="m15.5 24.5 5.5 5.5 12-13"></path></svg><span>تأیید شد</span>';
+ append(stage,ring,digits,verified);append(motion,input,stage,status);append(wrap,label,motion);
+ const cells=[...digits.children];
+ let completion=null,errorTimer=null;
+ function render(){
+  const value=normalizeOtpDigits(input.value);if(input.value!==value)input.value=value;
+  cells.forEach((cell,index)=>{
+   cell.textContent=value[index]||"";
+   cell.classList.toggle("is-filled",index<value.length);
+   cell.classList.toggle("is-next",index===value.length&&value.length<6);
+  });
+  motion.classList.toggle("has-value",value.length>0);
+ }
+ function reset(error=false){
+  completion=null;input.readOnly=false;input.value="";render();
+  motion.classList.remove("is-complete","is-verified");
+  if(error){motion.classList.add("is-error");clearTimeout(errorTimer);errorTimer=setTimeout(()=>motion.classList.remove("is-error"),520)}
+  status.textContent=error?"کد تأیید نشد؛ دوباره وارد کنید.":"";
+ }
+ function complete(){
+  if(completion)return completion;
+  const value=normalizeOtpDigits(input.value);
+  if(value.length!==6){motion.classList.add("is-error");setTimeout(()=>motion.classList.remove("is-error"),420);input.focus();return Promise.resolve(false)}
+  input.value=value;input.readOnly=true;motion.classList.add("is-complete");
+  status.textContent="کد کامل شد؛ در حال تأیید.";
+  const reduced=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  completion=new Promise(resolve=>setTimeout(()=>{
+   motion.classList.add("is-verified");status.textContent="کد آماده تأیید است.";resolve(true);
+  },reduced?80:1180));
+  return completion;
+ }
+ input.addEventListener("input",()=>{
+  input.value=normalizeOtpDigits(input.value);render();
+  if(input.value.length===6&&!motion.classList.contains("is-complete")&&typeof onComplete==="function")
+   setTimeout(()=>onComplete(),35);
+ });
+ input.addEventListener("paste",event=>{
+  const text=event.clipboardData?.getData("text")||"",value=normalizeOtpDigits(text);
+  if(value){event.preventDefault();input.value=value;render();input.dispatchEvent(new Event("input",{bubbles:true}))}
+ });
+ motion.addEventListener("click",()=>{if(!input.readOnly)input.focus()});
+ render();
+ return {wrap,input,complete,reset};
+}
 function showLoginOtp(challenge){
  const m=main(),p=panel("تأیید دومرحله‌ای","");
  p.classList.add("login","login-otp");p.prepend(loginCardDecor(),loginBrand());
- const f=node("form"),code=field("کد شش‌رقمی Authenticator","otp"),out=node("div");
- const input=code.querySelector("input");
- input.inputMode="numeric";input.pattern="[0-9]{6}";input.maxLength=6;
- input.autocomplete="one-time-code";input.placeholder="••••••";
+ const f=node("form"),out=node("div");
+ let submitting=false;
+ const code=createOtpMotionField("کد شش‌رقمی Authenticator","otp",()=>{if(!submitting)f.requestSubmit()});
  const submit=node("button","","تأیید و ورود");submit.type="submit";
- append(f,code,submit,out);append(p,f,btn("بازگشت به ورود",showLogin,"secondary"));append(m,p);
- input.focus();
+ append(f,code.wrap,submit,out);append(p,f,btn("بازگشت به ورود",showLogin,"secondary"));append(m,p);
+ code.input.focus();
  f.addEventListener("submit",async e=>{
-  e.preventDefault();busy(f,true);out.replaceChildren();
-  try{const result=await api("login/otp",{challenge,otp:formValue(f,"otp")});
+  e.preventDefault();if(submitting)return;
+  const otp=normalizeOtpDigits(code.input.value);
+  if(otp.length!==6){await code.complete();return}
+  submitting=true;busy(f,true);out.replaceChildren();
+  try{
+    const animated=await code.complete();if(!animated)return;
+    const result=await api("login/otp",{challenge,otp});
     state.csrf=result.csrf;await start()
-  }catch(err){input.value="";showError(out,err);input.focus()}finally{busy(f,false)}
+  }catch(err){
+    code.reset(true);showError(out,err);code.input.focus()
+  }finally{submitting=false;busy(f,false)}
  });
 }
 function showChangePassword(){
