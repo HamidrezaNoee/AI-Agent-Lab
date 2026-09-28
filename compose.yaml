@@ -49,6 +49,34 @@ services:
       agent-sql:
         condition: service_healthy
 
+  antibot:
+    image: avan-antibot:local
+    build:
+      context: .
+      dockerfile: infra/antibot/Dockerfile
+    restart: unless-stopped
+    environment:
+      AVAN_ANTIBOT_SECRET_PATH: /run/secrets/avan_antibot_hmac_key
+      AVAN_ANTIBOT_MAX_NUMBER: "25000"
+      AVAN_ANTIBOT_TTL_SECONDS: "120"
+    secrets:
+      - avan_antibot_hmac_key
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,noexec,size=8m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD","python","-c","import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=2).status==200"]
+      interval: 20s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+
   keycloak-db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -86,18 +114,19 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
+      AVAN_ANTIBOT_URL: http://antibot:8090
     secrets:
       - keycloak_db_password
       - avan_bff_client_secret
       - avan_provisioner_client_secret
-      - avan_turnstile_site_key
-      - avan_turnstile_secret_key
     volumes:
       - ./infra/keycloak/avan-realm.json:/opt/keycloak/data/import/avan-realm.json:ro
       - ./infra/keycloak/themes/avan:/opt/keycloak/themes/avan:ro
     ports:
       - "127.0.0.1:8181:8080"
     depends_on:
+      antibot:
+        condition: service_healthy
       keycloak-db:
         condition: service_healthy
 
@@ -120,11 +149,10 @@ services:
       AVAN_BFF_CLIENT_SECRET_PATH: /run/secrets/avan_bff_client_secret
       AVAN_PROVISIONER_CLIENT_SECRET_PATH: /run/secrets/avan_provisioner_client_secret
       AVAN_DATA_TIMEZONE: Asia/Tehran
+      AVAN_ANTIBOT_URL: http://antibot:8090
     secrets:
       - avan_bff_client_secret
       - avan_provisioner_client_secret
-      - avan_turnstile_site_key
-      - avan_turnstile_secret_key
     volumes:
       - avan-state:/var/lib/avan
     extra_hosts:
@@ -140,6 +168,8 @@ services:
     pids_limit: 192
     mem_limit: 768m
     depends_on:
+      antibot:
+        condition: service_healthy
       keycloak:
         condition: service_started
       agent-sql-init:
@@ -160,10 +190,8 @@ secrets:
     file: ./.secrets/avan-provisioner-client-secret
   avan_sql_sa_password:
     file: ./.secrets/avan-sql-sa-password
-  avan_turnstile_site_key:
-    file: ./.secrets/avan-turnstile-site-key
-  avan_turnstile_secret_key:
-    file: ./.secrets/avan-turnstile-secret-key
+  avan_antibot_hmac_key:
+    file: ./.secrets/avan-antibot-hmac-key
 
 volumes:
   avan-state:
