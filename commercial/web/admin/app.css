@@ -479,3 +479,14 @@ body.avan-admin button:disabled{opacity:.56;cursor:not-allowed}
 }
 .avan-admin .login-reveal-card.is-collapsed{cursor:pointer}
 .avan-admin .login-reveal-card.is-expanded{cursor:default}
+
+.captcha-turnstile-slot{
+ width:100%;display:flex;align-items:center;justify-content:center;min-height:0;
+}
+.avan-captcha-challenge{
+ flex-direction:column;align-items:center;gap:6px;
+}
+.avan-captcha-badge{transition:color .2s ease,border-color .2s ease,background .2s ease}
+.avan-captcha.is-verified .avan-captcha-badge{
+ color:#7df0d0;border-color:rgba(87,236,204,.34);background:rgba(14,74,67,.55);
+}
