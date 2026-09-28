@@ -30,6 +30,7 @@ class GodAdminBootTests(unittest.TestCase):
             patch.object(setup,"PUBLIC",root/"license-public.pem"),
             patch.dict("os.environ",{"AVAN_PUBLIC_ORIGIN":"http://127.0.0.1:8188"}),
             patch.object(routes,"_local",return_value=True),
+            patch.object(routes,"_turnstile_check",return_value=True),
         ]
         for p in self.patches:p.start()
         routes._sessions.clear()
