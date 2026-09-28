@@ -34,7 +34,7 @@
       "alias": "avan-browser", "description": "AVAN protected password and conditional second factor",
       "providerId": "basic-flow", "topLevel": true, "builtIn": false,
       "authenticationExecutions": [
-        {"authenticator": "auth-username-password-form", "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false},
+        {"authenticator": "avan-captcha-password", "requirement": "REQUIRED", "priority": 10, "userSetupAllowed": false},
         {"authenticatorFlow": true, "flowAlias": "avan-conditional-otp", "requirement": "CONDITIONAL", "priority": 20, "userSetupAllowed": false}
       ]
     },
