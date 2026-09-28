@@ -82,7 +82,7 @@ jobs:
         run: python -m pip install -r commercial/requirements-production.txt pytest
       - name: Check source and authenticated installation lifecycle
         run: |
-          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py infra/antibot/server.py
           python -m pytest commercial/tests -q
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
@@ -107,6 +107,9 @@ jobs:
           dockerfile=Path("commercial/Dockerfile.production").read_text()
           assert "avan-state:" in c
           assert "avan-agent-sql:" in c
+          assert "antibot:" in c and "infra/antibot/Dockerfile" in c
+          assert "avan_antibot_hmac_key" in c
+          assert "avan_turnstile_site_key" not in c and "avan_turnstile_secret_key" not in c
           assert "mcr.microsoft.com/mssql/server:2022-latest" in c
           assert "1433:1433" not in c
           assert "127.0.0.1:8188:8188" in c
@@ -117,6 +120,9 @@ jobs:
           print("Operational GodAdmin installation requires no editable .env file.")
           PY
 
+
+      - name: Build self-hosted anti-bot image
+        run: docker build -f infra/antibot/Dockerfile -t avan-antibot:ci .
 
       - name: Build production image and verify packaged imports
         run: |
