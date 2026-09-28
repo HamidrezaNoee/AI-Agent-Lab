@@ -82,6 +82,45 @@ async function start(){
   else await showSettings();
  }catch(err){main().append(info(err.message||String(err),true))}
 }
+let _turnstilePromise=null;
+function ensureTurnstile(){
+ if(window.turnstile)return Promise.resolve(window.turnstile);
+ if(_turnstilePromise)return _turnstilePromise;
+ _turnstilePromise=new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>reject(Error("سرویس ضدربات بارگذاری نشد.")),12000);
+  window.__avanTurnstileReady=()=>{clearTimeout(timeout);resolve(window.turnstile)};
+  const s=document.createElement("script");
+  s.src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__avanTurnstileReady&render=explicit";
+  s.async=true;s.defer=true;
+  s.onerror=()=>{clearTimeout(timeout);reject(Error("اتصال به سرویس ضدربات برقرار نشد."))};
+  document.head.appendChild(s);
+ });
+ return _turnstilePromise;
+}
+async function mountLoginCaptcha(host,submit,out){
+ submit.disabled=true;
+ const config=await api("captcha/config");
+ const turnstile=await ensureTurnstile();
+ let token="";
+ const widgetId=turnstile.render(host,{
+  sitekey:config.site_key,
+  theme:config.theme||"dark",
+  size:config.size||"flexible",
+  language:"fa",
+  action:config.action,
+  appearance:"always",
+  retry:"auto",
+  "refresh-expired":"auto",
+  callback:value=>{token=value;submit.disabled=false},
+  "expired-callback":()=>{token="";submit.disabled=true},
+  "timeout-callback":()=>{token="";submit.disabled=true},
+  "error-callback":()=>{token="";submit.disabled=true;out.replaceChildren(info("اعتبارسنجی ضدربات کامل نشد؛ دوباره تلاش کنید.",true))}
+ });
+ return {
+  token:()=>token,
+  reset:()=>{token="";submit.disabled=true;try{turnstile.reset(widgetId)}catch{}}
+ };
+}
 function loginCardDecor(){
  const d=node("div","login-card-decor");d.setAttribute("aria-hidden","true");
  d.innerHTML=`<svg viewBox="0 0 600 760" preserveAspectRatio="none" focusable="false">
@@ -118,16 +157,25 @@ function showLogin(){
  p.classList.add("login");p.prepend(loginCardDecor(),loginBrand());const f=node("form");
  append(f,field("نام کاربری","username","godadmin"),
    field("رمز عبور","password","",{secret:true}));
- const out=node("div");
+ const out=node("div"),captchaHost=node("div","turnstile-shell");
  const loginBtn=node("button","","ورود به تنظیمات");loginBtn.type="submit";
- append(f,loginBtn,out);append(p,f);append(m,p);
+ append(f,captchaHost,loginBtn,out);append(p,f);append(m,p);
+ let captcha=null;
+ const captchaReady=mountLoginCaptcha(captchaHost,loginBtn,out).then(x=>captcha=x).catch(err=>{
+  showError(out,err);loginBtn.disabled=true;throw err;
+ });
  f.addEventListener("submit",async e=>{
-  e.preventDefault();busy(f,true);out.replaceChildren();
-  try{const result=await api("login",{username:formValue(f,"username"),
-    password:formValue(f,"password")});
+  e.preventDefault();out.replaceChildren();
+  try{
+    await captchaReady;
+    const captchaToken=captcha?.token()||"";
+    if(!captchaToken)throw Error("ابتدا اعتبارسنجی ضدربات را کامل کنید.");
+    busy(f,true);
+    const result=await api("login",{username:formValue(f,"username"),
+      password:formValue(f,"password"),captcha_token:captchaToken});
     if(result.mfa_required){showLoginOtp(result.challenge);return}
     state.csrf=result.csrf;await start()
-  }catch(err){showError(out,err)}finally{busy(f,false)}
+  }catch(err){showError(out,err);captcha?.reset()}finally{busy(f,false)}
  });
 }
 function showLoginOtp(challenge){
