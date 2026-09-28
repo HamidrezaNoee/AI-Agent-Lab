@@ -41,7 +41,8 @@ function sessionExpired(){
 function statusName(value){return {TO_DO:"در جریان",COMPLETED:"تکمیل‌شده",DRAFT:"پیش‌نویس",CANCELLED:"لغوشده",PAUSED:"متوقف",Open:"باز",Closed:"بسته‌شده"}[value]||value}
 function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم"}[role]||role}
 function setupUser(user){
- app.user=user;app.csrf=user.csrf;$("nav").hidden=!!user.is_godadmin;
+ app.user=user;app.csrf=user.csrf;$("nav").hidden=false;
+ $("pm-nav").hidden=!!user.is_godadmin;$("platform-nav").hidden=!user.is_godadmin;
  $("admin-entry").hidden=!user.is_godadmin;$("logout").hidden=false;
  document.body.classList.remove("auth-screen");
  $("person-name").textContent=user.name+" · "+titleCase(user.role);
@@ -76,14 +77,15 @@ for(const eventName of ["pointerdown","keydown","touchstart"]){
 }
 window.addEventListener("storage",event=>{if(event.key==="avan-logout"&&app.user)sessionExpired()});
 function select(page){
+ if(app.user?.is_godadmin?!page.startsWith("platform-"):page.startsWith("platform-"))return;
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری"};
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها"};
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
  const m=root();add(m,el("p","muted","در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI}[page];
  if(work)work().catch(err=>{const target=root();add(target,note(err.message,true))});
 }
 async function fetchMeetings(cursor=null){
@@ -180,12 +182,7 @@ async function askQuestion(question){
 async function init(){
  try{
   const user=await request("/api/me");setupUser(user);
-  if(user.is_godadmin){
-   const m=root();heading(m,"مدیریت سامانه آوان","حساب GodAdmin برای تنظیم اتصال‌ها و کاربران فعال است.");
-   const panel=card("تنظیمات GodAdmin","این نقش به اطلاعات جلسات مشتری دسترسی پیش‌فرض ندارد.");
-   const admin=el("a","button primary","ورود به تنظیمات ←");admin.href="/admin/";
-   add(panel,admin);add(m,panel);$("breadcrumb").textContent="GodAdmin";
-  }else select("overview");
+  if(user.is_godadmin)select("platform-overview");else select("overview");
  }
  catch(err){
   if(err.message.includes("نشست سازمانی"))return;
@@ -196,11 +193,62 @@ async function init(){
 }
 document.addEventListener("DOMContentLoaded",init);
 
+async function platformOverview(){
+ const status=await request("/api/platform/status");if(app.page!=="platform-overview")return;
+ const m=root();heading(m,"فضای کار GodAdmin","پیکربندی و استفاده از ابزارهای آوان و گزارش BPMSهای متصل.");
+ const stats=el("div","stats");for(const [label,value] of [["BPMS متصل",status.sources.filter(s=>s.enabled).length],["دستیار هوشمند",status.enabled?"فعال":"نیازمند تنظیم"],["نقش",app.user.role]])add(stats,add(el("div","stat"),el("span","",label),el("strong","",value)));add(m,stats);
+ const panel=card("ابزارهای کاری","گزارش هر BPMS از آداپتر خواندنی همان سامانه دریافت می‌شود.");
+ const settings=el("a","button secondary","تنظیم اتصال‌ها ←");settings.href="/admin/";
+ add(panel,link("دستیار پلتفرم",()=>select("platform-assistant"),"button primary")," ",link("گزارش BPMSها",()=>select("platform-bi"))," ",settings);add(m,panel);
+ if(!status.sources.some(s=>s.enabled))add(m,note("برای نمایش گزارش فرایندهای دیگر، یک مبدل AVAN REST v1 را در تنظیمات GodAdmin وصل کنید."));
+}
+
+async function platformAssistant(){
+ const [status,history]=await Promise.all([request("/api/platform/status"),request("/api/platform/conversations")]);
+ if(app.page!=="platform-assistant")return;app.voiceEnabled=status.voice_enabled;
+ const m=root();heading(m,"دستیار پلتفرم","پرسش درباره تنظیمات آوان و اتصال BPMS؛ برای آمار سازمانی از صفحه گزارش منبع انتخابی استفاده کنید.");
+ const work=card("پرسش از دستیار","پاسخ این بخش بدون داده‌های ProcessMaker ساخته می‌شود.");
+ const question=el("textarea");question.maxLength=2000;question.rows=4;question.setAttribute("aria-label","سؤال درباره پلتفرم");
+ question.placeholder="چطور یک موتور گردش کار دیگر را به آوان وصل کنم؟";
+ const output=el("div");output.setAttribute("aria-live","polite");
+ const send=link("دریافت پاسخ",async()=>{if(app.sending)return;app.sending=true;send.disabled=true;output.replaceChildren(note("در حال بررسی سؤال..."));
+  try{const result=await request("/api/platform/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:question.value,new_conversation:app.newConversation,conversation_id:app.conversationId})});if(!output.isConnected)return;app.newConversation=false;app.conversationId=result.conversation_id;output.replaceChildren();renderAnalysis(output,result)}catch(e){output.replaceChildren(note(e.message,true))}finally{app.sending=false;send.disabled=false}},"button primary");
+ const fresh=link("گفت‌وگوی تازه",()=>{app.newConversation=true;app.conversationId=null;question.value="";output.replaceChildren();question.focus()});
+ add(work,question,send,fresh);if(status.voice_enabled)attachVoiceInput(work,question,true);
+ if(!status.enabled)add(work,note("برای استفاده از دستیار، مدل AI را در تنظیمات GodAdmin فعال کنید."));
+ add(work,output);add(m,work);
+ const past=card("گفت‌وگوهای پلتفرم","گفت‌وگوهای قبلی اطلاعات روز را جایگزین نمی‌کنند.");
+ for(const c of history.conversations){const row=el("div","history-item");add(row,link(c.title,async()=>{try{const detail=await request("/api/platform/conversations/"+encodeURIComponent(c.id));app.conversationId=c.id;app.newConversation=false;output.replaceChildren();for(const t of detail.turns){const p=card(t.question,dateText(t.created_at));renderAnalysis(p,{...t.answer,conversation_id:c.id,turn_id:t.id});add(output,p)}}catch(e){toast(e.message)}},"history-title"),link("حذف",async()=>{try{await request("/api/platform/conversations/"+encodeURIComponent(c.id)+"/delete",{method:"POST"});row.remove();if(app.conversationId===c.id){app.conversationId=null;app.newConversation=true;output.replaceChildren()}}catch(e){toast(e.message)}},"link-button"));add(past,row)}
+ if(!history.conversations.length)add(past,el("p","muted","هنوز گفت‌وگویی ثبت نشده است."));add(m,past);
+}
+
+async function platformBI(){
+ const status=await request("/api/platform/status");if(app.page!=="platform-bi")return;app.voiceEnabled=status.voice_enabled;
+ const m=root();heading(m,"گزارش BPMSهای متصل","اطلاعات هر موتور فقط از آداپتر همان منبع و در دامنه سازمان تنظیم‌شده دریافت می‌شود.");
+ const enabled=status.sources.filter(s=>s.enabled);
+ if(!enabled.length){const settings=el("a","button primary","افزودن اتصال در GodAdmin ←");settings.href="/admin/";add(m,note("هنوز هیچ مبدل خواندنی AVAN REST v1 فعال نشده است."),settings);return}
+ const p=card("انتخاب منبع و بازه"),source=el("select"),period=el("select"),out=el("div"),analysis=card("تحلیل زبان طبیعی","مدل فقط به گزارش منبع انتخابی دسترسی دارد.");
+ source.setAttribute("aria-label","منبع BPMS");period.setAttribute("aria-label","بازه گزارش");
+ for(const s of enabled){const opt=el("option","",s.name);opt.value=s.id;add(source,opt)}
+ for(const [key,label] of [["last_30_days","۳۰ روز گذشته"],["last_7_days","۷ روز گذشته"],["this_month","ماه جاری"],["last_month","ماه قبل"],["all","تمام زمان‌ها"]]){const opt=el("option","",label);opt.value=key;add(period,opt)}
+ add(p,add(el("label"),el("span","","منبع"),source)," ",add(el("label"),el("span","","بازه"),period));
+ const table=(labels,rows)=>{const t=el("table"),head=el("tr");for(const label of labels)add(head,el("th","",label));add(t,add(el("thead"),head));const body=el("tbody");for(const values of rows){const row=el("tr");for(const val of values)add(row,el("td","",val??"—"));add(body,row)}add(t,body);return add(el("div","table-scroll panel"),t)};
+ const load=link("نمایش گزارش",async()=>{load.disabled=true;out.replaceChildren(note("در حال دریافت گزارش..."));try{const r=await request("/api/platform/bpms/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source_id:source.value,period:period.value,limit:30})});if(!out.isConnected)return;out.replaceChildren();add(out,note("زمان استخراج: "+dateText(r.as_of_utc)+(r.coverage_complete?"":" · پوشش داده ناقص است.")));
+  const stats=el("div","stats");for(const [key,label] of [["cases","کل پرونده"],["open_cases","باز"],["completed_cases","تکمیل‌شده"],["open_tasks","وظایف باز"],["overdue_tasks","وظایف تأخیردار"]])add(stats,add(el("div","stat"),el("span","",label),el("strong","",fmt(r.metrics[key]))));add(out,stats);
+  add(out,table(["فرایند","کل","باز","تکمیل","وظایف تأخیردار"],r.processes.map(x=>[x.title,fmt(x.total),fmt(x.open),fmt(x.completed),fmt(x.overdue_tasks)])));
+  add(out,table(["شماره پرونده","فرایند","وضعیت","ثبت"],r.rows.map(x=>[x.case_number,x.process_title,statusName(x.status),dateText(x.created_at)])));
+  if(r.has_more)add(out,note("فهرست پرونده‌ها صفحه‌بندی شده است؛ برای ادامه بازه را محدود کنید."));
+ }catch(e){out.replaceChildren(note(e.message,true))}finally{load.disabled=false}},"button primary");add(p,load,out);add(m,p);
+ const question=el("textarea");question.maxLength=2000;question.rows=3;question.setAttribute("aria-label","سؤال درباره گزارش BPMS");question.placeholder="کدام فرایندها بیشترین وظایف تأخیردار را دارند؟";
+ const result=el("div");const ask=link("تحلیل منبع انتخابی",async()=>{ask.disabled=true;result.replaceChildren(note("در حال تحلیل..."));try{const r=await request("/api/platform/bpms/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:question.value,source_id:source.value,new_conversation:true})});if(result.isConnected){result.replaceChildren();renderAnalysis(result,r)}}catch(e){result.replaceChildren(note(e.message,true))}finally{ask.disabled=false}},"button primary");
+ add(analysis,question,ask);if(status.voice_enabled)attachVoiceInput(analysis,question,true);if(!status.enabled)add(analysis,note("برای تحلیل متنی، اتصال مدل AI را فعال کنید."));add(analysis,result);add(m,analysis);
+}
+
 
 function renderAnalysis(target,result){
  if(app.voiceEnabled&&result.conversation_id&&result.turn_id)attachSpeech(target,result);
  for(const message of result.notes||[])add(target,note(message));
- add(target,el("p","muted","مدل: "+(result.model||"—")+(result.report_type==="process_bi"?" · تحلیل گردش کار فرایندها":" · بررسی "+fmt(result.meetings_considered)+" جلسه و "+fmt(result.actions_considered)+" اقدام")));
+ add(target,el("p","muted","مدل: "+(result.model||"—")+(result.report_type==="platform"?" · راهنمای پلتفرم":result.report_type==="bpms_bi"||result.report_type==="process_bi"?" · تحلیل گردش کار فرایندها":" · بررسی "+fmt(result.meetings_considered)+" جلسه و "+fmt(result.actions_considered)+" اقدام")));
  if(result.clarification)add(target,note(result.clarification));
  const labels={fact:"یافته مستند",analysis:"تحلیل",recommendation:"پیشنهاد مدیریتی"};
  for(const c of result.claims||[]){
@@ -325,12 +373,12 @@ async function showMeeting(id){
   for(const a of meeting.actions){const row=el("tr");for(const v of [a.action_no,a.description,(a.owner_name||"نامشخص")+" / "+(a.owner_unit||"نامشخص"),a.is_closed?"بسته‌شده":a.status,a.progress_percent==null?"نامشخص":fmt(a.progress_percent)+"٪",dateText(a.due_at_utc)])add(row,el("td","",v));add(body,row)}add(table,body);add(m,add(el("div","table-scroll panel"),table));
  }catch(e){toast(e.message)}
 }
-function attachVoiceInput(target,input){
+function attachVoiceInput(target,input,platform=false){
  const wrap=el("div","voice-bar"),status=el("span","muted");let recorder=null,stream=null,timer=null,discard=false,busy=false;
  const cleanup=()=>{discard=true;if(timer)clearTimeout(timer);if(recorder?.state==="recording")recorder.stop();stream?.getTracks().forEach(t=>t.stop())};app.cleanup.push(cleanup);
  async function convert(blob){
   if(busy||discard)return;if(blob.size>8*1024*1024){status.textContent="حداکثر حجم صوت ۸ مگابایت است.";return}busy=true;button.disabled=true;upload.disabled=true;status.textContent="در حال تبدیل صوت؛ سپس متن را بازبینی کنید...";
-  try{const r=await request("/api/voice/transcribe",{method:"POST",headers:{"Content-Type":blob.type||"audio/mpeg"},body:blob});if(!input.isConnected)return;
+  try{const r=await request(platform?"/api/platform/voice/transcribe":"/api/voice/transcribe",{method:"POST",headers:{"Content-Type":blob.type||"audio/mpeg"},body:blob});if(!input.isConnected)return;
    if(r.text.length>input.maxLength){status.textContent="متن از ظرفیت این کادر بیشتر است؛ فایل کوتاه‌تری انتخاب کنید.";return}input.value=r.text;input.dispatchEvent(new Event("input",{bubbles:true}));status.textContent="متن آماده است؛ قبل از ارسال بازبینی کنید.";
   }catch(e){status.textContent=e.message}finally{busy=false;button.disabled=false;upload.disabled=false}
  }
@@ -351,7 +399,7 @@ function attachSpeech(target,result){
  const area=el("div","voice-bar"),status=el("span","muted","صدای تولیدشده توسط هوش مصنوعی"),player=el("audio");player.controls=true;let part=0,parts=1,url=null;
  app.cleanup.push(()=>{player.pause();player.removeAttribute("src");if(url)URL.revokeObjectURL(url)});
  const play=link("شنیدن پاسخ",async()=>{play.disabled=true;try{
-  const response=await request("/api/voice/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({conversation_id:result.conversation_id,turn_id:result.turn_id,part}),binary:true});
+  const response=await request(app.user?.is_godadmin?"/api/platform/voice/speech":"/api/voice/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({conversation_id:result.conversation_id,turn_id:result.turn_id,part}),binary:true});
   const blob=await response.blob();if(!area.isConnected)return;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);player.src=url;parts=Number(response.headers.get("X-AVAN-Audio-Parts"))||1;status.textContent="صدای هوش مصنوعی · بخش "+fmt(part+1)+" از "+fmt(parts);add(area,player);await player.play();
   part=(part+1)%parts;play.textContent=parts>1?"شنیدن بخش "+fmt(part+1):"پخش دوباره";
  }catch(e){status.textContent=e.message}finally{play.disabled=false}});add(area,play,status);add(target,area);

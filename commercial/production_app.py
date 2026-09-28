@@ -199,8 +199,7 @@ def health():
 @app.get("/")
 def home():
     from .setup_console import get_setting,godadmin_identity
-    if (not get_setting("mysql") or not get_setting("agent_sql") or
-        not get_setting("oidc") or not godadmin_identity()):
+    if not get_setting("oidc") or not godadmin_identity():
         return RedirectResponse("/admin/",status_code=303)
     return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
 
@@ -373,7 +372,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
                           "subject":principal.subject,"tenant_id":str(principal.tenant_id),
                           "id_token":data.get("id_token"),
                           "refresh_token":data.get("refresh_token")}
-    response=RedirectResponse("/admin/" if platform_admin else "/",status_code=303)
+    response=RedirectResponse("/",status_code=303)
     response.set_cookie("avan_session",session_id,max_age=SESSION_MAX_SECONDS,**_cookie_options())
     response.delete_cookie("avan_login_state",path="/")
     return response
@@ -478,9 +477,9 @@ def signed_out():
 
 def _authorized(request:Request):
     from .setup_console import godadmin_identity
+    value=_principal_for_request(request)
     if not godadmin_identity():
         raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
-    value=_principal_for_request(request)
     from .setup_console import is_godadmin
     if is_godadmin(value[2]):
         raise HTTPException(status_code=403,
@@ -490,9 +489,9 @@ def _authorized(request:Request):
 
 def _csrf(request:Request):
     from .setup_console import godadmin_identity
+    sid,value,principal=_principal_for_request(request)
     if not godadmin_identity():
         raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
-    sid,value,principal=_principal_for_request(request)
     got=request.headers.get("X-AVAN-CSRF","")
     if not got or not hmac.compare_digest(got,value["csrf"]):
         raise HTTPException(status_code=403,detail="توکن اعتبارسنجی درخواست معتبر نیست.")
@@ -505,6 +504,27 @@ def _csrf(request:Request):
     if request.url.path!="/auth/heartbeat" and is_godadmin(principal):
         raise HTTPException(status_code=403,
                             detail="GodAdmin به گزارش‌های سازمانی دسترسی ندارد.")
+    return sid,value,principal
+
+
+def _platform_authorized(request:Request):
+    from .setup_console import is_godadmin,godadmin_identity
+    value=_principal_for_request(request)
+    if not godadmin_identity():
+        raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
+    if not is_godadmin(value[2]):
+        raise HTTPException(status_code=403,detail="این بخش ویژه GodAdmin است.")
+    return value
+
+
+def _platform_csrf(request:Request):
+    sid,value,principal=_platform_authorized(request)
+    got=request.headers.get("X-AVAN-CSRF","")
+    if not got or not hmac.compare_digest(got,value["csrf"]):
+        raise HTTPException(status_code=403,detail="توکن اعتبارسنجی درخواست معتبر نیست.")
+    origin=request.headers.get("origin")
+    if origin and origin!=_public_origin():
+        raise HTTPException(status_code=403,detail="منشأ درخواست مجاز نیست.")
     return sid,value,principal
 
 
@@ -542,7 +562,7 @@ def current_user(value=Depends(_principal_for_request)):
         return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
                 "role":"GodAdmin","department":"مدیریت سامانه",
                 "csrf":session["csrf"],"subject":principal.subject,
-                "modules":[],"is_godadmin":True,
+                "modules":[1,3],"is_godadmin":True,
                 "license_expires_at":None,"license_mode":"platform"}
     scope=_store_response(lambda con,scope:scope,principal)
     license_data=scope["license"]
@@ -592,6 +612,8 @@ from .agent_routes import register as register_agent_routes
 register_agent_routes(app,_authorized,_csrf)
 from .process_bi_routes import register as register_bi_routes
 register_bi_routes(app,_csrf)
+from .platform_routes import register as register_platform_routes
+register_platform_routes(app,_platform_authorized,_platform_csrf)
 
 
 from .agent_storage import AgentStorageUnavailable

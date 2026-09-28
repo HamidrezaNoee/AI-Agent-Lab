@@ -99,11 +99,11 @@ def configured_client():
                   timeout=35,max_retries=0,http_client=httpx.Client(timeout=35,trust_env=False)),cfg['model']
 
 
-def run_agent(question,tools:MeetingTools,*,history=(),client=None,model=None):
+def run_agent(question,tools:MeetingTools,*,history=(),client=None,model=None,system_prompt=None):
     if not 3<=len(question.strip())<=2000:raise AgentInvalid('Invalid question')
     owned=client is None
     if owned:client,model=configured_client()
-    messages=[{'role':'system','content':SYSTEM},
+    messages=[{'role':'system','content':system_prompt or SYSTEM},
               {'role':'user','content':json.dumps({'question':question,
                 'conversation_context':list(history)[-4:],
                 'as_of_utc':tools.now.isoformat(),'snapshot_meetings':len(tools.meetings),

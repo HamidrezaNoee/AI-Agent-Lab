@@ -1,0 +1,45 @@
+# اتصال چند BPMS و فضای کار GodAdmin
+
+GodAdmin پس از ورود سازمانی به `/` می‌تواند از «دستیار پلتفرم» و «گزارش BPMSها» استفاده کند. تنظیم اتصال‌ها در `/admin/` فقط برای او قابل ویرایش است. مسیرهای جلسات، مصوبات، دبیر جلسه و BI داخلی ProcessMaker همچنان برای این حساب بسته هستند. کاربر عادی به مسیرهای پلتفرم دسترسی ندارد.
+
+ProcessMaker اتصال بومی جداگانه با MySQL فقط خواندنی و کنترل دسترسی کاربر دارد. برای موتورهای دیگر، از «اتصالات BPMS» در پنل GodAdmin تا ۱۲ منبع مستقل اضافه می‌شود. گزارش هر منبع در همان لحظه از آن خوانده می‌شود؛ پرونده‌ها در SQL Server اختصاصی Agent کپی نمی‌شوند. تنها تنظیم اتصال و گفت‌وگوهای شخصی Agent در مخزن اختصاصی آوان ذخیره می‌شوند. توکن اتصال در پاسخ API یا مرورگر پس از ذخیره بازگردانده نمی‌شود.
+
+## قرارداد آداپتر AVAN REST v1
+
+برای هر موتور غیر از ProcessMaker، آداپتر جداگانه‌ای در شبکه سازمان پیاده کنید. آوان به نشانی HTTPS آن با یک Bearer token اختصاصی و **مجوز فقط خواندن** متصل می‌شود؛ آداپتر باید خود توکن و شناسه سازمان را بررسی کند. تغییر داده از این قرارداد پشتیبانی نمی‌شود. به دلیل تفاوت API محصولات BPMS، اتصال مستقیم و بی‌واسطه به هر موتور وعده داده نمی‌شود.
+
+- `GET /avan/v1/identity` باید JSON `{"schema_version":1,"tenant_id":"شناسه سازمان"}` برگرداند. شناسه باید عین شناسه ثبت‌شده در تنظیمات آوان باشد.
+- `GET /avan/v1/bi/processes` باید پارامترهای اختیاری `period`، `status`، `process_uid`، `start`، `end`، `offset` و `limit` را بپذیرد. تاریخ‌ها میلادی `YYYY-MM-DD` و `end` غیرشامل است. `limit` حداکثر ۱۰۰ است. اگر داده کامل بررسی نشده است `coverage_complete=false` الزامی است.
+- پاسخ نمونه:
+
+```json
+{
+  "schema_version": 1,
+  "tenant_id": "شناسه سازمان",
+  "as_of_utc": "2026-09-28T09:30:00Z",
+  "coverage_complete": true,
+  "metrics": {"cases": 1, "open_cases": 1, "completed_cases": 0, "open_tasks": 1, "overdue_tasks": 0},
+  "processes": [{"process_uid": "purchase", "title": "خرید", "total": 1, "open": 1, "completed": 0, "overdue_tasks": 0}],
+  "rows": [{"case_uid": "case-001", "case_number": "1001", "process_uid": "purchase", "process_title": "خرید", "status": "TO_DO", "created_at": "2026-09-28T09:00:00Z", "finished_at": null}],
+  "statuses": {"TO_DO": 1},
+  "has_more": false
+}
+```
+
+پاسخ‌ها حداکثر ۵۱۲ کیلوبایت هستند. آوان ریدایرکت را دنبال نمی‌کند و TLS سرور را اعتبارسنجی می‌کند. نام و آدرس و توکن هر منبع را در `/admin/` وارد کنید، «بررسی اتصال» و سپس «ذخیره» را بزنید. برای هر محصول BPMS که چنین آداپتری ندارد باید آداپتر مخصوص همان محصول ساخته و با داده واقعی آزموده شود.
+
+## اجرای نسخه روی ویندوز
+
+در مخزن Git که شاخه `feature/pm-native-agent-store-20260922` را دنبال می‌کند:
+
+```powershell
+Set-Location 'D:\A Project\17 meeting ai agent\Azure\AVAN-Git-Live-20260927'
+git pull --ff-only
+docker version
+docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml up -d --build --wait
+docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml ps
+Invoke-RestMethod 'http://127.0.0.1:8188/health'
+Start-Process 'http://127.0.0.1:8188/'
+```
+
+اگر Docker Desktop اجرا نشده است ابتدا آن را باز کنید و بعد `docker version` را تکرار کنید. ورود GodAdmin از صفحه اصلی با حساب سازمانی انجام می‌شود؛ بخش تنظیمات از دکمه «تنظیمات GodAdmin» در بالا در دسترس است.

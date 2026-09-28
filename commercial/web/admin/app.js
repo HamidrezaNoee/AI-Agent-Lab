@@ -124,7 +124,7 @@ function showTotpEnroll(){
 }
 
 const menu=[
- ["agentdb","بانک اختصاصی Agent"],["mysql","داده‌های ProcessMaker"],["company","اطلاعات سازمان"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
+ ["agentdb","بانک اختصاصی Agent"],["bpms","اتصالات BPMS"],["mysql","داده‌های ProcessMaker"],["company","اطلاعات سازمان"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
  ["ai","هوش مصنوعی"],["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
 ];
 async function showSettings(page=state.page){
@@ -150,6 +150,7 @@ async function showSettings(page=state.page){
    }
  },"secondary"));append(m,tabs);
  if(page==="agentdb")await renderAgentDatabase(m);
+ else if(page==="bpms")await renderBPMS(m);
  else if(page==="mysql")renderMysql(m,settings.mysql||{});
  else if(page==="company")await renderCompany(m);
  else if(page==="identity")await renderIdentity(m);
@@ -395,6 +396,45 @@ async function renderUsers(m){
    append(section,form);append(p,section);
  }
 }
+async function renderBPMS(m){
+ const data=await api("bpms/connections");
+ const section=panel("منابع فرایندی آوان",
+  "ProcessMaker داخلی اتصال خواندنی فعلی خود را حفظ می‌کند. برای BPMSهای دیگر، یک مبدل HTTPS مطابق قرارداد AVAN REST v1 ثبت کنید؛ داده‌ها در SQL Server Agent کپی نمی‌شوند.");
+ append(section,info(data.processmaker_native_configured?
+   "ProcessMaker داخلی تنظیم شده است. دسترسی داده‌های آن از مجوز خود کاربران ProcessMaker تبعیت می‌کند.":
+   "ProcessMaker داخلی هنوز تنظیم نشده است. GodAdmin برای استفاده از دیگر BPMSها به آن نیاز ندارد."));
+ const renderForm=(source)=>{
+   const p=panel(source?source.name:"افزودن اتصال BPMS","در هر اتصال یک حساب API فقط‌خواندنی و مخصوص همان منبع استفاده کنید.");
+   const f=node("form","grid"),out=node("div","full");
+   append(f,field("نام منبع","name",source?.name||""),
+     field("آدرس HTTPS مبدل AVAN v1","base_url",source?.base_url||"",{placeholder:"https://bpms.example.com"}),
+     field("توکن خواندنی؛ برای نگه‌داشتن توکن قبلی خالی بگذارید","bearer_token","",{secret:true,required:!source}));
+   const enabled=node("input");enabled.type="checkbox";enabled.checked=source?source.enabled:true;
+   const toggle=node("label","full");append(toggle,enabled,node("span",""," اتصال فعال باشد"));append(f,toggle);
+   const body=()=>({id:source?.id||null,name:formValue(f,"name"),kind:"avan-rest-v1",
+      base_url:formValue(f,"base_url"),bearer_token:formValue(f,"bearer_token"),enabled:enabled.checked});
+   const check=btn("بررسی اتصال",async()=>{
+     out.replaceChildren();check.disabled=true;
+     try{const result=await api("bpms/connections/check",body());append(out,info("اتصال خواندنی تأیید شد · سازمان: "+result.tenant_id))}
+     catch(err){showError(out,err)}finally{check.disabled=false}
+   },"secondary");
+   const save=btn("ذخیره اتصال",async()=>{
+     out.replaceChildren();save.disabled=true;
+     try{await api("bpms/connections/save",body());f.elements.namedItem("bearer_token").value="";await showSettings("bpms")}
+     catch(err){showError(out,err)}finally{save.disabled=false}
+   });
+   append(f,check,save);
+   if(source)append(f,btn("حذف اتصال",async()=>{
+     if(!confirm("اتصال «"+source.name+"» و توکن ذخیره‌شده حذف شود؟"))return;
+     try{await api("bpms/connections/delete",{source_id:source.id});await showSettings("bpms")}
+     catch(err){showError(out,err)}
+   },"secondary"));
+   append(f,out);append(p,f);append(section,p);
+ };
+ for(const source of data.sources)renderForm(source);
+ renderForm(null);append(m,section);
+}
+
 async function renderCompany(m){
  const p=panel("اطلاعات سازمان",
   "نام سازمان و شناسه Tenant از داخل آوان مدیریت می‌شوند. شناسه سازمان در اولین ذخیره توسط خود سیستم ساخته و ثابت می‌شود.");

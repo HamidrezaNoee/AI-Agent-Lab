@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import setup_console as setup
+from .bpms_registry import SourceConfig
 
 WEB=Path(__file__).resolve().parent/"web"/"admin"
 router=APIRouter(prefix="/admin")
@@ -246,6 +247,38 @@ def logout(session=Depends(_required)):
 @router.get("/api/settings")
 def settings(session=Depends(_ready)):
     return setup.masked_settings()
+
+
+@router.get("/api/bpms/connections")
+def bpms_connections(session=Depends(_ready)):
+    from .bpms_registry import sources
+    return {"sources":sources(),"processmaker_native_configured":bool(setup.get_setting("mysql"))}
+
+
+@router.post("/api/bpms/connections/check")
+def bpms_check(body:SourceConfig,session=Depends(_ready)):
+    from .bpms_registry import check,BPMSUnavailable
+    try:return check(body)
+    except BPMSUnavailable as exc:raise HTTPException(503,str(exc))
+
+
+@router.post("/api/bpms/connections/save")
+def bpms_save(body:SourceConfig,session=Depends(_ready)):
+    from .bpms_registry import save,BPMSUnavailable
+    try:return save(body)
+    except BPMSUnavailable as exc:raise HTTPException(503,str(exc))
+
+
+class BPMSID(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    source_id:str=Field(pattern=r"^[0-9a-f]{24}$")
+
+
+@router.post("/api/bpms/connections/delete")
+def bpms_delete(body:BPMSID,session=Depends(_ready)):
+    from .bpms_registry import delete,BPMSUnavailable
+    try:return delete(body.source_id)
+    except BPMSUnavailable as exc:raise HTTPException(404,str(exc))
 
 
 class GodAdminBinding(BaseModel):
