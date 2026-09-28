@@ -68,6 +68,10 @@ def _cookie(response,token:str):
     response.set_cookie("avan_godadmin",token,httponly=True,secure=secure,
                         samesite="strict",path="/admin",max_age=1800)
 
+def _turnstile_check(token:str,remote:str)->bool:
+    from .turnstile import verify
+    return verify(token,action="avan-bootstrap-login",remote_ip=remote)
+
 def _required(request:Request):
     _local(request);_origin(request);_prune()
     if setup.godadmin_identity():
@@ -111,6 +115,14 @@ def admin_js(request:Request):
     _local(request)
     return FileResponse(WEB/"app.js",media_type="text/javascript; charset=utf-8")
 
+@router.get("/api/captcha/config")
+def captcha_config(request:Request):
+    _local(request)
+    from .turnstile import public_config,TurnstileUnavailable
+    try:return public_config("avan-bootstrap-login")
+    except TurnstileUnavailable:
+        raise HTTPException(503,"سرویس ضدربات هنوز برای این نصب پیکربندی نشده است.")
+
 @router.get("/api/state")
 def state(request:Request):
     _local(request)
@@ -135,6 +147,7 @@ class Login(BaseModel):
     model_config=ConfigDict(extra="forbid")
     username:str=Field(min_length=1,max_length=40)
     password:str=Field(min_length=1,max_length=512)
+    captcha_token:str=Field(default="",max_length=2048)
 
 def _complete_bootstrap_login(mfa:bool):
     token=secrets.token_urlsafe(48)
@@ -156,6 +169,17 @@ def login(request:Request,body:Login):
     while attempts and attempts[0]<time.time()-900:attempts.popleft()
     if len(attempts)>=5:
         raise HTTPException(429,"تعداد تلاش‌های ورود بیش از حد مجاز است.")
+    try:
+        captcha_ok=_turnstile_check(body.captcha_token,remote)
+    except Exception:
+        # Fail closed: an unavailable anti-bot service never falls through
+        # to password verification.
+        setup.audit("CAPTCHA_SERVICE_UNAVAILABLE")
+        raise HTTPException(503,"اعتبارسنجی ضدربات در دسترس نیست؛ چند لحظه دیگر دوباره تلاش کنید.")
+    if not captcha_ok:
+        attempts.append(time.time())
+        setup.audit("CAPTCHA_LOGIN_DENIED")
+        raise HTTPException(401,"اعتبارسنجی ضدربات نامعتبر یا منقضی شده است.")
     state=setup.password_state()
     valid=(hmac.compare_digest(body.username,"godadmin") and
            setup.password_ok(body.password))
