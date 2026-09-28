@@ -121,7 +121,7 @@ def captcha_config(request:Request):
     from .turnstile import public_config,TurnstileUnavailable
     try:return public_config("avan-bootstrap-login")
     except TurnstileUnavailable:
-        raise HTTPException(503,"سرویس ضدربات هنوز برای این نصب پیکربندی نشده است.")
+        raise HTTPException(503,"سرویس ضدربات داخلی آوان در دسترس نیست.")
 
 @router.get("/api/state")
 def state(request:Request):
@@ -147,7 +147,7 @@ class Login(BaseModel):
     model_config=ConfigDict(extra="forbid")
     username:str=Field(min_length=1,max_length=40)
     password:str=Field(min_length=1,max_length=512)
-    captcha_token:str=Field(default="",max_length=2048)
+    captcha_token:str=Field(default="",max_length=8192)
 
 def _complete_bootstrap_login(mfa:bool):
     token=secrets.token_urlsafe(48)
