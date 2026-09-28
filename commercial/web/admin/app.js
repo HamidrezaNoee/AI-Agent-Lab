@@ -82,6 +82,37 @@ async function start(){
   else await showSettings();
  }catch(err){main().append(info(err.message||String(err),true))}
 }
+let _turnstilePromise=null;
+function ensureTurnstile(timeoutMs=2500){
+ if(window.turnstile)return Promise.resolve(window.turnstile);
+ if(_turnstilePromise)return _turnstilePromise;
+ _turnstilePromise=new Promise((resolve,reject)=>{
+  const callback="__avanHybridTurnstileReady";
+  const timer=setTimeout(()=>{
+   _turnstilePromise=null;
+   reject(Error("Cloudflare timeout"));
+  },Math.max(1200,timeoutMs));
+  window[callback]=()=>{
+   clearTimeout(timer);
+   try{delete window[callback]}catch{}
+   if(window.turnstile)resolve(window.turnstile);
+   else{_turnstilePromise=null;reject(Error("Cloudflare unavailable"))}
+  };
+  const existing=document.querySelector('script[data-avan-turnstile="1"]');
+  if(existing)return;
+  const script=document.createElement("script");
+  script.dataset.avanTurnstile="1";
+  script.src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload="+callback+"&render=explicit";
+  script.async=true;script.defer=true;
+  script.onerror=()=>{
+   clearTimeout(timer);_turnstilePromise=null;
+   try{delete window[callback]}catch{}
+   reject(Error("Cloudflare load failed"));
+  };
+  document.head.appendChild(script);
+ });
+ return _turnstilePromise;
+}
 async function solveLocalAntibot(config,onProgress){
  if(!window.crypto?.subtle)throw Error("مرورگر از اعتبارسنجی امن محلی پشتیبانی نمی‌کند.");
  if(config?.provider!=="altcha-self-hosted"||config.algorithm!=="SHA-256")
@@ -101,7 +132,7 @@ async function solveLocalAntibot(config,onProgress){
   if(typeof onProgress==="function"&&(start===0||start%1024<batchSize))
    onProgress(Math.min(99,Math.round((stop/max)*100)));
  }
- throw Error("اثبات امنیتی حل نشد؛ Challenge جدید دریافت می‌شود.");
+ throw Error("اثبات امنیتی محلی حل نشد.");
 }
 function antibotPayload(config,number){
  return btoa(JSON.stringify({
@@ -111,6 +142,9 @@ function antibotPayload(config,number){
   salt:config.salt,
   signature:config.signature
  }));
+}
+function antibotEnvelope(provider,value){
+ return JSON.stringify({provider,token:value});
 }
 function buildCaptchaShell(host){
  host.className="avan-captcha is-loading";
@@ -125,15 +159,56 @@ function buildCaptchaShell(host){
     <path class="shield-scan" d="M20.3 31.8 28 39.5 44.8 22.7"></path>
    </svg>
   </div>
-  <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال آماده‌سازی لایه امنیتی محلی…</span></div>
-  <span class="avan-captcha-badge">LOCAL</span>
+  <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال انتخاب بهترین مسیر امنیتی…</span></div>
+  <span class="avan-captcha-badge">HYBRID</span>
  </div>
  <div class="avan-captcha-progress" aria-hidden="true"><span></span></div>
- <div class="avan-captcha-challenge"><span class="captcha-provider">ALTCHA · SELF-HOSTED</span></div>`;
+ <div class="avan-captcha-challenge">
+  <span class="captcha-provider">CLOUDFLARE → ALTCHA FALLBACK</span>
+  <div class="captcha-turnstile-slot"></div>
+ </div>`;
  return {
-  slot:host.querySelector(".avan-captcha-challenge"),
+  slot:host.querySelector(".captcha-turnstile-slot"),
+  provider:host.querySelector(".captcha-provider"),
+  badge:host.querySelector(".avan-captcha-badge"),
   status:host.querySelector(".avan-captcha-status")
  };
+}
+function cloudflareAttempt(config,ui,setState){
+ return new Promise(async(resolve,reject)=>{
+  if(!config?.enabled||!config.site_key){reject(Error("Cloudflare disabled"));return}
+  const timeoutMs=Math.max(1200,Math.min(5000,Number(config.timeout_ms)||2500));
+  setState("is-checking","در حال بررسی با Cloudflare Turnstile…");
+  ui.badge.textContent="CLOUDFLARE";ui.provider.textContent="CLOUDFLARE TURNSTILE · PRIMARY";
+  let settled=false,widgetId=null;
+  const fail=err=>{
+   if(settled)return;settled=true;clearTimeout(timer);
+   if(window.turnstile&&widgetId!==null){try{window.turnstile.remove(widgetId)}catch{}}
+   ui.slot.replaceChildren();reject(err instanceof Error?err:Error(String(err)));
+  };
+  const success=value=>{
+   if(settled)return;settled=true;clearTimeout(timer);resolve(value);
+  };
+  const timer=setTimeout(()=>fail(Error("Cloudflare verification timeout")),timeoutMs);
+  try{
+   const turnstile=await ensureTurnstile(timeoutMs);
+   if(settled)return;
+   widgetId=turnstile.render(ui.slot,{
+    sitekey:config.site_key,
+    action:config.action,
+    theme:config.theme||"dark",
+    size:"flexible",
+    appearance:"interaction-only",
+    language:"fa",
+    retry:"never",
+    "refresh-expired":"never",
+    callback:success,
+    "expired-callback":()=>fail(Error("Cloudflare token expired")),
+    "timeout-callback":()=>fail(Error("Cloudflare challenge timeout")),
+    "error-callback":()=>fail(Error("Cloudflare verification failed"))
+   });
+  }catch(err){fail(err)}
+ });
 }
 async function mountLoginCaptcha(host,submit,out){
  submit.disabled=true;
@@ -146,30 +221,51 @@ async function mountLoginCaptcha(host,submit,out){
  };
  const solveNew=async()=>{
   const current=++generation;token="";submit.disabled=true;
-  clearTimeout(expiryTimer);
-  setState("is-checking","در حال دریافت Challenge امن از سرویس داخلی…");
+  clearTimeout(expiryTimer);ui.slot.replaceChildren();
+  setState("is-checking","در حال دریافت تنظیمات امنیتی…");
   const config=await api("captcha/config");
-  setState("is-checking","در حال انجام Proof-of-Work محلی…");
-  const number=await solveLocalAntibot(config,percent=>{
-   if(current===generation)setState("is-checking",`در حال بررسی امنیتی… ${percent}٪`);
+  if(config?.provider!=="hybrid"||!config.local)throw Error("پیکربندی Hybrid Anti-Bot معتبر نیست.");
+
+  if(config.cloudflare?.enabled){
+   try{
+    const cfToken=await cloudflareAttempt(config.cloudflare,ui,setState);
+    if(current!==generation)return;
+    token=antibotEnvelope("cloudflare-turnstile",cfToken);
+    submit.disabled=false;ui.badge.textContent="CLOUDFLARE";
+    ui.provider.textContent="CLOUDFLARE TURNSTILE · VERIFIED";
+    setState("is-verified","اتصال امن با Cloudflare تأیید شد");
+    return;
+   }catch(_err){
+    if(current!==generation)return;
+    ui.slot.replaceChildren();ui.badge.textContent="LOCAL";
+    ui.provider.textContent="ALTCHA · SELF-HOSTED FALLBACK";
+    setState("is-checking","Cloudflare در دسترس نبود؛ بررسی محلی فعال شد…");
+   }
+  }else{
+   ui.badge.textContent="LOCAL";ui.provider.textContent="ALTCHA · SELF-HOSTED";
+   setState("is-checking","کلید Cloudflare تنظیم نشده؛ بررسی محلی فعال است…");
+  }
+
+  const number=await solveLocalAntibot(config.local,percent=>{
+   if(current===generation)setState("is-checking",`در حال بررسی محلی… ${percent}٪`);
   });
   if(current!==generation)return;
-  token=antibotPayload(config,number);
+  token=antibotEnvelope("altcha-self-hosted",antibotPayload(config.local,number));
   submit.disabled=false;
-  setState("is-verified","اتصال امن تأیید شد · بدون سرویس خارجی");
-  const ttl=Math.max(15,Number(config.expiresIn)||120);
+  setState("is-verified","اتصال امن با Anti-Bot داخلی تأیید شد");
+  const ttl=Math.max(15,Number(config.local.expiresIn)||120);
   expiryTimer=setTimeout(()=>{
    if(current!==generation)return;
    token="";submit.disabled=true;
-   setState("is-expired","Challenge منقضی شد؛ در حال ساخت بررسی تازه…");
+   setState("is-expired","Challenge منقضی شد؛ بررسی تازه در حال اجراست…");
    solveNew().catch(err=>{
-    setState("is-error","سرویس ضدربات داخلی در دسترس نیست");
+    setState("is-error","هیچ مسیر ضدرباتی در دسترس نیست");
     out.replaceChildren(info(err.message||"اعتبارسنجی ضدربات کامل نشد.",true));
    });
   },Math.max(5000,(ttl-8)*1000));
  };
  try{await solveNew()}catch(err){
-  setState("is-error","سرویس ضدربات داخلی در دسترس نیست");
+  setState("is-error","هیچ مسیر ضدرباتی در دسترس نیست");
   throw err;
  }
  return {
