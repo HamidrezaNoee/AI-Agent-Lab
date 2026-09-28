@@ -89,6 +89,7 @@ jobs:
         run: |
           node --check commercial/web/production/app.js
           node --check commercial/web/admin/app.js
+          node --check infra/keycloak/themes/avan/login/resources/js/otp-motion.js
       - name: Browser smoke test with isolated API fixtures
         run: |
           npm install --no-save --package-lock=false playwright
