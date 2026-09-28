@@ -246,3 +246,71 @@ body.avan-signin{margin:0;min-height:100vh;background:#081c2c url('../img/agent-
 @media(prefers-reduced-motion:reduce){
  .avan-signin .otp-motion.is-complete .otp-digit,.avan-signin .otp-motion.is-complete .otp-orbit-ring,.avan-signin .otp-motion.is-complete .otp-verified,.avan-signin .otp-motion.is-complete .otp-verified path{animation-duration:.08s;animation-delay:0s}
 }
+
+
+/* AVAN intelligent CAPTCHA shell — real Turnstile verification, branded presentation. */
+.avan-signin .avan-captcha{
+ position:relative;width:100%;margin:8px 0 4px;padding:14px 15px 12px;
+ border:1px solid rgba(113,211,241,.28);border-radius:18px;overflow:hidden;
+ background:
+  radial-gradient(circle at 14% 20%,rgba(38,221,242,.10),transparent 27%),
+  linear-gradient(180deg,rgba(8,36,58,.82),rgba(4,27,47,.92));
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 10px 30px rgba(0,10,23,.16);
+ transition:border-color .2s ease,box-shadow .2s ease,background .2s ease;
+}
+.avan-signin .avan-captcha::before{
+ content:"";position:absolute;inset:0;pointer-events:none;opacity:.20;
+ background-image:radial-gradient(circle,rgba(45,215,240,.9) 0 1px,transparent 1.4px);
+ background-size:18px 18px;mask-image:linear-gradient(90deg,#000,transparent 48%,#000);
+}
+.avan-signin .avan-captcha-head{position:relative;z-index:2;display:grid;grid-template-columns:58px minmax(0,1fr) auto;align-items:center;gap:12px;direction:rtl}
+.avan-signin .avan-captcha-visual{position:relative;width:58px;height:58px;display:grid;place-items:center;direction:ltr}
+.avan-signin .captcha-shield{position:relative;z-index:3;width:39px;height:39px;filter:drop-shadow(0 0 12px rgba(40,219,245,.34))}
+.avan-signin .captcha-shield .shield-body{fill:rgba(17,59,83,.94);stroke:url(#captchaShieldGradient);stroke-width:2}
+.avan-signin .captcha-shield .shield-scan{fill:none;stroke:#dffffc;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:31;stroke-dashoffset:31;opacity:.15}
+.avan-signin .captcha-scan-ring{position:absolute;left:50%;top:50%;border:1px solid rgba(71,224,247,.32);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}
+.avan-signin .captcha-scan-ring.ring-a{width:50px;height:50px}.avan-signin .captcha-scan-ring.ring-b{width:58px;height:58px;border-color:rgba(29,151,245,.24)}
+.avan-signin .captcha-orbit-dot{position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#74f5ff;box-shadow:0 0 10px #31ddf7;transform-origin:0 0}
+.avan-signin .captcha-orbit-dot.dot-a{animation:avanCaptchaOrbitA 2.6s linear infinite}.avan-signin .captcha-orbit-dot.dot-b{animation:avanCaptchaOrbitB 3.2s linear infinite reverse;background:#23e4ce}
+.avan-signin .avan-captcha-copy{min-width:0;text-align:right}
+.avan-signin .avan-captcha-copy strong{display:block;color:#eafaff;font-size:13px;font-weight:800;line-height:1.7}
+.avan-signin .avan-captcha-status{display:block;margin-top:2px;color:#8fb9cc;font-size:11px;line-height:1.7;transition:color .2s ease}
+.avan-signin .avan-captcha-badge{align-self:start;margin-top:2px;padding:4px 8px;border:1px solid rgba(107,219,244,.22);border-radius:999px;background:rgba(11,52,75,.66);color:#6edff1;font:700 9px/1 Tahoma,"Segoe UI",sans-serif;letter-spacing:1.3px;direction:ltr}
+.avan-signin .avan-captcha-progress{position:relative;z-index:2;height:3px;margin:11px 0 0;border-radius:999px;overflow:hidden;background:rgba(111,202,229,.10)}
+.avan-signin .avan-captcha-progress span{display:block;height:100%;width:34%;border-radius:inherit;background:linear-gradient(90deg,transparent,#2edbea,#5cf2de,transparent);transform:translateX(-130%);animation:avanCaptchaScan 1.75s ease-in-out infinite}
+.avan-signin .avan-captcha-challenge{position:relative;z-index:3;display:flex;justify-content:center;width:100%;margin-top:8px;min-height:0;overflow:visible}
+.avan-signin .avan-captcha-challenge iframe{max-width:100%!important}
+.avan-signin .avan-captcha.is-checking{border-color:rgba(69,214,242,.42);box-shadow:0 0 0 2px rgba(35,201,240,.05),0 10px 30px rgba(0,10,23,.16),inset 0 1px 0 rgba(255,255,255,.05)}
+.avan-signin .avan-captcha.is-verified{
+ border-color:rgba(87,236,204,.62);
+ background:radial-gradient(circle at 14% 20%,rgba(54,235,198,.13),transparent 30%),linear-gradient(180deg,rgba(8,42,58,.86),rgba(4,31,45,.94));
+ box-shadow:0 0 0 2px rgba(67,227,202,.06),0 0 24px rgba(28,219,191,.10),inset 0 1px 0 rgba(255,255,255,.06);
+}
+.avan-signin .avan-captcha.is-verified .avan-captcha-status{color:#7df0d0}
+.avan-signin .avan-captcha.is-verified .captcha-shield .shield-scan{animation:avanCaptchaCheck .36s ease-out forwards}
+.avan-signin .avan-captcha.is-verified .captcha-scan-ring{border-color:rgba(102,242,207,.42)}
+.avan-signin .avan-captcha.is-verified .captcha-orbit-dot{background:#65f1c9;box-shadow:0 0 12px rgba(90,241,201,.8)}
+.avan-signin .avan-captcha.is-verified .avan-captcha-progress span{width:100%;transform:none;animation:none;background:linear-gradient(90deg,#17c9b2,#73f0d2)}
+.avan-signin .avan-captcha.is-expired{border-color:rgba(244,180,69,.48)}
+.avan-signin .avan-captcha.is-expired .avan-captcha-status{color:#efc77a}
+.avan-signin .avan-captcha.is-error{border-color:rgba(255,103,126,.55);animation:avanCaptchaShake .38s ease}
+.avan-signin .avan-captcha.is-error .avan-captcha-status{color:#ff9caf}
+.avan-signin .avan-captcha.is-error .captcha-shield{filter:drop-shadow(0 0 10px rgba(255,85,117,.22))}
+.avan-signin #kc-login:disabled{opacity:.52;cursor:not-allowed;transform:none;filter:saturate(.55);box-shadow:none}
+@keyframes avanCaptchaOrbitA{from{transform:rotate(0deg) translateX(25px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(25px) translate(-50%,-50%)}}
+@keyframes avanCaptchaOrbitB{from{transform:rotate(0deg) translateX(29px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(29px) translate(-50%,-50%)}}
+@keyframes avanCaptchaScan{0%{transform:translateX(-130%)}50%{transform:translateX(130%)}100%{transform:translateX(130%)}}
+@keyframes avanCaptchaCheck{to{stroke-dashoffset:0;opacity:1}}
+@keyframes avanCaptchaShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+@media(max-width:460px){
+ .avan-signin .avan-captcha{padding:12px}
+ .avan-signin .avan-captcha-head{grid-template-columns:50px minmax(0,1fr);gap:10px}
+ .avan-signin .avan-captcha-visual{width:50px;height:50px}.avan-signin .captcha-scan-ring.ring-a{width:43px;height:43px}.avan-signin .captcha-scan-ring.ring-b{width:50px;height:50px}
+ .avan-signin .captcha-orbit-dot.dot-a{animation-name:avanCaptchaOrbitASmall}.avan-signin .captcha-orbit-dot.dot-b{animation-name:avanCaptchaOrbitBSmall}
+ .avan-signin .avan-captcha-badge{display:none}
+}
+@keyframes avanCaptchaOrbitASmall{from{transform:rotate(0deg) translateX(21px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(21px) translate(-50%,-50%)}}
+@keyframes avanCaptchaOrbitBSmall{from{transform:rotate(0deg) translateX(25px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(25px) translate(-50%,-50%)}}
+@media(prefers-reduced-motion:reduce){
+ .avan-signin .captcha-orbit-dot,.avan-signin .avan-captcha-progress span,.avan-signin .avan-captcha.is-error{animation:none!important}
+}
