@@ -2,7 +2,10 @@
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | ورود</title>
 <link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
-<#if turnstileSiteKey??><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></#if></head>
+<#if turnstileSiteKey??>
+<script src="${url.resourcesPath?html}/js/captcha-ui.js"></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=avanTurnstileReady&render=explicit" async defer></script>
+</#if></head>
 <body class="avan-signin">
  <main class="signin-layout">
   <section class="signin-panel" aria-labelledby="signin-heading">
@@ -32,9 +35,25 @@
     <label for="password">رمز عبور</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
     <#if turnstileSiteKey??>
-    <div class="turnstile-shell"><div class="cf-turnstile" data-sitekey="${turnstileSiteKey?html}" data-action="${(turnstileAction!'avan-login')?html}" data-theme="dark" data-size="flexible" data-language="fa" data-retry="auto" data-refresh-expired="auto"></div></div>
+    <div class="avan-captcha is-loading" data-avan-captcha data-sitekey="${turnstileSiteKey?html}" data-action="${(turnstileAction!'avan-login')?html}" aria-label="اعتبارسنجی امنیتی">
+     <div class="avan-captcha-head">
+      <div class="avan-captcha-visual" aria-hidden="true">
+       <span class="captcha-scan-ring ring-a"></span><span class="captcha-scan-ring ring-b"></span>
+       <span class="captcha-orbit-dot dot-a"></span><span class="captcha-orbit-dot dot-b"></span>
+       <svg class="captcha-shield" viewBox="0 0 64 64" focusable="false">
+        <defs><linearGradient id="captchaShieldGradient" x1="10" y1="8" x2="54" y2="57" gradientUnits="userSpaceOnUse"><stop stop-color="#65f6e8"/><stop offset=".52" stop-color="#23d9f1"/><stop offset="1" stop-color="#168cff"/></linearGradient></defs>
+        <path class="shield-body" d="M32 5.5 52 13v15.2c0 13.2-7.8 23.8-20 30.3C19.8 52 12 41.4 12 28.2V13l20-7.5Z"></path>
+        <path class="shield-scan" d="M20.3 31.8 28 39.5 44.8 22.7"></path>
+       </svg>
+      </div>
+      <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال آماده‌سازی لایه امنیتی…</span></div>
+      <span class="avan-captcha-badge">SECURE</span>
+     </div>
+     <div class="avan-captcha-progress" aria-hidden="true"><span></span></div>
+     <div class="avan-captcha-challenge"></div>
+    </div>
     </#if>
-    <button id="kc-login" type="submit">ورود به آوان <span aria-hidden="true">←</span></button>
+    <button id="kc-login" type="submit"<#if turnstileSiteKey??> disabled="disabled"</#if>>ورود به آوان <span aria-hidden="true">←</span></button>
    </form>
   </section>
   <div class="signin-art" aria-hidden="true"></div>
