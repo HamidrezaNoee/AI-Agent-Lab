@@ -6,8 +6,7 @@
  <main class="signin-layout">
   <section class="signin-panel signin-otp" aria-labelledby="otp-heading">
    <div class="signin-brand"><span class="signin-mark" aria-hidden="true">آ</span><span>آوان<small>پلتفرم هوشمند سازمانی</small></span></div>
-   <div class="signin-heading"><span class="signin-label">SECURE ACCESS</span><h1 id="otp-heading">تأیید هویت</h1>
-    <p>کد برنامه Authenticator متصل به حساب خود را وارد کنید.</p></div>
+   <div class="signin-heading"><span class="signin-label">SECURE ACCESS</span><h1 id="otp-heading">تأیید هویت</h1></div>
    <#if message?has_content && message.type == 'error'><div class="signin-error" role="alert">${message.summary?html}</div></#if>
    <form id="kc-otp-login-form" action="${url.loginAction?html}" method="post">
     <#if otpLogin?? && otpLogin.userOtpCredentials?? && (otpLogin.userOtpCredentials?size > 1)>
@@ -17,8 +16,7 @@
     <input id="otp" name="otp" type="text" inputmode="numeric" dir="ltr" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="••••••" autofocus required>
     <button id="kc-login" type="submit">تأیید و ورود <span aria-hidden="true">←</span></button>
    </form>
-   <p class="signin-footer">آوان · دسترسی ایمن سازمانی</p>
   </section>
-  <div class="signin-art" aria-hidden="true"><div>✦<span>هوش در کنار تصمیم‌های شما</span></div></div>
+  <div class="signin-art" aria-hidden="true"></div>
  </main>
 </body></html>

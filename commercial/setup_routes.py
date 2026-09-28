@@ -12,8 +12,6 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 import hmac
-import base64
-import html
 import os
 import re
 import secrets
@@ -31,35 +29,7 @@ WEB=Path(__file__).resolve().parent/"web"/"admin"
 router=APIRouter(prefix="/admin")
 _sessions={}
 _attempts=defaultdict(deque)
-_captcha={}
-
-def _captcha_image(code:str)->str:
-    # Self-hosted image. The answer is held only on the server; never in HTML or JS.
-    fragments=["<svg xmlns='http://www.w3.org/2000/svg' width='260' height='85' viewBox='0 0 260 85'><rect width='260' height='85' rx='12' fill='#edf5f7'/>" ]
-    for index in range(18):
-        x=secrets.randbelow(260);y=secrets.randbelow(85)
-        fragments.append("<path d='M%d %d l%d %d' stroke='#86acba' opacity='.55'/>" %
-                         (x,y,secrets.randbelow(100)-50,secrets.randbelow(60)-30))
-    for index,char in enumerate(code):
-        x=21+index*38+secrets.randbelow(6);y=50+secrets.randbelow(17)
-        fragments.append("<text x='%d' y='%d' transform='rotate(%d %d %d)' font-family='monospace' font-weight='bold' font-size='38' fill='#183d54'>%s</text>" %
-                         (x,y,secrets.randbelow(27)-13,x,y,html.escape(char)))
-    fragments.append("</svg>")
-    return "data:image/svg+xml;base64,"+base64.b64encode("".join(fragments).encode()).decode()
-
-@router.get("/api/captcha")
-def captcha(request:Request):
-    _local(request);_origin(request)
-    if setup.godadmin_identity():raise HTTPException(403,"ورود سازمانی فعال است.")
-    now=time.time()
-    for token,item in list(_captcha.items()):
-        if item["expires"]<now:_captcha.pop(token,None)
-    if len(_captcha)>1000:raise HTTPException(429,"کپچا موقتاً در دسترس نیست.")
-    token=secrets.token_urlsafe(32)
-    code="".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(6))
-    _captcha[token]={"answer":code,"expires":now+120,
-                     "remote":request.client.host if request.client else ""}
-    return {"challenge":token,"image":_captcha_image(code)}
+_pending_mfa={}
 
 def _local(request:Request):
     # Docker Desktop maps host localhost through a private bridge gateway.
@@ -90,6 +60,8 @@ def _prune():
     now=time.time()
     for sid,s in list(_sessions.items()):
         if s["expires"]<now:_sessions.pop(sid,None)
+    for token,s in list(_pending_mfa.items()):
+        if s["expires"]<now:_pending_mfa.pop(token,None)
 
 def _cookie(response,token:str):
     secure=os.getenv("AVAN_ADMIN_ORIGIN","http://127.0.0.1:8188").startswith("https://")
@@ -163,9 +135,16 @@ class Login(BaseModel):
     model_config=ConfigDict(extra="forbid")
     username:str=Field(min_length=1,max_length=40)
     password:str=Field(min_length=1,max_length=512)
-    otp:str|None=Field(default=None,max_length=6)
-    challenge:str=Field(min_length=32,max_length=128)
-    captcha_answer:str=Field(min_length=6,max_length=6)
+
+def _complete_bootstrap_login(mfa:bool):
+    token=secrets.token_urlsafe(48)
+    _sessions[token]={"csrf":secrets.token_urlsafe(32),
+                      "expires":time.time()+1800,"mfa":mfa}
+    response=JSONResponse({"authenticated":True,"password_changed":setup.password_state()["changed"],
+                           "mfa_enrolled":mfa,"csrf":_sessions[token]["csrf"]})
+    _cookie(response,token)
+    setup.audit("GODADMIN_LOGIN")
+    return response
 
 @router.post("/api/login")
 def login(request:Request,body:Login):
@@ -177,31 +156,55 @@ def login(request:Request,body:Login):
     while attempts and attempts[0]<time.time()-900:attempts.popleft()
     if len(attempts)>=5:
         raise HTTPException(429,"تعداد تلاش‌های ورود بیش از حد مجاز است.")
-    item=_captcha.pop(body.challenge,None)
-    if (not item or item["expires"]<time.time() or
-        item["remote"]!=remote or
-        not hmac.compare_digest(item["answer"],body.captcha_answer.strip().upper())):
-        attempts.append(time.time())
-        raise HTTPException(401,"کد امنیتی تصویر اشتباه یا منقضی شده است.")
     state=setup.password_state()
     valid=(hmac.compare_digest(body.username,"godadmin") and
            setup.password_ok(body.password))
-    if valid and state["totp"]:
-        valid=setup.totp_ok(body.otp or "")
     if not valid:
         attempts.append(time.time())
         setup.audit("GODADMIN_LOGIN_DENIED")
-        raise HTTPException(401,"نام کاربری، رمز یا کد دومرحله‌ای معتبر نیست.")
+        raise HTTPException(401,"نام کاربری یا رمز معتبر نیست.")
+    if state["totp"]:
+        if len(_pending_mfa)>=1000:
+            raise HTTPException(429,"تعداد درخواست‌های احراز هویت بیش از حد مجاز است.")
+        # A previous bootstrap cookie must not make the pending OTP step authenticated.
+        existing=request.cookies.get("avan_godadmin","")
+        if existing:_sessions.pop(existing,None)
+        challenge=secrets.token_urlsafe(48)
+        _pending_mfa[challenge]={"remote":remote,"expires":time.time()+120,"tries":0}
+        response=JSONResponse({"mfa_required":True,"challenge":challenge})
+        if existing:response.delete_cookie("avan_godadmin",path="/admin")
+        return response
     attempts.clear()
-    token=secrets.token_urlsafe(48)
-    _sessions[token]={"csrf":secrets.token_urlsafe(32),
-                      "expires":time.time()+1800,"mfa":state["totp"]}
-    response=JSONResponse({"authenticated":True,"password_changed":state["changed"],
-                           "mfa_enrolled":state["totp"],
-                           "csrf":_sessions[token]["csrf"]})
-    _cookie(response,token)
-    setup.audit("GODADMIN_LOGIN")
-    return response
+    return _complete_bootstrap_login(False)
+
+class VerifyLoginOtp(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    challenge:str=Field(min_length=32,max_length=128)
+    otp:str=Field(pattern=r"^[0-9]{6}$")
+
+@router.post("/api/login/otp")
+def verify_login_otp(request:Request,body:VerifyLoginOtp):
+    _local(request);_origin(request);_prune()
+    if setup.godadmin_identity():
+        raise HTTPException(403,"ورود GodAdmin با حساب سازمانی انجام می‌شود.")
+    remote=request.client.host if request.client else "unknown"
+    attempts=_attempts[remote]
+    while attempts and attempts[0]<time.time()-900:attempts.popleft()
+    if len(attempts)>=5:raise HTTPException(429,"تعداد تلاش‌های ورود بیش از حد مجاز است.")
+    entry=_pending_mfa.get(body.challenge)
+    if (not entry or entry["remote"]!=remote or entry["expires"]<time.time() or
+        not setup.password_state()["totp"]):
+        attempts.append(time.time())
+        raise HTTPException(401,"مهلت تأیید هویت پایان یافته است؛ دوباره وارد شوید.")
+    if not setup.totp_ok(body.otp):
+        attempts.append(time.time())
+        entry["tries"]+=1
+        if entry["tries"]>=3:_pending_mfa.pop(body.challenge,None)
+        setup.audit("GODADMIN_LOGIN_DENIED")
+        raise HTTPException(401,"کد Authenticator معتبر نیست؛ در صورت پایان مهلت، دوباره وارد شوید.")
+    _pending_mfa.pop(body.challenge,None)
+    attempts.clear()
+    return _complete_bootstrap_login(True)
 
 class NewPassword(BaseModel):
     model_config=ConfigDict(extra="forbid")
@@ -214,6 +217,7 @@ def change_password(body:NewPassword,session=Depends(_required)):
     except setup.SetupError:raise HTTPException(400,"رمز فعلی یا رمز جدید معتبر نیست.")
     # Revoke every previously issued session, including the current one.
     _sessions.clear()
+    _pending_mfa.clear()
     response=JSONResponse({"password_changed":True,"login_again":True})
     response.delete_cookie("avan_godadmin",path="/admin")
     return response
@@ -269,6 +273,7 @@ def totp_confirm(body:Totp,session=Depends(_required)):
     try:setup.confirm_totp(body.code)
     except setup.SetupError:raise HTTPException(403,"کد دومرحله‌ای نامعتبر است.")
     _sessions.clear()
+    _pending_mfa.clear()
     response=JSONResponse({"mfa_enrolled":True,"login_again":True})
     response.delete_cookie("avan_godadmin",path="/admin")
     return response
@@ -352,6 +357,7 @@ def bind_godadmin(body:GodAdminBinding,session=Depends(_ready)):
     except setup.SetupError:raise HTTPException(409,"اتصال این حساب ممکن نیست.")
     approve(body.tenant_id,body.subject)
     _sessions.clear()
+    _pending_mfa.clear()
     response=JSONResponse({"bound":True,"login_url":"/auth/login"})
     response.delete_cookie("avan_godadmin",path="/admin")
     return response

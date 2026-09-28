@@ -75,42 +75,45 @@ async function start(){
   const s=await api("state");
   state.csrf=s.csrf;state.authMode=s.auth_mode;
   if(!s.authenticated && s.auth_mode==="oidc")window.location.assign("/auth/login");
-  else if(!s.authenticated)showLogin(s.mfa_enrolled);
+  else if(!s.authenticated)showLogin();
   else if(!s.password_changed)showChangePassword();
   else if(!s.mfa_enrolled)showTotpEnroll();
-  else if(!s.mfa_authenticated)showLogin(true);
+  else if(!s.mfa_authenticated)showLogin();
   else await showSettings();
  }catch(err){main().append(info(err.message||String(err),true))}
 }
-function showLogin(withMfa){
- const m=main(),p=panel("ورود به آوان","با حساب GodAdmin وارد شوید.");
- p.classList.add("login");const f=node("form");
+function showLogin(){
+ const m=main(),p=panel("ورود به آوان","");
+ p.classList.add("login");p.prepend(node("div","login-brand","آوان · AI AGENT"));const f=node("form");
  append(f,field("نام کاربری","username","godadmin"),
    field("رمز عبور","password","",{secret:true}));
- if(withMfa)append(f,field("کد شش‌رقمی برنامه Authenticator","otp","",{required:true}));
  const out=node("div");
- const captchaWrap=node("div","bootstrap-captcha");
- const captchaImage=node("img");captchaImage.alt="کد امنیتی تصویر";captchaImage.width=260;captchaImage.height=85;
- const answer=field("کد امنیتی تصویر","captcha_answer","",{required:true});
- const refresh=btn("تصویر جدید",()=>loadCaptcha(),"secondary");
- const challenge=node("input");challenge.type="hidden";challenge.name="challenge";
- append(captchaWrap,captchaImage,refresh,answer,challenge);append(f,captchaWrap);
  const loginBtn=node("button","","ورود به تنظیمات");loginBtn.type="submit";
  append(f,loginBtn,out);append(p,f);append(m,p);
- async function loadCaptcha(){
-  loginBtn.disabled=true;challenge.value="";captchaImage.removeAttribute("src");
-  try{const result=await api("captcha");captchaImage.src=result.image;challenge.value=result.challenge;
-      answer.querySelector("input").value="";out.replaceChildren();}
-  catch(err){showError(out,err)}finally{loginBtn.disabled=!challenge.value}
- }
- loadCaptcha();
  f.addEventListener("submit",async e=>{
   e.preventDefault();busy(f,true);out.replaceChildren();
   try{const result=await api("login",{username:formValue(f,"username"),
-    password:formValue(f,"password"),otp:withMfa?formValue(f,"otp"):null,
-    challenge:formValue(f,"challenge"),captcha_answer:formValue(f,"captcha_answer")});
+    password:formValue(f,"password")});
+    if(result.mfa_required){showLoginOtp(result.challenge);return}
     state.csrf=result.csrf;await start()
-  }catch(err){await loadCaptcha();showError(out,err)}finally{busy(f,false);loginBtn.disabled=!challenge.value}
+  }catch(err){showError(out,err)}finally{busy(f,false)}
+ });
+}
+function showLoginOtp(challenge){
+ const m=main(),p=panel("تأیید دومرحله‌ای","");
+ p.classList.add("login","login-otp");p.prepend(node("div","login-brand","آوان · AI AGENT"));
+ const f=node("form"),code=field("کد شش‌رقمی Authenticator","otp"),out=node("div");
+ const input=code.querySelector("input");
+ input.inputMode="numeric";input.pattern="[0-9]{6}";input.maxLength=6;
+ input.autocomplete="one-time-code";input.placeholder="••••••";
+ const submit=node("button","","تأیید و ورود");submit.type="submit";
+ append(f,code,submit,out);append(p,f,btn("بازگشت به ورود",showLogin,"secondary"));append(m,p);
+ input.focus();
+ f.addEventListener("submit",async e=>{
+  e.preventDefault();busy(f,true);out.replaceChildren();
+  try{const result=await api("login/otp",{challenge,otp:formValue(f,"otp")});
+    state.csrf=result.csrf;await start()
+  }catch(err){input.value="";showError(out,err);input.focus()}finally{busy(f,false)}
  });
 }
 function showChangePassword(){

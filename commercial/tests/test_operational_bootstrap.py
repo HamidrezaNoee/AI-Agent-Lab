@@ -34,7 +34,7 @@ class GodAdminBootTests(unittest.TestCase):
         for p in self.patches:p.start()
         routes._sessions.clear()
         routes._attempts.clear()
-        routes._captcha.clear()
+        routes._pending_mfa.clear()
         setup.initialize()
         self.initial=setup.INITIAL.read_text(encoding="utf-8").strip()
         app=FastAPI()
@@ -42,17 +42,17 @@ class GodAdminBootTests(unittest.TestCase):
         self.client=TestClient(app,base_url="http://127.0.0.1:8188")
 
     def tearDown(self):
-        routes._captcha.clear()
+        routes._pending_mfa.clear()
         self.client.close()
         for p in reversed(self.patches):p.stop()
         self.tmp.cleanup()
 
-    def sign_in(self, password, otp=None, username="godadmin", answer=None):
-        issued=self.client.get("/admin/api/captcha").json()
-        real=routes._captcha[issued["challenge"]]["answer"]
-        return self.client.post("/admin/api/login",json={
-            "username":username,"password":password,"otp":otp,
-            "challenge":issued["challenge"],"captcha_answer":answer or real})
+    def sign_in(self, password, otp=None, username="godadmin"):
+        first=self.client.post("/admin/api/login",json={"username":username,"password":password})
+        if otp is not None and first.status_code==200 and first.json().get("mfa_required"):
+            return self.client.post("/admin/api/login/otp",json={
+                "challenge":first.json()["challenge"],"otp":otp})
+        return first
 
     def test_bootstrap_password_is_random_one_time_and_not_in_source_config(self):
         self.assertGreaterEqual(len(self.initial),24)
@@ -106,6 +106,10 @@ class GodAdminBootTests(unittest.TestCase):
                       headers={"X-AVAN-ADMIN-CSRF":csrf},json={"code":code})
         self.assertEqual(confirmed.status_code,200)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
+        first=self.sign_in("A-different-long-strong-passphrase-2026!")
+        self.assertTrue(first.json()["mfa_required"])
+        self.assertNotIn("csrf",first.json())
+        self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
         self.assertEqual(self.sign_in("A-different-long-strong-passphrase-2026!","000000").status_code,401)
         signed=self.sign_in("A-different-long-strong-passphrase-2026!",
             setup._totp(enrolled.json()["secret"],int(time.time())))
@@ -115,7 +119,6 @@ class GodAdminBootTests(unittest.TestCase):
     def test_csrf_and_failed_login_rate_limit(self):
         bad=self.sign_in(self.initial+"wrong")
         self.assertEqual(bad.status_code,401)
-        self.assertEqual(self.sign_in(self.initial,answer="AAAAAA").status_code,401)
         ok=self.sign_in(self.initial)
         self.assertEqual(ok.status_code,200)
         self.assertEqual(self.client.post("/admin/api/change-password",json={
@@ -126,19 +129,24 @@ class GodAdminBootTests(unittest.TestCase):
                         headers={"X-AVAN-ADMIN-CSRF":"invalid"})
         self.assertEqual(self.client.get("/admin/api/settings").status_code,403)
 
-    def test_bootstrap_challenge_is_single_use_and_expires(self):
-        issued=self.client.get("/admin/api/captcha").json()
-        self.assertTrue(issued["image"].startswith("data:image/svg+xml;base64,"))
-        payload={"username":"godadmin","password":self.initial,
-                 "challenge":issued["challenge"],
-                 "captcha_answer":routes._captcha[issued["challenge"]]["answer"]}
-        self.assertEqual(self.client.post("/admin/api/login",json=payload).status_code,200)
-        self.assertEqual(self.client.post("/admin/api/login",json=payload).status_code,401)
-        issued=self.client.get("/admin/api/captcha").json()
-        routes._captcha[issued["challenge"]]["expires"]=time.time()-1
-        payload["challenge"]=issued["challenge"]
-        payload["captcha_answer"]=routes._captcha[issued["challenge"]]["answer"]
-        self.assertEqual(self.client.post("/admin/api/login",json=payload).status_code,401)
+    def test_bootstrap_otp_stage_expires_and_is_single_use(self):
+        setup.change_password(self.initial,"A-different-long-strong-passphrase-2026!")
+        secret=setup.totp_enrollment()
+        code=setup._totp(secret,int(time.time()))
+        setup.confirm_totp(code)
+        password="A-different-long-strong-passphrase-2026!"
+        first=self.client.post("/admin/api/login",json={"username":"godadmin","password":password})
+        self.assertEqual(first.status_code,200)
+        self.assertTrue(first.json()["mfa_required"])
+        self.assertNotIn("avan_godadmin",first.headers.get("set-cookie",""))
+        payload={"challenge":first.json()["challenge"],"otp":code}
+        self.assertEqual(self.client.post("/admin/api/login/otp",json=payload).status_code,200)
+        self.assertEqual(self.client.post("/admin/api/login/otp",json=payload).status_code,401)
+        other=self.client.post("/admin/api/login",json={"username":"godadmin","password":password})
+        self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
+        payload["challenge"]=other.json()["challenge"]
+        routes._pending_mfa[payload["challenge"]]["expires"]=time.time()-1
+        self.assertEqual(self.client.post("/admin/api/login/otp",json=payload).status_code,401)
 
 
 if __name__=="__main__":

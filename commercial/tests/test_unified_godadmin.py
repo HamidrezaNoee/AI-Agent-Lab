@@ -62,12 +62,12 @@ class UnifiedGodAdminTests(unittest.TestCase):
         setup.initialize()
         setup.put_setting("oidc",{"issuer":ISSUER})
         setup.put_setting("company",{"tenant_id":TENANT,"company_name":"ایران رور"})
-        admin._sessions.clear();admin._captcha.clear();app.sessions.clear();app.pending.clear()
+        admin._sessions.clear();admin._pending_mfa.clear();app.sessions.clear();app.pending.clear()
         self.client=TestClient(app.app,base_url="http://127.0.0.1:8188")
 
     def tearDown(self):
         self.client.close()
-        admin._sessions.clear();admin._captcha.clear();app.sessions.clear();app.pending.clear()
+        admin._sessions.clear();admin._pending_mfa.clear();app.sessions.clear();app.pending.clear()
         for p in reversed(self.patches):p.stop()
         self.tmp.cleanup()
 
@@ -79,10 +79,12 @@ class UnifiedGodAdminTests(unittest.TestCase):
                                follow_redirects=False)
 
     def bootstrap_login(self,password,otp=None):
-        challenge=self.client.get("/admin/api/captcha").json()["challenge"]
-        return self.client.post("/admin/api/login",json={"username":"godadmin",
-                   "password":password,"otp":otp,"challenge":challenge,
-                   "captcha_answer":admin._captcha[challenge]["answer"]})
+        first=self.client.post("/admin/api/login",json={"username":"godadmin",
+                   "password":password})
+        if otp is None or first.status_code!=200 or not first.json().get("mfa_required"):
+            return first
+        return self.client.post("/admin/api/login/otp",json={
+                   "challenge":first.json()["challenge"],"otp":otp})
 
     def test_first_admin_binds_signed_identity_and_ordinary_user_is_denied(self):
         self.assertEqual(self.client.get("/",follow_redirects=False).headers["location"],"/admin/")
@@ -110,8 +112,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
                          json=payload,headers=csrf).status_code,200)
         self.assertEqual(setup.godadmin_identity()["subject"],"operator")
         self.assertEqual(self.client.post("/admin/api/login",json={"username":"godadmin",
-                  "password":rotated,"otp":payload["otp"],"challenge":"x"*32,
-                  "captcha_answer":"AAAAAA"}).status_code,403)
+                  "password":rotated}).status_code,403)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
 
         admitted=self.oidc_login("operator")
