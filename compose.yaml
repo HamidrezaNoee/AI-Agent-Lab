@@ -128,7 +128,7 @@ services:
       - "127.0.0.1:8181:8080"
     depends_on:
       antibot:
-        condition: service_healthy
+        condition: service_started
       keycloak-db:
         condition: service_healthy
 
@@ -173,7 +173,7 @@ services:
     mem_limit: 768m
     depends_on:
       antibot:
-        condition: service_healthy
+        condition: service_started
       keycloak:
         condition: service_started
       agent-sql-init:
