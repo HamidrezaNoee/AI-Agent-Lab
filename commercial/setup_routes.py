@@ -147,7 +147,7 @@ class Login(BaseModel):
     model_config=ConfigDict(extra="forbid")
     username:str=Field(min_length=1,max_length=40)
     password:str=Field(min_length=1,max_length=512)
-    captcha_token:str=Field(default="",max_length=8192)
+    captcha_token:str=Field(default="",max_length=12288)
 
 def _complete_bootstrap_login(mfa:bool):
     token=secrets.token_urlsafe(48)
