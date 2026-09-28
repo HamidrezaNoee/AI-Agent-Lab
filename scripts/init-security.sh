@@ -17,6 +17,14 @@ if [ ! -f .secrets/avan-antibot-hmac-key ]; then
   openssl rand -base64 64 | tr -d '\n=' | tr '+/' '-_' > .secrets/avan-antibot-hmac-key
 fi
 chmod 600 .secrets/avan-antibot-hmac-key
+if [ ! -f .secrets/avan-turnstile-site-key ]; then
+  printf '%s' '1x00000000000000000000AA' > .secrets/avan-turnstile-site-key
+fi
+if [ ! -f .secrets/avan-turnstile-secret-key ]; then
+  printf '%s' '1x0000000000000000000000000000000AA' > .secrets/avan-turnstile-secret-key
+fi
+chmod 600 .secrets/avan-turnstile-site-key .secrets/avan-turnstile-secret-key
 chmod 700 .secrets
 printf '%s\n' 'Internal identity and database secrets initialized; existing secrets preserved.'
-printf '%s\n' 'Self-hosted AVAN anti-bot secret initialized; no external CAPTCHA key is required.'
+printf '%s\n' 'Hybrid Anti-Bot initialized: Cloudflare Turnstile primary + ALTCHA local fallback.'
+printf '%s\n' 'Localhost uses official Turnstile test keys until production keys are configured.'
