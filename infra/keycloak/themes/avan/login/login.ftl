@@ -3,9 +3,8 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | ورود</title>
 <link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
 <script defer src="${url.resourcesPath?html}/js/login-reveal.js"></script>
-<#if turnstileSiteKey??>
-<script src="${url.resourcesPath?html}/js/captcha-ui.js"></script>
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=avanTurnstileReady&render=explicit" async defer></script>
+<#if antibotChallenge??>
+<script defer src="${url.resourcesPath?html}/js/captcha-ui.js"></script>
 </#if></head>
 <body class="avan-signin">
  <main class="signin-layout">
@@ -37,8 +36,18 @@
     <input id="username" name="username" type="text" value="${(login.username!'')?html}" autocomplete="username" maxlength="256" required>
     <label for="password">رمز عبور</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <#if turnstileSiteKey??>
-    <div class="avan-captcha is-loading" data-avan-captcha data-sitekey="${turnstileSiteKey?html}" data-action="${(turnstileAction!'avan-login')?html}" aria-label="اعتبارسنجی امنیتی">
+    <#if antibotChallenge??>
+    <div class="avan-captcha is-loading" data-avan-captcha
+         data-provider="${(antibotProvider!'altcha-self-hosted')?html}"
+         data-action="${(antibotAction!'avan-login')?html}"
+         data-algorithm="${(antibotAlgorithm!'SHA-256')?html}"
+         data-challenge="${antibotChallenge?html}"
+         data-salt="${antibotSalt?html}"
+         data-signature="${antibotSignature?html}"
+         data-max-number="${antibotMaxNumber?c}"
+         data-expires-in="${antibotExpiresIn?c}"
+         aria-label="اعتبارسنجی امنیتی">
+     <input id="avan-antibot" name="avan-antibot" type="hidden" value="">
      <div class="avan-captcha-head">
       <div class="avan-captcha-visual" aria-hidden="true">
        <span class="captcha-scan-ring ring-a"></span><span class="captcha-scan-ring ring-b"></span>
@@ -49,14 +58,14 @@
         <path class="shield-scan" d="M20.3 31.8 28 39.5 44.8 22.7"></path>
        </svg>
       </div>
-      <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال آماده‌سازی لایه امنیتی…</span></div>
-      <span class="avan-captcha-badge">SECURE</span>
+      <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال آماده‌سازی Proof-of-Work محلی…</span></div>
+      <span class="avan-captcha-badge">LOCAL</span>
      </div>
      <div class="avan-captcha-progress" aria-hidden="true"><span></span></div>
-     <div class="avan-captcha-challenge"></div>
+     <div class="avan-captcha-challenge"><span class="captcha-provider">ALTCHA · SELF-HOSTED</span></div>
     </div>
     </#if>
-    <button id="kc-login" type="submit"<#if turnstileSiteKey??> disabled="disabled"</#if>>ورود به آوان <span aria-hidden="true">←</span></button>
+    <button id="kc-login" type="submit"<#if antibotChallenge??> disabled="disabled"</#if>>ورود به آوان <span aria-hidden="true">←</span></button>
    </form>
   </section>
   <div class="signin-art" aria-hidden="true"></div>
