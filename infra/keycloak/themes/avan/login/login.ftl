@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | ورود</title>
 <link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
 <script defer src="${url.resourcesPath?html}/js/login-reveal.js"></script>
-<#if antibotChallenge??>
+<#if antibotChallenge?? || turnstileSiteKey??>
 <script defer src="${url.resourcesPath?html}/js/captcha-ui.js"></script>
 </#if></head>
 <body class="avan-signin">
@@ -36,19 +36,19 @@
     <input id="username" name="username" type="text" value="${(login.username!'')?html}" autocomplete="username" maxlength="256" required>
     <label for="password">رمز عبور</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
-    <#if antibotChallenge??>
+    <#if antibotChallenge?? || turnstileSiteKey??>
     <div class="avan-captcha is-loading" data-avan-captcha
          data-provider="${(antibotProvider!'altcha-self-hosted')?html}"
          data-action="${(antibotAction!'avan-login')?html}"
          data-site-key="${(turnstileSiteKey!'')?html}"
          data-turnstile-timeout="${(turnstileTimeoutMs!2500)?c}"
          data-force-local="${(antibotForceLocal!false)?c}"
-         data-algorithm="${(antibotAlgorithm!'SHA-256')?html}"
-         data-challenge="${antibotChallenge?html}"
-         data-salt="${antibotSalt?html}"
-         data-signature="${antibotSignature?html}"
-         data-max-number="${antibotMaxNumber?c}"
-         data-expires-in="${antibotExpiresIn?c}"
+         data-algorithm="${(antibotAlgorithm!'')?html}"
+         data-challenge="${(antibotChallenge!'')?html}"
+         data-salt="${(antibotSalt!'')?html}"
+         data-signature="${(antibotSignature!'')?html}"
+         data-max-number="${(antibotMaxNumber!0)?c}"
+         data-expires-in="${(antibotExpiresIn!120)?c}"
          aria-label="اعتبارسنجی امنیتی">
      <input id="avan-antibot" name="avan-antibot" type="hidden" value="">
      <div class="avan-captcha-head">
