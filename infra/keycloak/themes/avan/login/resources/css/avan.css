@@ -428,3 +428,14 @@ body.avan-signin{margin:0;min-height:100vh;background:#081c2c url('../img/agent-
 }
 .avan-signin .login-reveal-card.is-collapsed{cursor:pointer}
 .avan-signin .login-reveal-card.is-expanded{cursor:default}
+
+.avan-signin .captcha-turnstile-slot{
+ width:100%;display:flex;align-items:center;justify-content:center;min-height:0;
+}
+.avan-signin .avan-captcha-challenge{
+ flex-direction:column;align-items:center;gap:6px;
+}
+.avan-signin .avan-captcha-badge{transition:color .2s ease,border-color .2s ease,background .2s ease}
+.avan-signin .avan-captcha.is-verified .avan-captcha-badge{
+ color:#7df0d0;border-color:rgba(87,236,204,.34);background:rgba(14,74,67,.55);
+}
