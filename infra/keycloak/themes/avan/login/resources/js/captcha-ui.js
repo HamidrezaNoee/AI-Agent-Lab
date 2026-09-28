@@ -20,6 +20,7 @@
   turnstilePromise=new Promise((resolve,reject)=>{
    const callback="__avanKeycloakTurnstileReady";
    const timer=window.setTimeout(()=>{
+    document.querySelector('script[data-avan-turnstile="1"]')?.remove();
     turnstilePromise=null;
     reject(new Error("cloudflare-timeout"));
    },Math.max(1200,timeoutMs||2500));
@@ -29,7 +30,7 @@
     if(window.turnstile)resolve(window.turnstile);
     else{turnstilePromise=null;reject(new Error("cloudflare-unavailable"))}
    };
-   if(document.querySelector('script[data-avan-turnstile="1"]'))return;
+   document.querySelector('script[data-avan-turnstile="1"]')?.remove();
    const script=document.createElement("script");
    script.dataset.avanTurnstile="1";
    script.src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload="+callback+"&render=explicit";
@@ -145,7 +146,8 @@
 
   try{
    const sitekey=root.dataset.siteKey||"";
-   if(sitekey){
+   const forceLocal=root.dataset.forceLocal==="true";
+   if(sitekey&&!forceLocal){
     try{
      const cfToken=await tryCloudflare(root,slot,badge,provider,
       (state,message)=>setState(root,state,message));
@@ -164,7 +166,7 @@
    }else{
     badge.textContent="LOCAL";
     provider.textContent="ALTCHA · SELF-HOSTED";
-    setState(root,"is-checking","Cloudflare تنظیم نشده؛ بررسی محلی فعال است…");
+    setState(root,"is-checking",forceLocal?"Fallback محلی برای این تلاش فعال شد…":"Cloudflare تنظیم نشده؛ بررسی محلی فعال است…");
    }
 
    const localToken=await solveLocal(root,(state,message)=>setState(root,state,message));
