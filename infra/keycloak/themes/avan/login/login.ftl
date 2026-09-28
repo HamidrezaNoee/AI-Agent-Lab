@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | ورود</title>
-<link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css"></head>
+<link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
+<#if turnstileSiteKey??><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></#if></head>
 <body class="avan-signin">
  <main class="signin-layout">
   <section class="signin-panel" aria-labelledby="signin-heading">
@@ -30,6 +31,9 @@
     <input id="username" name="username" type="text" value="${(login.username!'')?html}" autocomplete="username" maxlength="256" autofocus required>
     <label for="password">رمز عبور</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <#if turnstileSiteKey??>
+    <div class="turnstile-shell"><div class="cf-turnstile" data-sitekey="${turnstileSiteKey?html}" data-action="${(turnstileAction!'avan-login')?html}" data-theme="dark" data-size="flexible" data-language="fa" data-retry="auto" data-refresh-expired="auto"></div></div>
+    </#if>
     <button id="kc-login" type="submit">ورود به آوان <span aria-hidden="true">←</span></button>
    </form>
   </section>
