@@ -225,7 +225,7 @@ async function mountLoginCaptcha(host,submit,out){
   clearTimeout(expiryTimer);ui.slot.replaceChildren();
   setState("is-checking","در حال دریافت تنظیمات امنیتی…");
   const config=await api("captcha/config");
-  if(config?.provider!=="hybrid"||!config.local)throw Error("پیکربندی Hybrid Anti-Bot معتبر نیست.");
+  if(config?.provider!=="hybrid")throw Error("پیکربندی Hybrid Anti-Bot معتبر نیست.");
 
   if(config.cloudflare?.enabled&&!forceLocal){
    try{
@@ -247,6 +247,7 @@ async function mountLoginCaptcha(host,submit,out){
    setState("is-checking",forceLocal?"Fallback محلی برای این تلاش فعال شد…":"کلید Cloudflare تنظیم نشده؛ بررسی محلی فعال است…");
   }
 
+  if(!config.local)throw Error("Cloudflare و Anti-Bot داخلی هر دو در دسترس نیستند.");
   const number=await solveLocalAntibot(config.local,percent=>{
    if(current===generation)setState("is-checking",`در حال بررسی محلی… ${percent}٪`);
   });
