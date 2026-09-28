@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
-import secrets
+import uuid
 
 import httpx
 
@@ -77,7 +77,7 @@ def verify(token:str,*,action:str,remote_ip:str|None=None)->bool:
     payload={
         "secret":secret_key,
         "response":token,
-        "idempotency_key":secrets.token_hex(16),
+        "idempotency_key":str(uuid.uuid4()),
     }
     if remote_ip and len(remote_ip)<=64:
         payload["remoteip"]=remote_ip
