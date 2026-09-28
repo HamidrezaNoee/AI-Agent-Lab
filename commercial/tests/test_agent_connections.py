@@ -101,11 +101,26 @@ def test_edit_preserves_external_password_when_blank(setup_state):
         connections.save_external(
             connection_id=external_id,
             name="SQL سازمان جدید",
-            config=config("new-sql,1433", ""),
+            config=config("old-sql,1433", ""),
         )
     stored = connections.read()["connections"][external_id]
     assert stored["config"]["password"] == "Aa1!kept-secret"
-    assert stored["config"]["server"] == "new-sql,1433"
+    assert stored["config"]["server"] == "old-sql,1433"
+
+
+def test_edit_active_external_updates_the_database_used_by_agent(setup_state):
+    connections.register_bundled(config("agent-sql,1433"))
+    with patch("commercial.agent_install.check", return_value={"connected": True}):
+        external_id=connections.save_external(name="SQL سازمان",config=config("old-sql,1433"))
+        connections.activate(external_id)
+        with pytest.raises(connections.ConnectionCatalogError):
+            connections.save_external(name="SQL سازمان",connection_id=external_id,
+                                      config=config("new-sql,1433",""))
+        connections.save_external(name="SQL سازمان جدید",connection_id=external_id,
+                                  config=config("new-sql,1433","Aa1!new-secret"))
+    assert connections.public_status()["active_id"]==external_id
+    assert setup.get_setting("agent_sql")["server"]=="new-sql,1433"
+    assert setup.get_setting("agent_sql")["password"]=="Aa1!new-secret"
 
 
 def test_bundled_bootstrap_provisions_and_activates_fresh_install(setup_state, tmp_path):

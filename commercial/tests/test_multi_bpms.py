@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from commercial import bpms_registry,platform_agent,production_app,setup_console
+from commercial import bpms_registry,platform_agent,production_app,setup_console,setup_routes
 
 
 TENANT="168418b2-8fa6-4414-a37f-83c9a26da332"
@@ -36,8 +36,57 @@ def test_source_save_masks_token_and_checks_tenant_before_persisting():
         candidate=bpms_registry.SourceConfig(id=saved["id"],**{**CONFIG,"bearer_token":""})
         bpms_registry.save(candidate)
         assert settings["bpms_connections"]["sources"][0]["bearer_token"]==TOKEN
+        with pytest.raises(bpms_registry.BPMSUnavailable):
+            bpms_registry.save(bpms_registry.SourceConfig(id=saved["id"],
+                **{**CONFIG,"base_url":"https://new.example.org","bearer_token":""}))
         fetch.return_value={"schema_version":1,"tenant_id":"different"}
         with pytest.raises(bpms_registry.BPMSUnavailable):bpms_registry.save(candidate)
+
+
+def test_source_disable_reenable_and_delete_preserve_isolation():
+    settings={"company":{"tenant_id":TENANT}}
+    with patch.object(setup_console,"get_setting",side_effect=settings.get),\
+         patch.object(setup_console,"put_setting",side_effect=lambda k,v:settings.__setitem__(k,v)),\
+         patch.object(bpms_registry,"identity",return_value={"connected":True}) as verify:
+        source_id=bpms_registry.save(bpms_registry.SourceConfig(**CONFIG))["id"]
+        assert verify.call_count==1
+        first=bpms_registry.signature()
+        assert bpms_registry.set_enabled(source_id,False)=={"id":source_id,"enabled":False}
+        assert verify.call_count==1  # disabling works while the remote BPMS is offline
+        assert bpms_registry.signature()!=first
+        assert bpms_registry.sources()[0]["has_token"]
+        with pytest.raises(bpms_registry.BPMSUnavailable):
+            bpms_registry.report(bpms_registry.BIRequest(source_id=source_id))
+        verify.side_effect=bpms_registry.BPMSUnavailable("unavailable")
+        with pytest.raises(bpms_registry.BPMSUnavailable):bpms_registry.set_enabled(source_id,True)
+        assert bpms_registry.sources()[0]["enabled"] is False
+        verify.side_effect=None
+        assert bpms_registry.set_enabled(source_id,True)["enabled"] is True
+        assert verify.call_count==3
+        assert bpms_registry.delete(source_id)=={"deleted":True}
+        assert bpms_registry.sources()==[]
+
+
+def test_saved_processmaker_checks_use_server_secrets_without_browser_echo():
+    settings={"mysql":{"host":"host.docker.internal","port":3306,"database":"bitnami_pm",
+                       "username":"avan_reader","password":"secret","tls":False,
+                       "timezone":"Asia/Tehran"},
+              "processmaker":{"base_url":"https://pm.example.org","workspace":"workflow",
+                              "bearer_token":"secret-token"}}
+    app=production_app.app
+    app.dependency_overrides[setup_routes._ready]=lambda:True
+    try:
+        with patch.object(setup_console,"get_setting",side_effect=settings.get),\
+             patch.object(setup_routes,"_mysql_check",return_value={"connected":True}) as mysql,\
+             patch.object(setup_routes,"_pm_check",return_value=200) as pm:
+            client=TestClient(app,base_url="http://127.0.0.1:8188")
+            try:
+                assert client.post("/admin/api/mysql/check-saved").json()=={"connected":True}
+                assert mysql.call_args.args[0].password=="secret"
+                assert client.post("/admin/api/processmaker/check-saved").json()["connected"]
+                assert pm.call_args.args[0].bearer_token=="secret-token"
+            finally:client.close()
+    finally:app.dependency_overrides.clear()
 
 
 def test_report_rejects_wrong_tenant_and_oversized_page():

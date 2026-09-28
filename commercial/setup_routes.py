@@ -281,6 +281,17 @@ def bpms_delete(body:BPMSID,session=Depends(_ready)):
     except BPMSUnavailable as exc:raise HTTPException(404,str(exc))
 
 
+class BPMSEnabled(BPMSID):
+    enabled:bool
+
+
+@router.post("/api/bpms/connections/enabled")
+def bpms_enabled(body:BPMSEnabled,session=Depends(_ready)):
+    from .bpms_registry import set_enabled,BPMSUnavailable
+    try:return set_enabled(body.source_id,body.enabled)
+    except BPMSUnavailable as exc:raise HTTPException(503,str(exc))
+
+
 class GodAdminBinding(BaseModel):
     model_config=ConfigDict(extra="forbid")
     tenant_id:str=Field(min_length=1,max_length=80)
@@ -352,6 +363,7 @@ class MySQLConfig(BaseModel):
     tls:bool=True
     ca_pem:str=Field(default='',max_length=16000)
     timezone:str=Field(default='Asia/Tehran',max_length=80)
+    enabled:bool=True
 
 
 def _mysql_check(body):
@@ -377,11 +389,45 @@ def _mysql_check(body):
 def mysql_check(body:MySQLConfig,session=Depends(_ready)):
     return _mysql_check(body)
 
+
+@router.post('/api/mysql/check-saved')
+def mysql_check_saved(session=Depends(_ready)):
+    saved=setup.get_setting('mysql') or {}
+    if not saved:raise HTTPException(404,'اتصال MySQL هنوز ذخیره نشده است.')
+    return _mysql_check(MySQLConfig.model_validate(saved))
+
 @router.post('/api/mysql/save')
 def mysql_save(body:MySQLConfig,session=Depends(_ready)):
     result=_mysql_check(body)
     setup.put_setting('mysql',body.model_dump())
     return {**result,'saved':True}
+
+
+class ConnectionEnabled(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    enabled:bool
+
+
+@router.post('/api/mysql/enabled')
+def mysql_enabled(body:ConnectionEnabled,session=Depends(_ready)):
+    saved=setup.get_setting('mysql') or {}
+    if not saved:raise HTTPException(404,'اتصال MySQL هنوز ثبت نشده است.')
+    if body.enabled:
+        _mysql_check(MySQLConfig.model_validate({**saved,'enabled':True}))
+    setup.put_setting('mysql',{**saved,'enabled':body.enabled})
+    return {'enabled':body.enabled}
+
+
+class RemoveConnection(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    confirmation:Literal['REMOVE_MYSQL_SOURCE','REMOVE_PM_API','REMOVE_AI_KEY']
+
+
+@router.post('/api/mysql/remove')
+def mysql_remove(body:RemoveConnection,session=Depends(_ready)):
+    if body.confirmation!='REMOVE_MYSQL_SOURCE':raise HTTPException(422,'تأیید حذف اتصال MySQL معتبر نیست.')
+    setup.put_setting('mysql',{})
+    return {'deleted':True}
 
 
 class CompanyConfig(BaseModel):
@@ -477,11 +523,26 @@ def pm_check(body:PMConfig,session=Depends(_ready)):
     _pm_check(body)
     return {"connected":True,"directory_request":"GET","account_role_not_restricted":True}
 
+
+@router.post("/api/processmaker/check-saved")
+def pm_check_saved(session=Depends(_ready)):
+    saved=setup.get_setting("processmaker") or {}
+    if not saved:raise HTTPException(404,"اتصال ProcessMaker هنوز ذخیره نشده است.")
+    _pm_check(PMConfig.model_validate(saved))
+    return {"connected":True,"directory_request":"GET"}
+
 @router.post("/api/processmaker/save")
 def pm_save(body:PMConfig,session=Depends(_ready)):
     _pm_check(body)
     setup.put_setting("processmaker",body.model_dump())
     return {"saved":True,"note":"اتصال تأیید شد؛ همگام‌سازی کاربران هنوز به تأیید هویت‌نامه و سیاست ابطال دسترسی نیاز دارد."}
+
+
+@router.post("/api/processmaker/remove")
+def pm_remove(body:RemoveConnection,session=Depends(_ready)):
+    if body.confirmation!='REMOVE_PM_API':raise HTTPException(422,'تأیید حذف اتصال API معتبر نیست.')
+    setup.put_setting('processmaker',{})
+    return {'deleted':True}
 
 @router.get("/api/users/pending")
 def pending_staff(session=Depends(_ready)):
@@ -632,6 +693,14 @@ def ai_check(session=Depends(_ready)):
     setup.audit('AI_CONNECTION_CHECKED')
     return {'connected':True,'model':model,'generation_tested':False}
 
+
+@router.post('/api/ai/remove')
+def ai_remove(body:RemoveConnection,session=Depends(_ready)):
+    if body.confirmation!='REMOVE_AI_KEY':raise HTTPException(422,'تأیید حذف کلید معتبر نیست.')
+    config=setup.get_setting('ai') or {}
+    setup.put_setting('ai',{**config,'enabled':False,'voice_enabled':False,'api_key':''})
+    return {'deleted':True}
+
 class AgentSqlConfig(BaseModel):
     model_config=ConfigDict(extra='forbid')
     server:str=Field(min_length=1,max_length=253)
@@ -702,8 +771,10 @@ def save_agent_database_connection(body:AgentConnectionSave,session=Depends(_rea
         connection_id=save_external(name=body.name,config=config,
             connection_id=body.connection_id)
         return {'saved':True,'connection_id':connection_id,'active':False}
-    except ConnectionCatalogError:
-        raise HTTPException(409,'اتصال قابل ذخیره یا ویرایش نیست.')
+    except ConnectionCatalogError as exc:
+        detail=('برای تغییر نشانی SQL Server رمز تازهٔ AVAN_AgentApp را وارد کنید.'
+                if 'requires a new' in str(exc) else 'اتصال قابل ذخیره یا ویرایش نیست.')
+        raise HTTPException(409,detail)
     except Exception:
         raise HTTPException(503,'اتصال جدید معتبر نیست؛ نشانی، رمز، TLS و ساختار AVANAgent بررسی شود.')
 

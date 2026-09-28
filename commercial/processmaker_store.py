@@ -33,6 +33,8 @@ def open_production(config=None):
     import pymysql
 
     c = config if config is not None else setup.get_setting("mysql") or {}
+    if config is None and c.get("enabled") is False:
+        raise ProductionUnavailable("ProcessMaker MySQL connection is disabled")
     if not all(c.get(k) for k in ("host", "database", "username", "password")):
         raise ProductionUnavailable("ProcessMaker MySQL is not configured")
     if not re.fullmatch(DATABASE_PATTERN, c["database"]):

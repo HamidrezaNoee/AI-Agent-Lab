@@ -96,6 +96,8 @@ def save_external(*, name, config, connection_id=None):
         if not existing or existing.get("managed"):
             raise ConnectionCatalogError("Connection cannot be edited")
         if not config.get("password"):
+            if config.get("server") != (existing.get("config") or {}).get("server"):
+                raise ConnectionCatalogError("Changing SQL server requires a new application password")
             config["password"] = (existing.get("config") or {}).get("password", "")
     else:
         connection_id = secrets.token_hex(12)
@@ -105,6 +107,10 @@ def save_external(*, name, config, connection_id=None):
         "managed": False,
         "config": config,
     }
+    if connection_id == catalog.get("active_id"):
+        # Keep the connection actually used by the Agent in sync with the
+        # profile shown as active after an edit has passed the same check.
+        setup.put_setting("agent_sql", config)
     _save(catalog)
     setup.audit("AGENT_SQL_CONNECTION_SAVED")
     return connection_id

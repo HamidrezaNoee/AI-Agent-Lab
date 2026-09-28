@@ -117,6 +117,8 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertTrue(self.client.get("/api/me").json()["is_godadmin"])
         self.assertEqual(self.client.get("/api/meetings").status_code,403)
         self.assertEqual(self.client.get("/",follow_redirects=False).status_code,200)
+        self.assertEqual(self.client.post("/admin/api/bpms/connections/enabled",
+                         json={"source_id":"a"*24,"enabled":False}).status_code,403)
         setup.put_setting("mysql",{"host":"database.example.com"})
         setup.put_setting("agent_sql",{"server":"local"})
         self.assertEqual(self.client.get("/",follow_redirects=False).status_code,200)
@@ -131,6 +133,9 @@ class UnifiedGodAdminTests(unittest.TestCase):
             other.cookies.set("avan_session","ordinary")
             self.assertFalse(other.get("/admin/api/state").json()["authenticated"])
             self.assertEqual(other.get("/admin/api/settings").status_code,403)
+            self.assertEqual(other.post("/admin/api/bpms/connections/enabled",
+                             json={"source_id":"a"*24,"enabled":False},
+                             headers={"X-AVAN-ADMIN-CSRF":"csrf"}).status_code,403)
         finally:
             other.close()
         signed_out=self.client.post("/auth/logout",headers={"X-AVAN-CSRF":state["csrf"]})

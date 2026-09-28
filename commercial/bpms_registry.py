@@ -142,6 +142,9 @@ def _candidate(candidate:SourceConfig):
     previous=next((s for s in stored if s["id"]==candidate.id),None) if candidate.id else None
     if candidate.id and not previous:raise BPMSUnavailable("Connection does not exist")
     if not previous and len(stored)>=MAX_SOURCES:raise BPMSUnavailable("Connection limit reached")
+    if (previous and candidate.base_url!=previous.get("base_url") and
+        not candidate.bearer_token):
+        raise BPMSUnavailable("برای تغییر نشانی آداپتر، توکن خواندنی جدید را وارد کنید.")
     data=candidate.model_dump()
     data["id"]=candidate.id or secrets.token_hex(12)
     data["name"]=candidate.name.strip()
@@ -169,6 +172,19 @@ def delete(identifier:str):
     if len(filtered)==len(stored):raise BPMSUnavailable("Connection does not exist")
     setup.put_setting("bpms_connections",{"sources":filtered})
     return {"deleted":True}
+
+
+def set_enabled(identifier:str,enabled:bool):
+    """Change one source without sending its saved integration token to the UI."""
+    stored=_all()
+    source=next((s for s in stored if s["id"]==identifier),None)
+    if not source:raise BPMSUnavailable("Connection does not exist")
+    if bool(source.get("enabled"))==enabled:
+        return {"id":identifier,"enabled":enabled}
+    if enabled:identity(source)
+    updated=[{**s,"enabled":enabled} if s["id"]==identifier else s for s in stored]
+    setup.put_setting("bpms_connections",{"sources":updated})
+    return {"id":identifier,"enabled":enabled}
 
 
 def _request(source,path,params=None):
