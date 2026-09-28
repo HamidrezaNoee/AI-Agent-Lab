@@ -162,20 +162,24 @@ function showLogin(){
  append(f,captchaHost,loginBtn,out);append(p,f);append(m,p);
  let captcha=null;
  const captchaReady=mountLoginCaptcha(captchaHost,loginBtn,out).then(x=>captcha=x).catch(err=>{
-  showError(out,err);loginBtn.disabled=true;throw err;
+  showError(out,err);loginBtn.disabled=true;return null;
  });
  f.addEventListener("submit",async e=>{
   e.preventDefault();out.replaceChildren();
   try{
-    await captchaReady;
-    const captchaToken=captcha?.token()||"";
+    captcha=await captchaReady;
+    if(!captcha)throw Error("سرویس ضدربات آماده نیست.");
+    const captchaToken=captcha.token()||"";
     if(!captchaToken)throw Error("ابتدا اعتبارسنجی ضدربات را کامل کنید.");
     busy(f,true);
     const result=await api("login",{username:formValue(f,"username"),
       password:formValue(f,"password"),captcha_token:captchaToken});
     if(result.mfa_required){showLoginOtp(result.challenge);return}
     state.csrf=result.csrf;await start()
-  }catch(err){showError(out,err);captcha?.reset()}finally{busy(f,false)}
+  }catch(err){showError(out,err);captcha?.reset()}finally{
+   busy(f,false);
+   if(captcha&&!captcha.token())loginBtn.disabled=true;
+  }
  });
 }
 function showLoginOtp(challenge){
