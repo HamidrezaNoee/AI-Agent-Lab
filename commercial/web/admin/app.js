@@ -199,32 +199,67 @@ function loginBrand(){
  append(copy,node("strong","","آوان"),node("small","","AI AGENT"));
  return append(brand,mark,copy);
 }
+function loginRevealButton(){
+ const b=node("button","login-reveal-toggle");
+ b.type="button";b.setAttribute("aria-expanded","false");
+ b.innerHTML='<span>ورود</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5"></path></svg>';
+ return b;
+}
 function showLogin(){
  const m=main(),p=panel("ورود به آوان","");
- p.classList.add("login");p.prepend(loginCardDecor(),loginBrand());const f=node("form");
- append(f,field("نام کاربری","username","godadmin"),
-   field("رمز عبور","password","",{secret:true}));
+ p.classList.add("login","login-reveal-card","is-collapsed");
+ p.prepend(loginCardDecor(),loginBrand());
+ const subtitle=node("p","login-reveal-subtitle","خوش آمدید؛ برای ادامه وارد حساب کاربری شوید.");
+ const reveal=loginRevealButton(),f=node("form","login-expand-body");
+ const username=field("نام کاربری","username","godadmin"),password=field("رمز عبور","password","",{secret:true});
+ append(f,username,password);
  const out=node("div"),captchaHost=node("div","turnstile-shell");
  const loginBtn=node("button","","ورود به تنظیمات");loginBtn.type="submit";
- append(f,captchaHost,loginBtn,out);append(p,f);append(m,p);
- let captcha=null;
- const captchaReady=mountLoginCaptcha(captchaHost,loginBtn,out).then(x=>captcha=x).catch(err=>{
-  showError(out,err);loginBtn.disabled=true;return null;
- });
+ append(f,captchaHost,loginBtn,out);
+ p.querySelector("h2")?.after(subtitle,reveal);
+ append(p,f);append(m,p);
+
+ let captcha=null,captchaReady=null,expanded=false,busyLogin=false;
+ const ensureCaptchaMounted=()=>{
+  if(captchaReady)return captchaReady;
+  captchaReady=mountLoginCaptcha(captchaHost,loginBtn,out).then(x=>captcha=x).catch(err=>{
+   showError(out,err);loginBtn.disabled=true;return null;
+  });
+  return captchaReady;
+ };
+ const setExpanded=(open)=>{
+  if(busyLogin)return;
+  expanded=!!open;
+  p.classList.toggle("is-collapsed",!expanded);
+  p.classList.toggle("is-expanded",expanded);
+  reveal.setAttribute("aria-expanded",String(expanded));
+  if(expanded){
+   ensureCaptchaMounted();
+   requestAnimationFrame(()=>username.querySelector("input")?.focus());
+  }
+ };
+ reveal.addEventListener("click",()=>setExpanded(!expanded));
+ document.addEventListener("pointerdown",event=>{
+  if(expanded&&!p.contains(event.target))setExpanded(false);
+ },{capture:true,once:false});
+ document.addEventListener("keydown",event=>{
+  if(event.key==="Escape"&&expanded)setExpanded(false);
+ },{once:false});
+
  f.addEventListener("submit",async e=>{
   e.preventDefault();out.replaceChildren();
   try{
-    captcha=await captchaReady;
+    captcha=await ensureCaptchaMounted();
     if(!captcha)throw Error("سرویس ضدربات آماده نیست.");
     const captchaToken=captcha.token()||"";
     if(!captchaToken)throw Error("ابتدا اعتبارسنجی ضدربات را کامل کنید.");
-    busy(f,true);
+    busyLogin=true;busy(f,true);
     const result=await api("login",{username:formValue(f,"username"),
       password:formValue(f,"password"),captcha_token:captchaToken});
     if(result.mfa_required){showLoginOtp(result.challenge);return}
     state.csrf=result.csrf;await start()
   }catch(err){showError(out,err);captcha?.reset()}finally{
-   busy(f,false);
+   busyLogin=false;busy(f,false);
    if(captcha&&!captcha.token())loginBtn.disabled=true;
   }
  });
