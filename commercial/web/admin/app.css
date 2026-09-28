@@ -370,3 +370,102 @@ body.avan-admin button:disabled{opacity:.56;cursor:not-allowed}
 @media(prefers-reduced-motion:reduce){
  .captcha-orbit-dot,.avan-captcha-progress span,.avan-captcha.is-error{animation:none!important}
 }
+
+
+/* Reel-inspired login reveal: compact glass card expands into the full sign-in form. */
+.avan-admin .login-reveal-card{
+ overflow:visible;
+ width:min(100%,520px);
+ padding:58px 46px 32px;
+ transform-origin:50% 20%;
+ transition:max-width .52s cubic-bezier(.18,.82,.22,1),padding .52s cubic-bezier(.18,.82,.22,1),box-shadow .45s ease,transform .45s ease;
+}
+.avan-admin .login-reveal-card .login-card-decor{overflow:hidden}
+.avan-admin .login-reveal-card .login-brand{
+ position:absolute;z-index:6;left:50%;top:0;margin:0;
+ transform:translate(-50%,-52%);
+ width:78px;height:78px;border-radius:50%;
+ display:grid;place-items:center;
+ background:radial-gradient(circle at 38% 30%,rgba(110,251,255,.26),rgba(13,84,124,.86) 56%,rgba(4,35,59,.96) 100%);
+ border:1px solid rgba(115,235,255,.78);
+ box-shadow:0 0 0 7px rgba(37,213,244,.055),0 0 34px rgba(30,216,248,.34),0 18px 42px rgba(0,12,28,.42),inset 0 1px 0 rgba(255,255,255,.16);
+ animation:avanLoginFloat 3.8s ease-in-out infinite;
+}
+.avan-admin .login-reveal-card .login-brand::before{
+ content:"";position:absolute;inset:-11px;border-radius:50%;
+ border:1px solid rgba(74,224,246,.12);
+ box-shadow:0 0 26px rgba(36,213,246,.16);
+}
+.avan-admin .login-reveal-card .login-brand-mark{width:50px;height:50px;flex-basis:50px}
+.avan-admin .login-reveal-card .login-brand-copy{display:none}
+.avan-admin .login-reveal-card h2{
+ margin:4px 0 3px;font-size:29px;text-align:center;
+ transition:transform .45s cubic-bezier(.18,.82,.22,1),font-size .4s ease;
+}
+.login-reveal-subtitle{
+ position:relative;z-index:2;margin:0 auto 18px;text-align:center;
+ color:#7fa9bd;font-size:11px;line-height:1.9;
+ transition:opacity .28s ease,transform .45s cubic-bezier(.18,.82,.22,1),max-height .45s ease,margin .45s ease;
+}
+.login-reveal-toggle{
+ position:relative;z-index:3;display:flex;align-items:center;justify-content:center;gap:7px;
+ width:116px;min-height:40px;margin:8px auto 0;padding:8px 15px;
+ border:1px solid rgba(82,223,244,.54);border-radius:999px;
+ background:linear-gradient(180deg,rgba(11,80,105,.88),rgba(7,49,74,.94));
+ color:#dffcff;font-size:12px;font-weight:800;cursor:pointer;
+ box-shadow:0 0 0 3px rgba(26,205,236,.045),0 0 22px rgba(26,205,236,.15),inset 0 1px 0 rgba(255,255,255,.08);
+ transition:opacity .24s ease,transform .4s cubic-bezier(.18,.82,.22,1),max-height .35s ease,margin .35s ease,padding .35s ease,border-width .35s ease;
+}
+.login-reveal-toggle svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:transform .35s ease}
+.login-reveal-toggle:hover{border-color:#68ecff;background:linear-gradient(180deg,rgba(12,98,127,.94),rgba(7,59,87,.98));box-shadow:0 0 0 3px rgba(35,214,244,.07),0 0 28px rgba(35,214,244,.2),inset 0 1px 0 rgba(255,255,255,.1)}
+.login-reveal-toggle:focus-visible{outline:3px solid rgba(112,239,255,.5);outline-offset:4px}
+.login-expand-body{
+ position:relative;z-index:2;
+ max-height:0;opacity:0;overflow:hidden;pointer-events:none;
+ transform:translateY(-18px) scale(.985);
+ filter:blur(8px);
+ margin-top:-8px;
+ transition:max-height .72s cubic-bezier(.18,.82,.22,1),opacity .3s ease .02s,transform .62s cubic-bezier(.18,.82,.22,1),filter .38s ease,margin .5s ease;
+}
+.login-reveal-card.is-expanded{
+ padding:58px 46px 42px;
+ transform:translateY(-4px);
+ box-shadow:0 38px 110px rgba(1,13,27,.76),0 0 0 1px rgba(20,189,245,.14),0 0 42px rgba(16,202,244,.27),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 42px rgba(13,123,183,.09);
+}
+.login-reveal-card.is-expanded h2{transform:translateY(-1px);font-size:31px}
+.login-reveal-card.is-expanded .login-reveal-subtitle{opacity:.92;transform:translateY(-2px);margin-bottom:14px}
+.login-reveal-card.is-expanded .login-reveal-toggle{
+ opacity:0;pointer-events:none;transform:translateY(-9px) scale(.88);
+ max-height:0;min-height:0;margin:0 auto;padding-top:0;padding-bottom:0;border-width:0;
+}
+.login-reveal-card.is-expanded .login-expand-body{
+ max-height:760px;opacity:1;overflow:visible;pointer-events:auto;
+ transform:translateY(0) scale(1);filter:blur(0);margin-top:4px;
+ transition:max-height .78s cubic-bezier(.18,.82,.22,1),opacity .35s ease .12s,transform .66s cubic-bezier(.18,.82,.22,1),filter .42s ease .08s,margin .5s ease;
+}
+.login-reveal-card.is-expanded .login-expand-body>.form-field,
+.login-reveal-card.is-expanded .login-expand-body>.avan-captcha,
+.login-reveal-card.is-expanded .login-expand-body>button,
+.login-reveal-card.is-expanded .login-expand-body>.notice{
+ animation:avanLoginRevealItem .48s both;
+}
+.login-reveal-card.is-expanded .login-expand-body>.form-field:nth-child(1){animation-delay:.08s}
+.login-reveal-card.is-expanded .login-expand-body>.form-field:nth-child(2){animation-delay:.13s}
+.login-reveal-card.is-expanded .login-expand-body>.avan-captcha{animation-delay:.18s}
+.login-reveal-card.is-expanded .login-expand-body>button{animation-delay:.23s}
+.login-reveal-card.is-collapsed .login-reveal-subtitle{transform:translateY(1px)}
+@keyframes avanLoginFloat{0%,100%{transform:translate(-50%,-52%) translateY(0)}50%{transform:translate(-50%,-52%) translateY(-6px)}}
+@keyframes avanLoginRevealItem{from{opacity:0;transform:translateY(-9px);filter:blur(5px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
+@media(max-width:640px){
+ .avan-admin .login-reveal-card{width:min(100%,500px);padding:54px 23px 27px}
+ .avan-admin .login-reveal-card.is-expanded{padding:54px 23px 31px}
+ .avan-admin .login-reveal-card .login-brand{width:70px;height:70px}
+ .avan-admin .login-reveal-card .login-brand-mark{width:45px;height:45px;flex-basis:45px}
+ .avan-admin .login-reveal-card h2{font-size:26px}
+ .login-reveal-card.is-expanded h2{font-size:28px}
+}
+@media(prefers-reduced-motion:reduce){
+ .avan-admin .login-reveal-card,.login-reveal-subtitle,.login-reveal-toggle,.login-expand-body,
+ .avan-admin .login-reveal-card .login-brand{transition:none!important;animation:none!important}
+ .login-reveal-card.is-expanded .login-expand-body>*{animation:none!important}
+}
