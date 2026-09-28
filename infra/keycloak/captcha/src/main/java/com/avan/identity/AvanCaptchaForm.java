@@ -50,6 +50,7 @@ public final class AvanCaptchaForm extends UsernamePasswordForm {
 
     @Override
     protected Response createLoginForm(LoginFormsProvider form) {
+        boolean providerReady = false;
         try {
             Map<String,Object> challenge = challenge();
             form.setAttribute("antibotProvider", string(challenge, "provider"));
@@ -60,15 +61,21 @@ public final class AvanCaptchaForm extends UsernamePasswordForm {
             form.setAttribute("antibotSignature", string(challenge, "signature"));
             form.setAttribute("antibotMaxNumber", integer(challenge, "maxNumber"));
             form.setAttribute("antibotExpiresIn", integer(challenge, "expiresIn"));
+            providerReady = true;
+        } catch (RuntimeException ignored) {
+            // Cloudflare can still protect login when the local service is unavailable.
+        }
 
-            String siteKey = cloudflareSiteKey();
-            if (!siteKey.isEmpty()) {
-                form.setAttribute("turnstileSiteKey", siteKey);
-                form.setAttribute("turnstileAction", ACTION);
-                form.setAttribute("turnstileTimeoutMs", 2500);
-            }
-        } catch (RuntimeException ex) {
-            form.setError("سرویس ضدربات داخلی آوان در دسترس نیست.");
+        String siteKey = cloudflareSiteKey();
+        if (!siteKey.isEmpty()) {
+            form.setAttribute("turnstileSiteKey", siteKey);
+            form.setAttribute("turnstileAction", ACTION);
+            form.setAttribute("turnstileTimeoutMs", 2500);
+            providerReady = true;
+        }
+
+        if (!providerReady) {
+            form.setError("هیچ سرویس ضدرباتی برای ورود در دسترس نیست.");
         }
         return super.createLoginForm(form);
     }
