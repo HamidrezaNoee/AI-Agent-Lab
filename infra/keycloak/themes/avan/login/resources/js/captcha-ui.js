@@ -8,6 +8,8 @@
  }
  function render(root){
   if(root.dataset.rendered==="1"||!window.turnstile)return;
+  const panel=root.closest(".login-reveal-card");
+  if(panel&&panel.classList.contains("is-collapsed"))return;
   root.dataset.rendered="1";
   const slot=root.querySelector(".avan-captcha-challenge");
   const button=document.getElementById("kc-login");
@@ -44,6 +46,8 @@
  function renderAll(){
   document.querySelectorAll("[data-avan-captcha]").forEach(render);
  }
+ window.avanRenderCaptcha=renderAll;
+ window.addEventListener("avan-login-expanded",renderAll);
  window.avanTurnstileReady=function(){
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",renderAll,{once:true});
   else renderAll();
