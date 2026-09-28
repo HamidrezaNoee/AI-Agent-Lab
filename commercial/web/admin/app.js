@@ -82,20 +82,35 @@ async function start(){
   else await showSettings();
  }catch(err){main().append(info(err.message||String(err),true))}
 }
-let _turnstilePromise=null;
-function ensureTurnstile(){
- if(window.turnstile)return Promise.resolve(window.turnstile);
- if(_turnstilePromise)return _turnstilePromise;
- _turnstilePromise=new Promise((resolve,reject)=>{
-  const timeout=setTimeout(()=>reject(Error("سرویس ضدربات بارگذاری نشد.")),12000);
-  window.__avanTurnstileReady=()=>{clearTimeout(timeout);resolve(window.turnstile)};
-  const s=document.createElement("script");
-  s.src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__avanTurnstileReady&render=explicit";
-  s.async=true;s.defer=true;
-  s.onerror=()=>{clearTimeout(timeout);reject(Error("اتصال به سرویس ضدربات برقرار نشد."))};
-  document.head.appendChild(s);
- });
- return _turnstilePromise;
+async function solveLocalAntibot(config,onProgress){
+ if(!window.crypto?.subtle)throw Error("مرورگر از اعتبارسنجی امن محلی پشتیبانی نمی‌کند.");
+ if(config?.provider!=="altcha-self-hosted"||config.algorithm!=="SHA-256")
+  throw Error("سرویس ضدربات داخلی پاسخ معتبر نداد.");
+ const max=Number(config.maxNumber);
+ if(!Number.isInteger(max)||max<1000||max>250000)throw Error("سطح سختی ضدربات معتبر نیست.");
+ const encoder=new TextEncoder(),target=String(config.challenge).toLowerCase(),salt=String(config.salt);
+ const batchSize=64;
+ for(let start=0;start<=max;start+=batchSize){
+  const stop=Math.min(max,start+batchSize-1);
+  const numbers=[];for(let n=start;n<=stop;n++)numbers.push(n);
+  const hashes=await Promise.all(numbers.map(n=>crypto.subtle.digest("SHA-256",encoder.encode(salt+n))));
+  for(let i=0;i<hashes.length;i++){
+   const hex=[...new Uint8Array(hashes[i])].map(b=>b.toString(16).padStart(2,"0")).join("");
+   if(hex===target)return numbers[i];
+  }
+  if(typeof onProgress==="function"&&(start===0||start%1024<batchSize))
+   onProgress(Math.min(99,Math.round((stop/max)*100)));
+ }
+ throw Error("اثبات امنیتی حل نشد؛ Challenge جدید دریافت می‌شود.");
+}
+function antibotPayload(config,number){
+ return btoa(JSON.stringify({
+  algorithm:config.algorithm,
+  challenge:config.challenge,
+  number,
+  salt:config.salt,
+  signature:config.signature
+ }));
 }
 function buildCaptchaShell(host){
  host.className="avan-captcha is-loading";
@@ -110,11 +125,11 @@ function buildCaptchaShell(host){
     <path class="shield-scan" d="M20.3 31.8 28 39.5 44.8 22.7"></path>
    </svg>
   </div>
-  <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال آماده‌سازی لایه امنیتی…</span></div>
-  <span class="avan-captcha-badge">SECURE</span>
+  <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال آماده‌سازی لایه امنیتی محلی…</span></div>
+  <span class="avan-captcha-badge">LOCAL</span>
  </div>
  <div class="avan-captcha-progress" aria-hidden="true"><span></span></div>
- <div class="avan-captcha-challenge"></div>`;
+ <div class="avan-captcha-challenge"><span class="captcha-provider">ALTCHA · SELF-HOSTED</span></div>`;
  return {
   slot:host.querySelector(".avan-captcha-challenge"),
   status:host.querySelector(".avan-captcha-status")
@@ -123,48 +138,48 @@ function buildCaptchaShell(host){
 async function mountLoginCaptcha(host,submit,out){
  submit.disabled=true;
  const ui=buildCaptchaShell(host);
+ let token="",generation=0,expiryTimer=null;
  const setState=(name,message)=>{
   host.classList.remove("is-loading","is-checking","is-verified","is-expired","is-error");
   host.classList.add(name);
   ui.status.textContent=message;
  };
- const config=await api("captcha/config");
- const turnstile=await ensureTurnstile();
- let token="";
- setState("is-checking","در حال بررسی مرورگر و اتصال امن…");
- const widgetId=turnstile.render(ui.slot,{
-  sitekey:config.site_key,
-  theme:config.theme||"dark",
-  size:config.size||"flexible",
-  appearance:"interaction-only",
-  language:"fa",
-  action:config.action,
-  retry:"auto",
-  "refresh-expired":"auto",
-  callback:value=>{
-   token=value;submit.disabled=false;
-   setState("is-verified","اتصال امن تأیید شد");
-  },
-  "expired-callback":()=>{
+ const solveNew=async()=>{
+  const current=++generation;token="";submit.disabled=true;
+  clearTimeout(expiryTimer);
+  setState("is-checking","در حال دریافت Challenge امن از سرویس داخلی…");
+  const config=await api("captcha/config");
+  setState("is-checking","در حال انجام Proof-of-Work محلی…");
+  const number=await solveLocalAntibot(config,percent=>{
+   if(current===generation)setState("is-checking",`در حال بررسی امنیتی… ${percent}٪`);
+  });
+  if(current!==generation)return;
+  token=antibotPayload(config,number);
+  submit.disabled=false;
+  setState("is-verified","اتصال امن تأیید شد · بدون سرویس خارجی");
+  const ttl=Math.max(15,Number(config.expiresIn)||120);
+  expiryTimer=setTimeout(()=>{
+   if(current!==generation)return;
    token="";submit.disabled=true;
-   setState("is-expired","تأیید امنیتی منقضی شد؛ در حال تازه‌سازی…");
-  },
-  "timeout-callback":()=>{
-   token="";submit.disabled=true;
-   setState("is-expired","زمان بررسی پایان یافت؛ دوباره تلاش کنید");
-  },
-  "error-callback":()=>{
-   token="";submit.disabled=true;
-   setState("is-error","بررسی امنیتی کامل نشد");
-   out.replaceChildren(info("اعتبارسنجی ضدربات کامل نشد؛ دوباره تلاش کنید.",true));
-  }
- });
+   setState("is-expired","Challenge منقضی شد؛ در حال ساخت بررسی تازه…");
+   solveNew().catch(err=>{
+    setState("is-error","سرویس ضدربات داخلی در دسترس نیست");
+    out.replaceChildren(info(err.message||"اعتبارسنجی ضدربات کامل نشد.",true));
+   });
+  },Math.max(5000,(ttl-8)*1000));
+ };
+ try{await solveNew()}catch(err){
+  setState("is-error","سرویس ضدربات داخلی در دسترس نیست");
+  throw err;
+ }
  return {
   token:()=>token,
   reset:()=>{
    token="";submit.disabled=true;
-   setState("is-checking","در حال بررسی دوباره امنیت اتصال…");
-   try{turnstile.reset(widgetId)}catch{}
+   solveNew().catch(err=>{
+    setState("is-error","بررسی امنیتی کامل نشد");
+    out.replaceChildren(info(err.message||"اعتبارسنجی ضدربات کامل نشد؛ دوباره تلاش کنید.",true));
+   });
   }
  };
 }
