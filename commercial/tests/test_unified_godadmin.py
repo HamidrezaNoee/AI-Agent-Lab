@@ -52,6 +52,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
             patch.object(setup,"INITIAL",root/"initial-godadmin-password"),
             patch.object(setup,"PUBLIC",root/"license-public.pem"),
             patch.object(admin,"_local",return_value=True),
+            patch.object(admin,"_turnstile_check",return_value=True),
             patch.object(app,"_oidc_config",return_value=("https://identity.example.com/auth",
                 "https://identity.example.com/token","avan-bff","secret",Verifier())),
             patch.object(app.httpx,"Client",IdentityClient),
