@@ -234,7 +234,8 @@ function showLogin(){
  p.querySelector("h2")?.after(subtitle,reveal);
  append(p,f);append(m,p);
 
- let captcha=null,captchaReady=null,expanded=false,busyLogin=false;
+ let captcha=null,captchaReady=null,expanded=false,busyLogin=false,pointerInside=false,collapseTimer=null;
+ const usernameInput=username.querySelector("input");
  const ensureCaptchaMounted=()=>{
   if(captchaReady)return captchaReady;
   captchaReady=mountLoginCaptcha(captchaHost,loginBtn,out).then(x=>captcha=x).catch(err=>{
@@ -243,23 +244,35 @@ function showLogin(){
   return captchaReady;
  };
  const setExpanded=(open)=>{
-  if(busyLogin)return;
+  if(busyLogin&&!open)return;
   expanded=!!open;
   p.classList.toggle("is-collapsed",!expanded);
   p.classList.toggle("is-expanded",expanded);
   reveal.setAttribute("aria-expanded",String(expanded));
-  if(expanded){
-   ensureCaptchaMounted();
-   requestAnimationFrame(()=>username.querySelector("input")?.focus());
-  }
+  if(expanded)ensureCaptchaMounted();
  };
- reveal.addEventListener("click",()=>setExpanded(!expanded));
- document.addEventListener("pointerdown",event=>{
-  if(expanded&&!p.contains(event.target))setExpanded(false);
- },{capture:true,once:false});
- document.addEventListener("keydown",event=>{
-  if(event.key==="Escape"&&expanded)setExpanded(false);
- },{once:false});
+ const scheduleCollapse=()=>{
+  clearTimeout(collapseTimer);
+  collapseTimer=setTimeout(()=>{if(!pointerInside&&!busyLogin)setExpanded(false)},90);
+ };
+ p.addEventListener("pointerenter",event=>{
+  if(event.pointerType==="mouse"||event.pointerType==="pen"){
+   pointerInside=true;clearTimeout(collapseTimer);setExpanded(true);
+  }
+ });
+ p.addEventListener("pointerleave",event=>{
+  if(event.pointerType==="mouse"||event.pointerType==="pen"){
+   pointerInside=false;scheduleCollapse();
+  }
+ });
+ p.addEventListener("focusin",()=>{clearTimeout(collapseTimer);setExpanded(true)});
+ p.addEventListener("focusout",event=>{
+  if(!p.contains(event.relatedTarget)&&!pointerInside)scheduleCollapse();
+ });
+ reveal.addEventListener("click",()=>{
+  setExpanded(true);
+  requestAnimationFrame(()=>usernameInput?.focus());
+ });
 
  f.addEventListener("submit",async e=>{
   e.preventDefault();out.replaceChildren();
