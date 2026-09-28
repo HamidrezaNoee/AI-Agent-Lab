@@ -11,7 +11,6 @@ services:
     environment:
       AVAN_AUTH_HOST: ${AVAN_AUTH_HOST:?Set the authentication DNS name}
       AVAN_PUBLIC_ORIGIN: https://${AVAN_APP_HOST:?Set the application DNS name}
-      AVAN_TURNSTILE_REQUIRE_PRODUCTION: "1"
     volumes:
       - ./infra/keycloak/avan-realm-https.json:/opt/keycloak/data/import/avan-realm.json:ro
   avan:
@@ -22,7 +21,6 @@ services:
       AVAN_BUNDLED_IDP: "1"
       AVAN_OIDC_ISSUER: https://${AVAN_AUTH_HOST}/realms/avan
       AVAN_OIDC_JWKS_URL: https://${AVAN_AUTH_HOST}/realms/avan/protocol/openid-connect/certs
-      AVAN_TURNSTILE_REQUIRE_PRODUCTION: "1"
   gateway:
     image: caddy:2-alpine
     restart: unless-stopped
