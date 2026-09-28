@@ -4,6 +4,21 @@
 
 ورود اصلی همچنان OIDC Authorization Code همراه PKCE است؛ رمز کاربران سازمانی به API برنامه ارسال نمی‌شود. حفاظت Keycloak در برابر حدس رمز در Realm فعال است. حساب محلی `godadmin` فقط برای نصب اولیه یا بازیابی از میزبان نصب باقی می‌ماند: پس از رمز درست، اگر TOTP محلی فعال باشد، یک نشست موقت ۱۲۰ثانیه‌ای صادر و صفحه دوم کد باز می‌شود. نشست مدیریتی نهایی فقط بعد از تأیید کد ساخته می‌شود؛ تلاش‌ها محدود هستند. پس از اتصال هویت GodAdmin به حساب سازمانی، ورود محلی از وب غیرفعال است.
 
+
+## حفاظت ضدربات Turnstile
+
+صفحه ورود آوان و فرم Username/Password در Keycloak با **Cloudflare Turnstile Managed** محافظت می‌شوند. توکن مرورگر قبل از بررسی رمز در سمت سرور با Siteverify اعتبارسنجی می‌شود؛ توکن منقضی، تکراری، بدون Action صحیح یا پاسخ غیرقابل‌اعتبارسنجی باعث رد ورود می‌شود. مرحله OTP پس از عبور موفق از Username/Password اجرا می‌شود و CAPTCHA دوباره از کاربر خواسته نمی‌شود.
+
+برای localhost، `scripts/init-security.ps1` کلیدهای رسمی تست Cloudflare را فقط برای توسعه می‌سازد. اجرای `compose.https.yaml` این کلیدها را رد می‌کند. برای Production ابتدا در Cloudflare یک Turnstile Widget از نوع Managed برای دامنه ورود بسازید و سپس روی ویندوز اجرا کنید:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\configure-turnstile.ps1 `
+  -SiteKey '<CLOUDFLARE_TURNSTILE_SITE_KEY>' `
+  -SecretKey '<CLOUDFLARE_TURNSTILE_SECRET_KEY>'
+```
+
+Secret Key فقط در Docker secret نگهداری می‌شود و به مرورگر یا API تنظیمات برگردانده نمی‌شود. بعد از تغییر کلیدها، کانتینرهای `avan` و `keycloak` را rebuild/recreate کنید.
+
 ## آوردن نسخه روی ویندوز
 
 ```powershell
