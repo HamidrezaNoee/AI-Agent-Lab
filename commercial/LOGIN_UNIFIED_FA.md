@@ -17,6 +17,8 @@ Start-Process 'http://127.0.0.1:8188/'
 
 فرایند نصب تازه `avan-browser` را از فایل import همان Realm ثبت می‌کند. پس از تکمیل راه‌اندازی GodAdmin و اتصال هویت سازمانی، ورود اصلی خودکار نمایش داده می‌شود.
 
+فایل‌های فونت YekanBakh تحت مجوز سازمانی در Git نگهداری نمی‌شوند. اگر فونت‌های تحویلی را در نصب خود دارید، پیش از `up --build` سه فایل `YekanBakh-Regular.woff2`، `YekanBakh-SemiBold.woff2` و `YekanBakh-Bold.woff2` را در هر دو پوشه `commercial/web/production/fonts/` و `infra/keycloak/themes/avan/login/resources/fonts/` قرار دهید؛ بدون آن‌ها صفحه با فونت جایگزین نمایش داده می‌شود.
+
 ## ارتقای نصب موجود Keycloak
 
 `--import-realm` در Keycloak، Realm موجود را جایگزین نمی‌کند؛ بنابراین فایل JSON جدید **جریان ورود Realm از قبل موجود را عوض نمی‌کند**. پس از بالا آمدن نسخه جدید، در کنسول مدیریت Keycloak نصب موجود و Realm `avan`:
