@@ -103,8 +103,13 @@ def _local_challenge(action:str)->dict:
 
 def public_config(action:str)->dict:
     action=_action(action)
-    local=_local_challenge(action)
     credentials=_cloudflare_credentials()
+    try:
+        local=_local_challenge(action)
+    except TurnstileUnavailable:
+        local=None
+    if not credentials and local is None:
+        raise TurnstileUnavailable("No anti-bot provider is available")
     cloudflare={
         "enabled":bool(credentials),
         "site_key":credentials[0] if credentials else "",
