@@ -109,7 +109,7 @@ jobs:
           assert "avan-agent-sql:" in c
           assert "antibot:" in c and "infra/antibot/Dockerfile" in c
           assert "avan_antibot_hmac_key" in c
-          assert "avan_turnstile_site_key" not in c and "avan_turnstile_secret_key" not in c
+          assert "avan_turnstile_site_key" in c and "avan_turnstile_secret_key" in c
           assert "mcr.microsoft.com/mssql/server:2022-latest" in c
           assert "1433:1433" not in c
           assert "127.0.0.1:8188:8188" in c
@@ -123,6 +123,9 @@ jobs:
 
       - name: Build self-hosted anti-bot image
         run: docker build -f infra/antibot/Dockerfile -t avan-antibot:ci .
+
+      - name: Build Keycloak hybrid anti-bot provider
+        run: docker build -f infra/keycloak/Dockerfile -t avan-keycloak:ci .
 
       - name: Build production image and verify packaged imports
         run: |
