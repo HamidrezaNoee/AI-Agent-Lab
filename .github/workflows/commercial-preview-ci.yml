@@ -8,6 +8,7 @@ on:
       - "infra/**"
       - ".dockerignore"
       - "scripts/init-security.sh"
+      - "scripts/configure-turnstile.ps1"
       - "scripts/pin-license-public-key.ps1"
       - "commercial/production_*.py"
       - "commercial/setup_*.py"
@@ -39,6 +40,7 @@ on:
       - "infra/**"
       - ".dockerignore"
       - "scripts/init-security.sh"
+      - "scripts/configure-turnstile.ps1"
       - "scripts/pin-license-public-key.ps1"
       - "commercial/production_*.py"
       - "commercial/setup_*.py"
@@ -80,7 +82,7 @@ jobs:
         run: python -m pip install -r commercial/requirements-production.txt pytest
       - name: Check source and authenticated installation lifecycle
         run: |
-          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py
           python -m pytest commercial/tests -q
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
