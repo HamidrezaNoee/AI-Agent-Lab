@@ -1,7 +1,8 @@
 <!doctype html>
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | تأیید هویت</title>
-<link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css"></head>
+<link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
+<#if turnstileSiteKey??><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></#if></head>
 <body class="avan-signin">
  <main class="signin-layout">
   <section class="signin-panel signin-otp" aria-labelledby="otp-heading">
