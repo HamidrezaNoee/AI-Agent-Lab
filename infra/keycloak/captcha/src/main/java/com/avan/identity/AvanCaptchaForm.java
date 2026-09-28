@@ -78,11 +78,15 @@ public final class AvanCaptchaForm extends UsernamePasswordForm {
                                    MultivaluedMap<String, String> data) {
         String envelope = data.getFirst("avan-antibot");
         if (!verify(envelope)) {
+            LoginFormsProvider form = context.form().setError(
+                "اعتبارسنجی ضدربات نامعتبر یا منقضی شده است؛ دوباره تلاش کنید."
+            );
+            if ("cloudflare-turnstile".equals(providerOf(envelope))) {
+                form.setAttribute("antibotForceLocal", true);
+            }
             context.failureChallenge(
                 AuthenticationFlowError.INVALID_CREDENTIALS,
-                createLoginForm(context.form().setError(
-                    "اعتبارسنجی ضدربات نامعتبر یا منقضی شده است؛ دوباره تلاش کنید."
-                ))
+                createLoginForm(form)
             );
             return false;
         }
@@ -118,6 +122,20 @@ public final class AvanCaptchaForm extends UsernamePasswordForm {
         } catch (IOException | InterruptedException | RuntimeException ex) {
             if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new IllegalStateException("Anti-bot service unavailable", ex);
+        }
+    }
+
+    private static String providerOf(String envelope) {
+        if (envelope == null || envelope.isBlank() || envelope.length() > 12288) {
+            return "";
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String,Object> value = JsonSerialization.readValue(envelope, Map.class);
+            Object provider = value.get("provider");
+            return provider instanceof String ? (String)provider : "";
+        } catch (IOException | RuntimeException ex) {
+            return "";
         }
     }
 
