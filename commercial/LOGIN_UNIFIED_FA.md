@@ -5,19 +5,15 @@
 ورود اصلی همچنان OIDC Authorization Code همراه PKCE است؛ رمز کاربران سازمانی به API برنامه ارسال نمی‌شود. حفاظت Keycloak در برابر حدس رمز در Realm فعال است. حساب محلی `godadmin` فقط برای نصب اولیه یا بازیابی از میزبان نصب باقی می‌ماند: پس از رمز درست، اگر TOTP محلی فعال باشد، یک نشست موقت ۱۲۰ثانیه‌ای صادر و صفحه دوم کد باز می‌شود. نشست مدیریتی نهایی فقط بعد از تأیید کد ساخته می‌شود؛ تلاش‌ها محدود هستند. پس از اتصال هویت GodAdmin به حساب سازمانی، ورود محلی از وب غیرفعال است.
 
 
-## حفاظت ضدربات Turnstile
+## حفاظت ضدربات داخلی AVAN / ALTCHA
 
-صفحه ورود آوان و فرم Username/Password در Keycloak با **Cloudflare Turnstile Managed** محافظت می‌شوند. توکن مرورگر قبل از بررسی رمز در سمت سرور با Siteverify اعتبارسنجی می‌شود؛ توکن منقضی، تکراری، بدون Action صحیح یا پاسخ غیرقابل‌اعتبارسنجی باعث رد ورود می‌شود. مرحله OTP پس از عبور موفق از Username/Password اجرا می‌شود و CAPTCHA دوباره از کاربر خواسته نمی‌شود.
+صفحه ورود آوان و فرم Username/Password در Keycloak با یک **سرویس Anti-Bot کاملاً Self-Hosted** محافظت می‌شوند. سرویس در کانتینر داخلی `antibot` اجرا می‌شود، Port عمومی ندارد و در زمان اجرا هیچ درخواست CAPTCHA به Cloudflare، Google یا سرویس خارجی ارسال نمی‌کند. مدل دفاعی بر پایه Proof-of-Work سازگار با ALTCHA است: سرور Challenge امضاشده و زمان‌دار می‌سازد، مرورگر آن را محلی حل می‌کند و نتیجه قبل از بررسی رمز در سرویس داخلی Verify می‌شود.
 
-برای localhost، `scripts/init-security.ps1` کلیدهای رسمی تست Cloudflare را فقط برای توسعه می‌سازد. اجرای `compose.https.yaml` این کلیدها را رد می‌کند. برای Production ابتدا در Cloudflare یک Turnstile Widget از نوع Managed برای دامنه ورود بسازید و سپس روی ویندوز اجرا کنید:
+Challenge فقط ۱۲۰ ثانیه معتبر است، Action آن به سطح ورود مربوطه متصل است و پاسخ موفق یک‌بارمصرف است؛ Replay، پاسخ دستکاری‌شده و Challenge منقضی رد می‌شوند. مرحله OTP بعد از عبور موفق Username/Password اجرا می‌شود و Anti-Bot دوباره از کاربر خواسته نمی‌شود.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\configure-turnstile.ps1 `
-  -SiteKey '<CLOUDFLARE_TURNSTILE_SITE_KEY>' `
-  -SecretKey '<CLOUDFLARE_TURNSTILE_SECRET_KEY>'
-```
+`scripts/init-security.ps1` یک Secret تصادفی `avan-antibot-hmac-key` ایجاد می‌کند و Compose آن را فقط به کانتینر Anti-Bot می‌دهد. Browser، AVAN و Keycloak به HMAC Secret دسترسی ندارند؛ AVAN و Keycloak فقط از API داخلی `http://antibot:8090` برای Challenge/Verify استفاده می‌کنند.
 
-Secret Key فقط در Docker secret نگهداری می‌شود و به مرورگر یا API تنظیمات برگردانده نمی‌شود. بعد از تغییر کلیدها، کانتینرهای `avan` و `keycloak` را rebuild/recreate کنید.
+در Login دسکتاپ کارت به‌صورت جمع‌شده نمایش داده می‌شود. با ورود موس روی کارت، فرم به‌صورت نرم باز می‌شود و با خروج موس خودکار جمع می‌شود؛ برای باز و بسته شدن نیازی به کلیک بیرون کارت نیست. روی موبایل/تاچ دکمه «ورود» به‌عنوان fallback باقی می‌ماند.
 
 ## آوردن نسخه روی ویندوز
 
@@ -29,6 +25,6 @@ docker compose -p avan-production -f .\compose.yaml -f .\compose.pm-local.yaml p
 Start-Process 'http://127.0.0.1:8188/'
 ```
 
-در نصب تازه، جریان `avan-browser` از Realm import می‌شود و ترتیب Username Password Form سپس زیرفرایند Conditional OTP را دارد. برای **Realm موجود** فایل import به‌تنهایی جریان Browser را عوض نمی‌کند. اگر قبلاً جریان `avan-browser` را طبق نسخه قبلی فعال کرده‌اید، شناسه مرحله قدیمی حفظ می‌شود و در این نسخه بدون کپچا رمز را بررسی می‌کند؛ نیاز به حذف Realm یا کاربران نیست. اگر Realm موجود شما هنوز Browser flow دیگری دارد، در کنسول Keycloak قسمت **Authentication → Flows**، بعد از مرحله Username Password Form زیرفرایند **Conditional** با Condition - User Configured و OTP Form را کنترل کنید. اگر لازم شد جریان را به Browser binding متصل کنید. دو حساب آزمایشی دارای TOTP و بدون TOTP را در پنجره خصوصی مرورگر بررسی کنید.
+در نصب تازه، جریان `avan-browser` از Realm import می‌شود و ترتیب Username Password Form سپس زیرفرایند Conditional OTP را دارد. برای **Realm موجود** فایل import به‌تنهایی جریان Browser را عوض نمی‌کند. اگر قبلاً جریان `avan-browser` را فعال کرده‌اید، همان Provider با نسخه جدید JAR به Anti-Bot داخلی متصل می‌شود و نیازی به حذف Realm یا کاربران نیست. اگر Realm موجود شما هنوز Browser flow دیگری دارد، در کنسول Keycloak قسمت **Authentication → Flows**، بعد از مرحله Username Password Form زیرفرایند **Conditional** با Condition - User Configured و OTP Form را کنترل کنید. اگر لازم شد جریان را به Browser binding متصل کنید. دو حساب آزمایشی دارای TOTP و بدون TOTP را در پنجره خصوصی مرورگر بررسی کنید.
 
 فونت‌های مجوزدار YekanBakh در Git نیستند. اگر از نسخه قبلی فایل فونت دارید، سه وزن Regular، SemiBold و Bold را در `commercial/web/production/fonts/` و `infra/keycloak/themes/avan/login/resources/fonts/` قرار دهید؛ در غیر این صورت فونت جایگزین نمایش داده می‌شود.
