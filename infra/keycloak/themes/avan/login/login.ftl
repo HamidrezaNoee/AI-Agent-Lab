@@ -42,6 +42,7 @@
          data-action="${(antibotAction!'avan-login')?html}"
          data-site-key="${(turnstileSiteKey!'')?html}"
          data-turnstile-timeout="${(turnstileTimeoutMs!2500)?c}"
+         data-force-local="${(antibotForceLocal!false)?c}"
          data-algorithm="${(antibotAlgorithm!'SHA-256')?html}"
          data-challenge="${antibotChallenge?html}"
          data-salt="${antibotSalt?html}"
