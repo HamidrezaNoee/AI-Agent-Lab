@@ -119,6 +119,8 @@ services:
       - keycloak_db_password
       - avan_bff_client_secret
       - avan_provisioner_client_secret
+      - avan_turnstile_site_key
+      - avan_turnstile_secret_key
     volumes:
       - ./infra/keycloak/avan-realm.json:/opt/keycloak/data/import/avan-realm.json:ro
       - ./infra/keycloak/themes/avan:/opt/keycloak/themes/avan:ro
@@ -153,6 +155,8 @@ services:
     secrets:
       - avan_bff_client_secret
       - avan_provisioner_client_secret
+      - avan_turnstile_site_key
+      - avan_turnstile_secret_key
     volumes:
       - avan-state:/var/lib/avan
     extra_hosts:
@@ -192,6 +196,10 @@ secrets:
     file: ./.secrets/avan-sql-sa-password
   avan_antibot_hmac_key:
     file: ./.secrets/avan-antibot-hmac-key
+  avan_turnstile_site_key:
+    file: ./.secrets/avan-turnstile-site-key
+  avan_turnstile_secret_key:
+    file: ./.secrets/avan-turnstile-secret-key
 
 volumes:
   avan-state:
