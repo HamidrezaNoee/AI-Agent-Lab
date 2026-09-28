@@ -2,7 +2,8 @@
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | تأیید هویت</title>
 <link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
-<#if turnstileSiteKey??><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></#if></head>
+<#if turnstileSiteKey??><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></#if>
+<script defer src="${url.resourcesPath?html}/js/otp-motion.js"></script></head>
 <body class="avan-signin">
  <main class="signin-layout">
   <section class="signin-panel signin-otp" aria-labelledby="otp-heading">
@@ -31,7 +32,18 @@
       <label for="credentialId">دستگاه احراز هویت</label><select id="credentialId" name="credentialId"><#list otpLogin.userOtpCredentials as device><option value="${device.id?html}">${(device.userLabel!'Authenticator')?html}</option></#list></select>
     </#if>
     <label for="otp">کد شش‌رقمی Authenticator</label>
-    <input id="otp" name="otp" type="text" inputmode="numeric" dir="ltr" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="••••••" autofocus required>
+    <div class="otp-motion" data-otp-motion>
+     <input id="otp" class="otp-motion-native" name="otp" type="text" inputmode="numeric" dir="ltr" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" autofocus required aria-label="کد شش‌رقمی Authenticator">
+     <div class="otp-stage" aria-hidden="true">
+      <span class="otp-orbit-ring"></span>
+      <div class="otp-digits">
+       <span class="otp-digit" style="--i:0"></span><span class="otp-digit" style="--i:1"></span><span class="otp-digit" style="--i:2"></span>
+       <span class="otp-digit" style="--i:3"></span><span class="otp-digit" style="--i:4"></span><span class="otp-digit" style="--i:5"></span>
+      </div>
+      <div class="otp-verified"><svg viewBox="0 0 48 48" focusable="false"><circle cx="24" cy="24" r="20"></circle><path d="m15.5 24.5 5.5 5.5 12-13"></path></svg><span>تأیید شد</span></div>
+     </div>
+     <span class="otp-motion-status" aria-live="polite"></span>
+    </div>
     <button id="kc-login" type="submit">تأیید و ورود <span aria-hidden="true">←</span></button>
    </form>
   </section>
