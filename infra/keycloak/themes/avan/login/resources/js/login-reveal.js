@@ -23,7 +23,7 @@
   document.addEventListener("keydown",event=>{
    if(event.key==="Escape"&&expanded)setExpanded(false);
   });
-  setExpanded(false);
+  setExpanded(!!panel.querySelector(".signin-error"));
  }
  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init,{once:true});
  else init();
