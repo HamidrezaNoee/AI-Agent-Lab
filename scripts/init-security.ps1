@@ -22,6 +22,9 @@ Write-SecretOnce 'keycloak-db-password' (New-StrongSecret 48)
 Write-SecretOnce 'avan-bff-client-secret' (New-StrongSecret 64)
 Write-SecretOnce 'avan-provisioner-client-secret' (New-StrongSecret 64)
 Write-SecretOnce 'avan-sql-sa-password' ('Avan1!' + (New-StrongSecret 48))
+# Official Cloudflare Turnstile development keys. Production HTTPS refuses them.
+Write-SecretOnce 'avan-turnstile-site-key' '1x00000000000000000000AA'
+Write-SecretOnce 'avan-turnstile-secret-key' '1x0000000000000000000000000000000AA'
 
 $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls $secretDir /inheritance:r | Out-Null
@@ -32,3 +35,4 @@ Get-ChildItem $secretDir -File | ForEach-Object {
 }
 Write-Host 'AVAN internal identity and database secrets initialized.' -ForegroundColor Green
 Write-Host 'No SQL Server, ProcessMaker or customer password is stored in .env.' -ForegroundColor Green
+Write-Host 'Turnstile development keys are installed for localhost only. Replace them before HTTPS production deployment.' -ForegroundColor Yellow
