@@ -40,6 +40,8 @@
     <div class="avan-captcha is-loading" data-avan-captcha
          data-provider="${(antibotProvider!'altcha-self-hosted')?html}"
          data-action="${(antibotAction!'avan-login')?html}"
+         data-site-key="${(turnstileSiteKey!'')?html}"
+         data-turnstile-timeout="${(turnstileTimeoutMs!2500)?c}"
          data-algorithm="${(antibotAlgorithm!'SHA-256')?html}"
          data-challenge="${antibotChallenge?html}"
          data-salt="${antibotSalt?html}"
@@ -59,10 +61,10 @@
        </svg>
       </div>
       <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال آماده‌سازی Proof-of-Work محلی…</span></div>
-      <span class="avan-captcha-badge">LOCAL</span>
+      <span class="avan-captcha-badge">HYBRID</span>
      </div>
      <div class="avan-captcha-progress" aria-hidden="true"><span></span></div>
-     <div class="avan-captcha-challenge"><span class="captcha-provider">ALTCHA · SELF-HOSTED</span></div>
+     <div class="avan-captcha-challenge"><span class="captcha-provider">CLOUDFLARE → ALTCHA FALLBACK</span><div class="captcha-turnstile-slot"></div></div>
     </div>
     <#else>
     <div class="avan-captcha is-error" aria-label="سرویس ضدربات در دسترس نیست">
