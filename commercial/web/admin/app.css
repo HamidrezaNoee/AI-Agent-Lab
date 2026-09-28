@@ -162,3 +162,23 @@ body.avan-admin button:disabled{opacity:.56;cursor:not-allowed}
 @media(prefers-reduced-motion:reduce){
  .avan-admin .login .form-field input,.avan-admin .login form>button,.avan-admin .login form>button::after{transition:none}
 }
+
+.turnstile-shell{
+ position:relative;z-index:2;width:100%;min-height:65px;margin:4px 0 2px;
+ display:flex;align-items:center;justify-content:center;
+ border:1px solid rgba(112,210,238,.18);border-radius:16px;
+ background:rgba(5,29,48,.5);overflow:hidden;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.turnstile-shell:empty::before{
+ content:"در حال آماده‌سازی اعتبارسنجی ضدربات…";
+ color:#8fb8cc;font-size:12px;letter-spacing:0;direction:rtl;
+}
+.turnstile-shell iframe{max-width:100%!important}
+.avan-admin .login form>button:disabled{
+ opacity:.55;cursor:not-allowed;transform:none;filter:saturate(.55);
+ box-shadow:none;
+}
+@media(max-width:380px){
+ .turnstile-shell{min-width:300px;transform-origin:center;scale:.92;margin-inline:-12px;width:calc(100% + 24px)}
+}
