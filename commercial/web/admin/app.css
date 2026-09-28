@@ -47,3 +47,118 @@ body.avan-admin .checkbox-line input{display:inline-block;min-height:auto;width:
 body.avan-admin .connection-card,body.avan-admin .admin-hero{background:var(--surface);border-color:var(--line);color:var(--ink)}
 body.avan-admin button:disabled{opacity:.56;cursor:not-allowed}
 @media(max-width:760px){.connection-stats{grid-template-columns:1fr}.connection-card-head{flex-wrap:wrap}.tabs{flex-wrap:nowrap;overflow-x:auto}.admin-hero{padding:18px}.connection-actions{width:100%}}
+
+
+/* AVAN premium login card — affects only the login / OTP rectangle. */
+.avan-admin .panel.login{
+ position:relative;isolation:isolate;overflow:hidden;
+ width:min(100%,540px);margin:0;padding:48px 50px 46px;
+ color:#ecfaff;
+ background:
+  radial-gradient(circle at 50% -8%,rgba(44,218,255,.17),transparent 31%),
+  radial-gradient(circle at 96% 48%,rgba(15,142,239,.12),transparent 34%),
+  linear-gradient(155deg,rgba(7,35,57,.92),rgba(4,25,44,.965) 58%,rgba(5,31,51,.94));
+ border:1px solid rgba(116,229,255,.82);
+ border-radius:34px;
+ box-shadow:
+  0 32px 95px rgba(1,13,27,.7),
+  0 0 0 1px rgba(20,189,245,.14),
+  0 0 32px rgba(16,202,244,.22),
+  inset 0 1px 0 rgba(255,255,255,.14),
+  inset 0 0 42px rgba(13,123,183,.09);
+ backdrop-filter:blur(26px) saturate(125%);
+ -webkit-backdrop-filter:blur(26px) saturate(125%);
+}
+.avan-admin .panel.login::before{
+ content:"";position:absolute;z-index:-2;inset:-35% -30%;
+ background:conic-gradient(from 205deg,transparent 0 37%,rgba(33,230,255,.13) 42%,transparent 49% 72%,rgba(13,139,255,.09) 77%,transparent 84%);
+ filter:blur(22px);pointer-events:none;
+}
+.avan-admin .panel.login::after{
+ content:"";position:absolute;left:18%;right:18%;top:-1px;height:2px;
+ background:linear-gradient(90deg,transparent,#7ff6ff 40%,#e2fdff 50%,#55ddff 60%,transparent);
+ box-shadow:0 0 18px #26dcff,0 0 40px rgba(38,220,255,.55);pointer-events:none;
+}
+.login-card-decor{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:inherit}
+.login-card-decor svg{display:block;width:100%;height:100%}
+.login-brand{
+ position:relative;display:flex;align-items:center;justify-content:center;gap:14px;
+ direction:rtl;color:#f5fcff;text-align:right;margin:0 auto 28px;
+ font-weight:700;letter-spacing:0;
+}
+.login-brand-mark{display:grid;place-items:center;width:62px;height:62px;flex:0 0 62px;
+ filter:drop-shadow(0 0 13px rgba(34,224,249,.32))}
+.login-brand-mark svg{display:block;width:100%;height:100%}
+.login-brand-copy{display:flex;flex-direction:column;line-height:1.05}
+.login-brand-copy strong{font-size:34px;font-weight:800;letter-spacing:-1px;color:#f3fbff;text-shadow:0 4px 22px rgba(53,218,255,.12)}
+.login-brand-copy small{margin-top:10px;color:#ff8a73;font:700 12px/1 Tahoma,"Segoe UI",sans-serif;letter-spacing:2.5px;direction:ltr}
+.avan-admin .login h2{
+ position:relative;margin:4px 0 30px;text-align:center;
+ color:#fff;font-size:32px;font-weight:800;line-height:1.55;
+ text-shadow:0 5px 30px rgba(0,12,28,.55);
+}
+.avan-admin .login>.intro{display:none}
+.avan-admin .login form{position:relative;z-index:2}
+.avan-admin .login .form-field{margin:0 0 18px}
+.avan-admin .login .form-field label{
+ display:block;margin:0;color:#a9cde0;font-size:13px;font-weight:650;line-height:1.8;
+}
+.avan-admin .login .form-field input{
+ min-height:62px;margin-top:8px;padding:14px 18px;
+ color:#f1fbff;caret-color:#49e7fb;
+ background:linear-gradient(180deg,rgba(13,46,72,.82),rgba(7,34,57,.9));
+ border:1px solid rgba(132,207,242,.55);
+ border-radius:18px;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 9px 28px rgba(0,10,24,.16);
+ outline:none;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease,background .18s ease;
+}
+.avan-admin .login .form-field input:hover{border-color:rgba(133,225,253,.76)}
+.avan-admin .login .form-field input:focus{
+ border-color:#66e9ff;
+ background:linear-gradient(180deg,rgba(14,54,83,.92),rgba(6,36,60,.96));
+ box-shadow:0 0 0 3px rgba(52,220,247,.12),0 0 24px rgba(39,206,244,.15),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.avan-admin .login input[name=username]{font-weight:700}
+.avan-admin .login input[type=password]{letter-spacing:3px}
+.avan-admin .login form>button{
+ position:relative;overflow:hidden;display:block;width:100%;min-height:62px;margin:26px 0 0;
+ border:1px solid rgba(141,255,250,.72);border-radius:18px;
+ background:linear-gradient(100deg,#20d9cc 0%,#23e3e8 48%,#20c7f3 100%);
+ color:#03293b;font-size:17px;font-weight:800;
+ box-shadow:0 14px 34px rgba(18,220,225,.18),0 0 26px rgba(31,218,244,.15),inset 0 1px 0 rgba(255,255,255,.5);
+ transition:transform .16s ease,filter .16s ease,box-shadow .16s ease;
+}
+.avan-admin .login form>button::before{
+ content:"←";position:absolute;left:18px;top:50%;transform:translateY(-50%);
+ width:35px;height:35px;border-radius:50%;display:grid;place-items:center;
+ color:#eaffff;background:rgba(255,255,255,.16);font-size:21px;font-weight:400;
+}
+.avan-admin .login form>button::after{
+ content:"";position:absolute;inset:0;transform:translateX(105%);
+ background:linear-gradient(90deg,transparent,rgba(255,255,255,.34),transparent);
+ transition:transform .45s ease;pointer-events:none;
+}
+.avan-admin .login form>button:hover{
+ background:linear-gradient(100deg,#27e6d7 0%,#31eced 48%,#29d4ff 100%);
+ transform:translateY(-1px);box-shadow:0 18px 40px rgba(18,220,225,.23),0 0 32px rgba(31,218,244,.21);
+}
+.avan-admin .login form>button:hover::after{transform:translateX(-105%)}
+.avan-admin .login form>button:focus-visible{outline:3px solid rgba(129,242,255,.7);outline-offset:4px}
+.avan-admin .login .notice{position:relative;z-index:2;background:rgba(91,20,31,.78);border-color:rgba(255,127,141,.48);color:#ffdce2}
+.avan-admin .login-otp input[name=otp]{
+ min-height:68px;text-align:center;direction:ltr;font-size:28px;letter-spacing:10px;font-weight:700;
+}
+.avan-admin .login-otp>button.secondary{
+ position:relative;z-index:2;width:100%;margin-top:12px;min-height:48px;
+ background:rgba(17,55,80,.7);border:1px solid rgba(133,207,239,.3);color:#bee4f4;
+}
+.avan-admin .login-otp>button.secondary:hover{background:rgba(22,69,98,.84);color:#e8f9ff}
+@media(max-width:640px){
+ .avan-admin .panel.login{width:min(100%,500px);padding:34px 24px 31px;border-radius:27px}
+ .login-brand{margin-bottom:24px}.login-brand-mark{width:52px;height:52px;flex-basis:52px}
+ .login-brand-copy strong{font-size:29px}.avan-admin .login h2{font-size:27px;margin-bottom:24px}
+ .avan-admin .login .form-field input,.avan-admin .login form>button{min-height:57px}
+}
+@media(prefers-reduced-motion:reduce){
+ .avan-admin .login .form-field input,.avan-admin .login form>button,.avan-admin .login form>button::after{transition:none}
+}
