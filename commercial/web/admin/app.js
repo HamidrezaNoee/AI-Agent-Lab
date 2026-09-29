@@ -80,6 +80,9 @@ async function start(){
   else if(!s.password_changed)showChangePassword();
   else if(!s.mfa_enrolled)showTotpEnroll();
   else if(!s.mfa_authenticated)showLogin();
+  else if(state.authMode==="bootstrap"&&!document.body.classList.contains("admin-embedded")){
+   window.location.replace("/");
+  }
   else await showSettings();
  }catch(err){main().append(info(err.message||String(err),true))}
 }
