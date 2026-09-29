@@ -125,9 +125,16 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertTrue(state["authenticated"])
         self.assertEqual(state["auth_mode"],"oidc")
         self.assertEqual(self.client.get("/admin/api/settings").status_code,200)
-        self.assertTrue(self.client.get("/api/me").json()["is_godadmin"])
+        me=self.client.get("/api/me").json()
+        self.assertTrue(me["is_godadmin"])
+        self.assertFalse(me["workspace_access"])
         self.assertEqual(self.client.get("/api/meetings").status_code,403)
-        self.assertEqual(self.client.get("/",follow_redirects=False).status_code,200)
+        workspace=self.client.get("/",follow_redirects=False)
+        self.assertEqual(workspace.status_code,200)
+        self.assertEqual(workspace.headers["x-frame-options"],"DENY")
+        admin_page=self.client.get("/admin/?embedded=1",follow_redirects=False)
+        self.assertEqual(admin_page.status_code,200)
+        self.assertEqual(admin_page.headers["x-frame-options"],"SAMEORIGIN")
         self.assertEqual(self.client.post("/admin/api/bpms/connections/enabled",
                          json={"source_id":"a"*24,"enabled":False}).status_code,403)
         setup.put_setting("mysql",{"host":"database.example.com"})
@@ -152,6 +159,27 @@ class UnifiedGodAdminTests(unittest.TestCase):
         signed_out=self.client.post("/auth/logout",headers={"X-AVAN-CSRF":state["csrf"]})
         self.assertEqual(signed_out.status_code,200)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
+
+
+    def test_mapped_godadmin_exposes_org_workspace_and_admin_capability_together(self):
+        setup.bind_godadmin_identity(TENANT,"operator")
+        app.sessions["god"]={"access_token":"operator-token","csrf":"csrf",
+            "expires":time.time()+1800,"idle_expires":time.time()+600,
+            "access_expires":time.time()+1500,"subject":"operator","tenant_id":TENANT}
+        self.client.cookies.set("avan_session","god")
+        scope={
+            "name":"مدیر سازمان","company":"ایران رور","role":"Manager",
+            "department":"مدیریت","license":{
+                "modules":{1,2,3,4},"expires_at":"2027-01-01T00:00:00Z",
+                "mode":"licensed"
+            }
+        }
+        with patch.object(app,"_store_response",return_value=scope):
+            me=self.client.get("/api/me").json()
+        self.assertTrue(me["is_godadmin"])
+        self.assertTrue(me["workspace_access"])
+        self.assertEqual(me["role"],"Manager")
+        self.assertEqual(me["modules"],[1,2,3,4])
 
     def test_binding_requires_matching_issuer_and_host_recovery_unbinds(self):
         setup.bind_godadmin_identity(TENANT,"operator")
