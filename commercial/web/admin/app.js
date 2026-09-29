@@ -329,7 +329,7 @@ function showLogin(){
  const username=field("نام کاربری","username","godadmin"),password=field("رمز عبور","password","",{secret:true});
  append(f,username,password);
  const out=node("div"),captchaHost=node("div","turnstile-shell");
- const loginBtn=node("button","","ورود به تنظیمات");loginBtn.type="submit";
+ const loginBtn=node("button","","ورود به آوان");loginBtn.type="submit";
  append(f,captchaHost,loginBtn,out);
  p.querySelector("h2")?.after(subtitle,reveal);
  append(p,f);append(m,p);
