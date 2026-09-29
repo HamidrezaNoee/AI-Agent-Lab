@@ -30,7 +30,14 @@ const helpContent={
  ],fields:{host:"نامی که کانتینر آوان از آن به MySQL می‌رسد؛ برای MySQL روی همان ویندوز host.docker.internal. آدرس phpMyAdmin و پورت وب، نشانی MySQL نیستند.",port:"در phpMyAdmin → SQL اجرا کنید: SHOW VARIABLES LIKE 'port'; غالباً 3306 است.",database:"در phpMyAdmin بانک Workspace را از ستون سمت چپ یا SELECT DATABASE(); ببینید؛ در نصب فعلی شما bitnami_pm گزارش شده است.",username:"یک کاربر دارای SELECT فقط روی جدول‌های موردنیاز ProcessMaker؛ نام و GRANTهای دقیق را از مدیر MySQL بگیرید، نه رمز root.",password:"رمز همان حساب فقط‌خواندنی MySQL. برای تغییر تنظیمات باید آن را دوباره وارد کنید؛ رمز ذخیره‌شده در مرورگر نمایش داده نمی‌شود.",tls:"در phpMyAdmin → SQL دستور SHOW VARIABLES LIKE 'have_ssl'; را اجرا کنید؛ اگر DISABLED است no، اگر TLS و گواهی درست نصب شده است yes.",ca_pem:"در صورت فعال بودن TLS، متن گواهی CA صادرکنندهٔ گواهی سرور MySQL را از مدیر زیرساخت بگیرید؛ وقتی TLS خاموش است خالی بماند.",timezone:"منطقه زمانی IANA محل ثبت تاریخ ProcessMaker، برای ایران Asia/Tehran. عبارت Iran Standard Time مخصوص Windows و برای این فیلد نامعتبر است."}},
  company:{steps:["نام رسمی سازمان را مطابق نام درج‌شده روی لایسنس بنویسید. پس از نخستین ذخیره، آوان Tenant ID ثابت می‌سازد.","Tenant ID نمایش‌داده‌شده در همین صفحه را برای حساب‌های Keycloak، آداپترهای BPMS و صدور لایسنس به تیم مربوط تحویل دهید. شناسه را حدس نزنید."],fields:{company_name:"نام حقوقی سازمان را از مدارک ثبتی یا قرارداد خرید و دقیقاً مطابق نام مشتری در لایسنس بگیرید."}},
  identity:{steps:["Keycloak همراه نصب Docker آوان راه‌اندازی می‌شود؛ Issuer و Client Secret داخل برنامه نصب و مدیریت می‌شوند و نیازی به گرفتن آن‌ها از ProcessMaker نیست.","در راه‌اندازی اولیه، پس از ثبت سازمان حساب سازمانی GodAdmin را اینجا بسازید یا با حساب موجود یک‌بار ورود کنید؛ سپس شناسهٔ امضاشدهٔ همان حساب را با کد تازهٔ Authenticator تأیید کنید.","پس از اتصال GodAdmin، ورود و خروج به فضای کار و تنظیمات با همان حساب سازمانی انجام می‌شود."],fields:{username:"نام کاربری اختصاصی برای حساب سازمانی GodAdmin در Keycloak؛ با نام ورود ProcessMaker یکی نیست.",email:"ایمیل قابل دسترس مدیر سامانه را از دفترچه تماس سازمان بگیرید؛ برای ساخت حساب هویت سازمانی لازم است.",name:"نام نمایشی مدیر سامانه در سرویس هویت سازمانی.",password:"رمز موقت قوی دست‌کم ۱۶ کاراکتری برای حساب تازه؛ پس از اولین ورود باید تغییر داده شود.",otp:"کد شش‌رقمی تازه از برنامه Authenticator متصل به حساب GodAdmin اولیه؛ کد منقضی‌شده را تکرار نکنید."}},
- processmaker:{steps:["آدرس اصلی ProcessMaker را از مرورگر بردارید: تنها پروتکل، نام میزبان و پورت؛ مسیر /sysworkflow یا نشانی phpMyAdmin را وارد نکنید. از کانتینر میزبان ویندوز معمولاً host.docker.internal است.","Workspace را از ابتدای مسیر ProcessMaker مانند /sysworkflow/ بردارید که در این مثال workflow است. توکن Bearer مجاز برای GET فهرست کاربران را از مسئول API/OAuth همان ProcessMaker دریافت کنید.","در محیط آزمایشی این نسخه، HTTP برای host.docker.internal روی پورت 84 یا 443 مجاز است؛ در نصب عملیاتی HTTPS لازم است. بررسی اتصال فقط GET کاربران را اجرا می‌کند."],fields:{base_url:"آدرس ریشهٔ ProcessMaker از مرورگر، مانند http://host.docker.internal:443؛ شمارهٔ پورت را مطابق وب‌سرور ProcessMaker بگذارید، نه پورت phpMyAdmin.",workspace:"از /sysworkflow/en/...، مقدار workflow را بردارید. اگر در URL شما /sysنامدیگر/ است، بخش بعد از sys را قرار دهید.",bearer_token:"توکن OAuth/Bearer معتبرِ حساب مجاز به خواندن کاربران از مسئول ProcessMaker؛ رمز ورود یا Client Secret را جای آن وارد نکنید. هنگام تغییر، توکن را دوباره وارد کنید."}},
+ processmaker:{steps:[
+  "برای ProcessMaker 3.x ابتدا با حساب دارای مجوز PM_REST_API_APPLICATIONS وارد شوید و صفحه OAuth2 Applications را باز کنید. در نصب فعلی شما مسیر میزبان ویندوز معمولاً http://127.0.0.1:84/sysworkflow/en/neoclassic/oauth2/applications است.",
+  "یک REST/OAuth Application بسازید یا Client ID و Client Secret برنامه موجود آوان را بردارید. برای Password Grant به Callback URL نیاز نیست.",
+  "توکن از صفحه وب تولید نمی‌شود؛ باید POST به /{workspace}/oauth2/token ارسال شود. برای Workspace فعلی workflow، آدرس میزبان ویندوز معمولاً http://127.0.0.1:84/workflow/oauth2/token است.",
+  "برای توکن تازه از grant_type=password همراه client_id، client_secret، username و password استفاده کنید. پاسخ شامل access_token، expires_in و refresh_token است.",
+  "اگر refresh_token قبلی را دارید، می‌توانید همان endpoint را با grant_type=refresh_token فراخوانی کنید. Refresh Token در ProcessMaker 3.x پس از استفاده تعویض می‌شود؛ مقدار جدید را نگه دارید.",
+  "در فیلد «توکن OAuth حساب ProcessMaker» فقط مقدار access_token را Paste کنید؛ عبارت Bearer، Client Secret یا رمز کاربر را وارد نکنید. سپس «بررسی اتصال» و بعد «ذخیره تنظیمات» را بزنید."
+ ],fields:{base_url:"آدرس از دید کانتینر آوان است. برای ProcessMaker روی همین ویندوز معمولاً http://host.docker.internal:84. این مقدار با آدرس مرورگر میزبان (مثلاً http://127.0.0.1:84) فرق دارد.",workspace:"از URL رابط ProcessMaker مانند /sysworkflow/en/... مقدار workflow را بردارید. همین مقدار در Token Endpoint نیز استفاده می‌شود.",bearer_token:"فقط access_token خروجی OAuth2 را وارد کنید. در نصب فعلی، Token Endpoint معمولاً http://127.0.0.1:84/workflow/oauth2/token است؛ برای ساخت/دیدن Client به /sysworkflow/en/neoclassic/oauth2/applications بروید."}},
  ai:{steps:["کلید API را از حساب رسمی ارائه‌دهندهٔ مدل که برای آوان فعال شده است دریافت کنید و آن را در چت، URL یا فایل عمومی قرار ندهید.","مدلی را وارد کنید که حساب API به آن دسترسی دارد. ابتدا ذخیره، سپس «بررسی اتصال ذخیره‌شده» را اجرا کنید؛ بررسی دسترسی مدل، تولید پاسخ واقعی را آزمایش نمی‌کند.","گزینهٔ صوت فقط وقتی نیاز است فعال شود؛ تبدیل صوت و تولید گفتار هر کدام مصرف API دارند."],fields:{model:"شناسهٔ مدل مجاز برای حساب API را از پنل ارائه‌دهنده یا قرارداد سرویس سازمان بگیرید؛ مقدار پیش‌فرض برنامه را تنها در صورت دسترسی حساب نگه دارید.",api_key:"کلید محرمانهٔ حساب API آوان از پنل ارائه‌دهنده؛ هنگام ویرایش خالی بماند تا کلید قبلی حفظ شود.",transcription_model:"شناسهٔ مدل صوت به متن را از فهرست مجاز این نسخه انتخاب کنید؛ مقدار پیش‌فرض قابل استفاده است اگر حساب دسترسی دارد.",speech_model:"مدل تبدیل متن به گفتار را از گزینه‌های مجاز همین فرم انتخاب کنید.",voice:"نام صدای پشتیبانی‌شده برای تولید گفتار؛ یکی از گزینه‌های نوشته‌شده در عنوان همین فیلد."}},
  license:{steps:["شناسه نصب را از بالای همین صفحه و Tenant ID را از صفحهٔ «اطلاعات سازمان» بردارید و برای صادرکنندهٔ مجوز ارسال کنید.","فقط کلید عمومی PEM تأییدشدهٔ ناشر را ثبت کنید؛ کلید خصوصی نباید وارد آوان شود. توکن لایسنس امضاشده را از ناشر بگیرید.","برای نصب آزمایشی محلی وضعیت مجوز را پایین همین صفحه ببینید؛ فعال‌سازی مجوز فروش باید برای همین نصب، سازمان، ظرفیت کاربران و تاریخ صادر شده باشد."],fields:{pem:"متن کامل کلید عمومی ECDSA P-256 با سطرهای BEGIN/END PUBLIC KEY را از ناشر معتبر نسخه دریافت کنید؛ کلید خصوصی هرگز لازم نیست.",tenant_id:"شناسه UUID تولیدشده در صفحه «اطلاعات سازمان»؛ همان شناسه ثبت‌شده در متن لایسنس.",token:"رشتهٔ کامل لایسنس امضاشدهٔ تحویلی از ناشر را بدون تغییر اینجا قرار دهید."}},
  users:{steps:["فرد ابتدا با حساب سازمانی خود از صفحهٔ ورود آوان وارد شود تا درخواست «در انتظار» شکل بگیرد؛ سپس درخواست‌ها را در همین صفحه به‌روزرسانی کنید.","برای اتصال کاربر، ایمیل تأییدشدهٔ حساب سازمانی باید با ایمیل یک کاربر فعال ProcessMaker برابر باشد. فهرست PM از بخش اتصال ProcessMaker خوانده می‌شود.","شناسه مسئول مستقیم را از همان فهرست کاربران PM بررسی کنید؛ پس از تصویب، وضعیت فعال و ظرفیت لایسنس را از فهرست کاربران کنترل کنید."],fields:{company_name:"نام رسمی سازمان مطابق «اطلاعات سازمان» و لایسنس فعال.",pm_uid:"کاربر فعال ProcessMaker با ایمیل برابر؛ از فهرست قابل انتخاب همین فرم بردارید، نه از نام نمایشی.",role:"نقش سازمانی را براساس مجوز واقعی فرد انتخاب کنید؛ نقش مدیر سیستم نیازمند نقش امضاشدهٔ SysAdmin است.",department_name:"نام واحد تأییدشده در ساختار سازمان یا پرونده پرسنلی؛ در صورت نامشخص بودن خالی بگذارید.",manager_pm_uid:"شناسه PM مدیر مستقیم از فهرست کاربران ProcessMaker؛ در صورت نبود مدیر مستقیم خالی بگذارید."}}
@@ -42,6 +49,40 @@ function helpLamp(title,lines,compact=false){
  summary.setAttribute("aria-label","راهنمای "+title);append(detail,summary);
  const list=node("ol");for(const line of lines)append(list,node("li","",line));append(detail,list);
  return detail;
+}
+function settingsGuide(page){
+ const content=helpContent[page];
+ if(!content)return null;
+ const section=node("section","settings-guide");
+ const head=node("div","settings-guide-head");
+ append(head,node("span","settings-guide-icon","💡"),node("div","",
+  "راهنمای کانفیگ و محل دریافت اطلاعات"));
+ append(section,head);
+ if(content.steps?.length){
+  const ol=node("ol","settings-guide-steps");
+  for(const step of content.steps)append(ol,node("li","",step));
+  append(section,ol);
+ }
+ const fields=content.fields||{};
+ const entries=Object.entries(fields);
+ if(entries.length){
+  const tableWrap=node("div","settings-guide-fields"),table=node("table"),body=node("tbody");
+  for(const [name,description] of entries){
+   const row=node("tr"),key=node("td","settings-guide-key",name),value=node("td","",description);
+   append(row,key,value);append(body,row);
+  }
+  append(table,body);append(tableWrap,table);append(section,tableWrap);
+ }
+ return section;
+}
+function copyTextButton(label,getValue){
+ const b=btn(label,async()=>{
+  const value=String(typeof getValue==="function"?getValue():getValue||"");
+  if(!value)return;
+  try{await navigator.clipboard.writeText(value);b.textContent="کپی شد ✓";setTimeout(()=>b.textContent=label,1400)}
+  catch(_){window.prompt("این مقدار را Copy کنید:",value)}
+ },"secondary");
+ return b;
 }
 function field(title,name,value="",options={}){
  const wrap=node("div","form-field"),label=node("label","",title),input=node(options.multiline?"textarea":"input");
@@ -573,7 +614,7 @@ async function showSettings(page=state.page){
     catch(err){append(m,info(err.message,true))}
    }
  },"secondary"));append(m,tabs);
- const guide=helpLamp(menu.find(x=>x[0]===page)?.[1]||"تنظیمات",helpContent[page]?.steps);
+ const guide=settingsGuide(page);
  if(guide)append(m,guide);
  if(page==="connections")await renderConnections(m,settings);
  else if(page==="agentdb")await renderAgentDatabase(m);
@@ -829,8 +870,53 @@ function renderPm(m,config){
   ["Workspace","workspace",config.workspace||"workflow"],
   ["توکن OAuth حساب ProcessMaker","bearer_token",""]
  ];
- append(p,info("برای نصب آزمایشی ProcessMaker روی همین لپ‌تاپ، نشانی http://host.docker.internal:84 و Workspace برابر workflow است. رمز ورود یا Client Secret را جای توکن وارد نکنید."));
+ append(p,info("برای نصب فعلی روی همین لپ‌تاپ، آدرس داخل Docker معمولاً http://host.docker.internal:84 و Workspace برابر workflow است. توکن باید access_token خروجی OAuth2 باشد."));
  for(const [title,name,value] of specs)append(f,field(title,name,value||"",{secret:name==="bearer_token"}));
+
+ const tokenHelp=panel("دریافت یا تمدید توکن OAuth2",
+  "این آدرس‌ها برای ProcessMaker 3.x ساخته می‌شوند. Client Secret و رمز کاربر را داخل آوان ذخیره نکنید؛ فقط access_token نهایی در فیلد بالا قرار می‌گیرد.");
+ tokenHelp.classList.add("token-helper");
+ const oauthApps=node("div","token-helper-row"),tokenEndpoint=node("div","token-helper-row");
+ const browserBase=()=>{
+   const raw=formValue(f,"base_url")||"http://host.docker.internal:84";
+   return raw.replace("host.docker.internal","127.0.0.1").replace(/\/+$/,"");
+ };
+ const workspace=()=>formValue(f,"workspace")||"workflow";
+ const appsUrl=()=>browserBase()+"/sys"+encodeURIComponent(workspace())+"/en/neoclassic/oauth2/applications";
+ const tokenUrl=()=>browserBase()+"/"+encodeURIComponent(workspace())+"/oauth2/token";
+ function tokenRow(parent,title,getValue){
+   const text=node("div","token-helper-value");
+   const refresh=()=>{text.textContent=getValue()};
+   refresh();
+   append(parent,node("strong","",title),text,copyTextButton("کپی",getValue));
+   f.addEventListener("input",refresh);
+ }
+ tokenRow(oauthApps,"OAuth2 Applications",appsUrl);
+ tokenRow(tokenEndpoint,"Token Endpoint",tokenUrl);
+ append(tokenHelp,oauthApps,tokenEndpoint);
+
+ const command=node("pre","token-command");
+ const refreshCommand=()=>{
+   const url=tokenUrl();
+   command.textContent=[
+    "$body = @{",
+    "  grant_type   = 'password'",
+    "  scope        = '*'",
+    "  client_id    = '<CLIENT_ID>'",
+    "  client_secret= '<CLIENT_SECRET>'",
+    "  username     = '<PROCESSMAKER_USERNAME>'",
+    "  password     = '<PROCESSMAKER_PASSWORD>'",
+    "}",
+    "$token = Invoke-RestMethod -Method Post -Uri '"+url+"' -Body $body",
+    "$token | Format-List access_token,expires_in,refresh_token",
+    "$token.access_token"
+   ].join("\n");
+ };
+ refreshCommand();f.addEventListener("input",refreshCommand);
+ append(tokenHelp,node("p","hint","PowerShell برای گرفتن توکن تازه با Password Grant:"),command,
+   copyTextButton("کپی دستور PowerShell",()=>command.textContent),
+   info("اگر refresh_token قبلی را داری، همان Token Endpoint را با grant_type=refresh_token، client_id، client_secret و refresh_token صدا بزن. بعد از Refresh، refresh_token جدید خروجی را جایگزین قبلی کن."));
+
  const out=node("div","full"),actions=node("div","actions full");
  async function run(mode){
   const body={};for(const [,name] of specs)body[name]=formValue(f,name);
@@ -842,7 +928,7 @@ function renderPm(m,config){
  }
  append(actions,btn("بررسی اتصال",()=>run("check"),"secondary"),
    btn("ذخیره تنظیمات",()=>run("save")));
- append(f,actions,out);append(p,f);append(m,p);
+ append(f,actions,out);append(p,tokenHelp,f);append(m,p);
 }
 async function renderLicense(m,settings){
  const p=panel("شناسه نصب و مجوز نرم‌افزار",
