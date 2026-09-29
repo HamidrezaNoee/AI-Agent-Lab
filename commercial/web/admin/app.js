@@ -385,7 +385,7 @@ function showLogin(){
     const result=await api("login",{username:formValue(f,"username"),
       password:formValue(f,"password"),captcha_token:captchaToken});
     if(result.mfa_required){showLoginOtp(result.challenge);return}
-    state.csrf=result.csrf;await start()
+    state.csrf=result.csrf;window.location.assign("/")
   }catch(err){showError(out,err);captcha?.reset()}finally{
    busyLogin=false;busy(f,false);
    if(captcha&&!captcha.token())loginBtn.disabled=true;
@@ -470,7 +470,7 @@ function showLoginOtp(challenge){
   try{
     const animated=await code.complete();if(!animated)return;
     const result=await api("login/otp",{challenge,otp});
-    state.csrf=result.csrf;await start()
+    state.csrf=result.csrf;window.location.assign("/")
   }catch(err){
     code.reset(true);showError(out,err);code.input.focus()
   }finally{submitting=false;busy(f,false)}
