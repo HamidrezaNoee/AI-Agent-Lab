@@ -127,7 +127,9 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/api/settings").status_code,200)
         me=self.client.get("/api/me").json()
         self.assertTrue(me["is_godadmin"])
+        self.assertTrue(me["workspace_navigation"])
         self.assertFalse(me["workspace_access"])
+        self.assertTrue(me["workspace_degraded"])
         self.assertEqual(self.client.get("/api/meetings").status_code,403)
         workspace=self.client.get("/",follow_redirects=False)
         self.assertEqual(workspace.status_code,200)
@@ -135,6 +137,9 @@ class UnifiedGodAdminTests(unittest.TestCase):
         admin_page=self.client.get("/admin/?embedded=1",follow_redirects=False)
         self.assertEqual(admin_page.status_code,200)
         self.assertEqual(admin_page.headers["x-frame-options"],"SAMEORIGIN")
+        top_level_admin=self.client.get("/admin/",follow_redirects=False)
+        self.assertEqual(top_level_admin.status_code,303)
+        self.assertEqual(top_level_admin.headers["location"],"/")
         self.assertEqual(self.client.post("/admin/api/bpms/connections/enabled",
                          json={"source_id":"a"*24,"enabled":False}).status_code,403)
         setup.put_setting("mysql",{"host":"database.example.com"})
@@ -177,7 +182,9 @@ class UnifiedGodAdminTests(unittest.TestCase):
         with patch.object(app,"_store_response",return_value=scope):
             me=self.client.get("/api/me").json()
         self.assertTrue(me["is_godadmin"])
+        self.assertTrue(me["workspace_navigation"])
         self.assertTrue(me["workspace_access"])
+        self.assertFalse(me["workspace_degraded"])
         self.assertEqual(me["role"],"Manager")
         self.assertEqual(me["modules"],[1,2,3,4])
 
