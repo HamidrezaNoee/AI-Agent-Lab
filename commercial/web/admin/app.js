@@ -1,3 +1,4 @@
+if(new URLSearchParams(window.location.search).get("embedded")==="1"){document.body.classList.add("admin-embedded");}
 "use strict";
 const state={csrf:null,user:null,settings:null,stage:"login",page:"connections",authMode:"bootstrap"};
 const $=id=>document.getElementById(id);
