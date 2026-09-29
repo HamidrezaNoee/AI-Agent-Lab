@@ -20,7 +20,7 @@ const server=http.createServer((req,res)=>{
  const answer={conversation_id:'conversation1',turn_id:'turn1',model:'test',meetings_considered:12,actions_considered:40,claims:[{text:'واحد لجستیک پنج اقدام باز دارد.',kind:'fact',sources:['T:1']},{text:'تمرکز تأخیر در ترخیص نیازمند بررسی است.',kind:'analysis',sources:['T:1']},{text:'در جلسه آینده رفع مانع مجوز بررسی شود.',kind:'recommendation',sources:['T:1']}],evidence:[{id:'T:1',title:'گزارش اقدامات',result:{metrics:{total:8,open:5,closed:3,overdue:2}}}],notes:[],coverage_complete:true,as_of_utc:'2026-09-22'};
  await page.route('**/api/**',async route=>{
   const path=new URL(route.request().url()).pathname,method=route.request().method();let data={};
-  if(path==='/api/me')data={name:'کاربر کنترل کیفیت',company:'سازمان',role:'SysAdmin',department:'مدیریت',csrf:'test',modules:[1,2,3,4]};
+  if(path==='/api/me')data={name:'کاربر کنترل کیفیت',company:'سازمان',role:'SysAdmin',department:'مدیریت',csrf:'test',modules:[1,2,3,4],workspace_access:true,is_godadmin:true};
   else if(path==='/api/meetings')data={meetings:[{meeting_id:1,meeting_no:'1001',title:'پیگیری ترخیص خودرو',meeting_status:'Open',meeting_date_utc:'2026-09-20'}],has_more:false};
   else if(path==='/api/meetings/1')data={meeting_id:1,meeting_no:'1001',title:'پیگیری ترخیص خودرو',meeting_date_utc:'2026-09-20',actions:[]};
   else if(path==='/api/questions')data={questions:['عملکرد واحدها در اجرای مصوبات چگونه بوده است؟']};
@@ -72,8 +72,13 @@ const server=http.createServer((req,res)=>{
  const csv=page.waitForEvent('download');await page.getByRole('button',{name:'دریافت CSV فرایندها'}).click();await csv;
  await page.setViewportSize({width:390,height:844});
  if(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2))throw Error('Mobile horizontal overflow');
- await page.goto(origin+'/admin/');await page.getByRole('button',{name:'هوش مصنوعی',exact:true}).click();
- await page.locator('input[name=api_key]').fill('private-test-value');await page.getByRole('button',{name:'ذخیره تنظیمات',exact:true}).click();await page.getByText('تنظیمات ذخیره شد.',{exact:true}).waitFor();
- if(await page.locator('input[name=api_key]').inputValue())throw Error('Key not cleared');
- await browser.close();server.close();if(errors.length)throw Error(errors.join('\n'));console.log('UI PASS: saved chat, grounded answer, voice upload, draft edit/version/approve/export/reopen, durable monitor/ack, BI charts/CSV, mobile layout, admin settings');
+ await page.setViewportSize({width:1400,height:1000});
+ await page.locator('[data-page=system-management]').click();
+ const adminFrame=page.frameLocator('.system-admin-frame');
+ await adminFrame.getByRole('button',{name:'هوش مصنوعی',exact:true}).click();
+ await adminFrame.locator('input[name=api_key]').fill('private-test-value');
+ await adminFrame.getByRole('button',{name:'ذخیره تنظیمات',exact:true}).click();
+ await adminFrame.getByText('تنظیمات ذخیره شد.',{exact:true}).waitFor();
+ if(await adminFrame.locator('input[name=api_key]').inputValue())throw Error('Key not cleared');
+ await browser.close();server.close();if(errors.length)throw Error(errors.join('\n'));console.log('UI PASS: organization workspace, saved chat, grounded answer, voice upload, draft lifecycle, monitor, BI, mobile layout, unified side-menu system management');
 })().catch(e=>{console.error(e);server.close();process.exit(1)});
