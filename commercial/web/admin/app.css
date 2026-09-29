@@ -535,3 +535,13 @@ body.avan-admin.admin-embedded:has(.panel.login){background:#0c2537 url('/assets
  .token-helper-row{grid-template-columns:1fr}
  .token-helper-row button{justify-self:start}
 }
+
+
+.pm-oauth-status{box-shadow:none;margin:10px 0 18px}
+.pm-oauth-form{margin-top:18px}
+.pm-manual-token{
+ margin-top:18px;border:1px solid var(--line,var(--border));border-radius:13px;
+ background:var(--surface-soft,#f7fafc);padding:11px 15px;
+}
+.pm-manual-token>summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--subtle,#546b80);line-height:1.9}
+.pm-manual-token>form{margin-top:13px}
