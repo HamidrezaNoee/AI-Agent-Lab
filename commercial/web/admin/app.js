@@ -647,21 +647,7 @@ async function showSettings(page=state.page){
  tabs.setAttribute("aria-label","بخش‌های تنظیمات");
  for(const [code,title] of menu){const item=btn(title,()=>{state.bpmsEdit=null;showSettings(code)},state.page===code?"active":"");
    if(code===page)item.setAttribute("aria-current","page");append(tabs,item)}
- append(tabs,btn("خروج امن",async()=>{
-   if(state.authMode==="oidc"){
-    try{
-     const response=await fetch("/auth/logout",{method:"POST",credentials:"same-origin",
-       headers:{"X-AVAN-CSRF":state.csrf,"Accept":"application/json"}});
-     if(!response.ok)throw Error("خروج انجام نشد؛ دوباره تلاش کنید.");
-     const result=await response.json();state.csrf=null;
-     try{localStorage.setItem("avan-logout",String(Date.now()))}catch(_){}
-     window.location.assign(result.logout_url||"/auth/signed-out");
-    }catch(err){append(m,info(err.message,true))}
-   }else{
-    try{await api("logout",{});state.csrf=null;await start()}
-    catch(err){append(m,info(err.message,true))}
-   }
- },"secondary"));append(m,tabs);
+ append(m,tabs);
 
  if(page==="connections"){
   const guide=settingsGuide("connections");if(guide)append(m,guide);
@@ -681,11 +667,6 @@ function connectionItem(name,description,status,actions){
  append(text,node("strong","",name),node("p","hint",description));
  append(header,text,node("span","connection-pill "+(status.active?"is-active":"is-off"),status.label));
  append(row,header,actions);return row;
-}
-function verifyConnection(button,out,path,description){
- button.disabled=true;out.replaceChildren();
- return api(path,{}).then(()=>out.replaceChildren(info("ارتباط «"+description+"» بررسی شد.")))
-  .catch(err=>showError(out,err)).finally(()=>{button.disabled=false});
 }
 function bpmsConnectionRow(source,returnPage){
  const actions=node("div","connection-actions"),out=node("div","full connection-feedback");
