@@ -80,12 +80,14 @@ async def security_headers(request:Request,call_next):
     response=await call_next(request)
     response.headers["Cache-Control"]="no-store"
     response.headers["X-Content-Type-Options"]="nosniff"
-    response.headers["X-Frame-Options"]="DENY"
+    embedded_admin=request.url.path.startswith("/admin/")
+    response.headers["X-Frame-Options"]="SAMEORIGIN" if embedded_admin else "DENY"
     response.headers["Referrer-Policy"]="no-referrer"
     response.headers["Content-Security-Policy"]=(
         "default-src 'none'; script-src 'self'; style-src 'self'; "
         "connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; font-src 'self'; "
-        "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+        "form-action 'self'; base-uri 'none'; frame-ancestors "
+        + ("'self'" if embedded_admin else "'none'")
     )
     return response
 
@@ -488,10 +490,10 @@ def _authorized(request:Request):
     value=_principal_for_request(request)
     if not godadmin_identity():
         raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
-    from .setup_console import is_godadmin
-    if is_godadmin(value[2]):
-        raise HTTPException(status_code=403,
-                            detail="نقش GodAdmin مجوز مشاهده داده‌های مشتری را ندارد.")
+    # GodAdmin is a platform capability, not an automatic data entitlement.
+    # Organization routes still pass through verified_scope(), so a GodAdmin
+    # account sees customer data only when it is also explicitly mapped as an
+    # active licensed organization user.
     return value
 
 
@@ -508,10 +510,6 @@ def _csrf(request:Request):
     origin=request.headers.get("origin")
     if origin and origin!=_public_origin():
         raise HTTPException(status_code=403,detail="منشأ درخواست مجاز نیست.")
-    from .setup_console import is_godadmin
-    if request.url.path!="/auth/heartbeat" and is_godadmin(principal):
-        raise HTTPException(status_code=403,
-                            detail="GodAdmin به گزارش‌های سازمانی دسترسی ندارد.")
     return sid,value,principal
 
 
@@ -565,14 +563,21 @@ def current_user(value=Depends(_principal_for_request)):
     from .setup_console import get_setting,is_godadmin,godadmin_identity
     if not godadmin_identity():
         raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
-    if is_godadmin(principal):
-        company=get_setting("company") or {}
-        return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
-                "role":"GodAdmin","department":"مدیریت سامانه",
-                "csrf":session["csrf"],"subject":principal.subject,
-                "modules":[1,3],"is_godadmin":True,
-                "license_expires_at":None,"license_mode":"platform"}
-    scope=_store_response(lambda con,scope:scope,principal)
+    godadmin=is_godadmin(principal)
+    if godadmin:
+        try:
+            scope=_store_response(lambda con,scope:scope,principal)
+        except HTTPException:
+            scope=None
+        if scope is None:
+            company=get_setting("company") or {}
+            return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
+                    "role":"GodAdmin","department":"مدیریت سامانه",
+                    "csrf":session["csrf"],"subject":principal.subject,
+                    "modules":[1,3],"is_godadmin":True,"workspace_access":False,
+                    "license_expires_at":None,"license_mode":"platform"}
+    else:
+        scope=_store_response(lambda con,scope:scope,principal)
     license_data=scope["license"]
     return {"name":scope["name"],"company":scope["company"],
             "role":scope["role"],"department":scope["department"],
@@ -580,7 +585,7 @@ def current_user(value=Depends(_principal_for_request)):
             "modules":sorted(license_data["modules"]),
             "license_expires_at":license_data["expires_at"],
             "license_mode":license_data.get("mode", "licensed"),
-            "is_godadmin":False}
+            "is_godadmin":godadmin,"workspace_access":True}
 
 
 @app.get("/api/questions")
