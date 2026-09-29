@@ -621,7 +621,7 @@ class PMOAuthConnect(BaseModel):
     base_url:str=Field(min_length=12,max_length=500)
     workspace:str=Field(min_length=1,max_length=48)
     client_id:str=Field(min_length=1,max_length=256)
-    client_secret:str=Field(min_length=1,max_length=4096)
+    client_secret:str=Field(default="",max_length=4096)
     username:str=Field(min_length=1,max_length=160)
     password:str=Field(min_length=1,max_length=512)
 
@@ -792,16 +792,26 @@ def pm_save(body:PMConfig,session=Depends(_ready)):
 
 @router.post("/api/processmaker/oauth-connect")
 def pm_oauth_connect(body:PMOAuthConnect,session=Depends(_ready)):
+    client_secret=body.client_secret.strip()
+    if not client_secret:
+        previous=setup.get_setting("processmaker") or {}
+        same=(str(previous.get("base_url","")).rstrip("/")==body.base_url.rstrip("/") and
+              previous.get("workspace")==body.workspace and
+              previous.get("oauth_client_id")==body.client_id)
+        if same:
+            client_secret=str(previous.get("oauth_client_secret") or "")
+    if not client_secret:
+        raise HTTPException(422,"Client Secret لازم است؛ فقط برای اتصال OAuth قبلی با همین Client ID می‌تواند خالی بماند.")
     tokens=_pm_oauth_token(body.base_url,body.workspace,{
         "grant_type":"password",
         "scope":"*",
         "client_id":body.client_id,
-        "client_secret":body.client_secret,
+        "client_secret":client_secret,
         "username":body.username,
         "password":body.password,
     })
     config=_pm_managed_config(body.base_url,body.workspace,
-                              body.client_id,body.client_secret,tokens)
+                              body.client_id,client_secret,tokens)
     _pm_directory_check(config["base_url"],config["workspace"],config["bearer_token"])
     setup.put_setting("processmaker",config)
     setup.audit("PROCESSMAKER_OAUTH_CONNECTED")
