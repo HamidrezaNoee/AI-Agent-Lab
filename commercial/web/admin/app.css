@@ -545,3 +545,30 @@ body.avan-admin.admin-embedded:has(.panel.login){background:#0c2537 url('/assets
 }
 .pm-manual-token>summary{cursor:pointer;font-size:12px;font-weight:700;color:var(--subtle,#546b80);line-height:1.9}
 .pm-manual-token>form{margin-top:13px}
+
+
+/* Clean management information architecture. */
+.settings-subnav{
+ display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 16px;padding:8px;
+ border:1px solid var(--line,var(--border));border-radius:13px;
+ background:var(--surface-soft,#f7fafc);
+}
+.settings-subnav button{
+ min-height:36px;padding:8px 14px;border-radius:10px;font-size:11px;
+}
+.settings-subnav button.active{
+ background:linear-gradient(180deg,#20d7c7,#13b6aa)!important;
+ border-color:#39dfd1!important;color:#062d32!important;
+ box-shadow:0 6px 18px rgba(24,197,181,.15);
+}
+.status-only-list .connection-card{margin-top:10px}
+.status-only-list .connection-actions{justify-content:flex-start}
+.settings-clean-note{
+ margin-top:16px;padding:13px 15px;border:1px dashed var(--line,var(--border));
+ border-radius:12px;background:var(--surface-soft,#f7fafc);
+}
+.settings-clean-note strong{display:block;margin-bottom:4px;font-size:12px}
+@media(max-width:700px){
+ .settings-subnav{display:grid;grid-template-columns:1fr 1fr}
+ .settings-subnav button{width:100%}
+}
