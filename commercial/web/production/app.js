@@ -16,7 +16,12 @@ async function request(url,options={}){
  if(options.method==="POST" && app.csrf)headers["X-AVAN-CSRF"]=app.csrf;
  const {background,...fetchOptions}=options;
  const response=await fetch(url,{...fetchOptions,headers,credentials:"same-origin",cache:"no-store",redirect:"error"});
- if(response.status===401){sessionExpired();throw Error("نشست سازمانی پایان یافته است. دوباره وارد شوید.")}
+ if(response.status===401){
+   if(app.user?.bootstrap_mode && url!=="/api/me" && url.startsWith("/api/")){
+     throw Error("هویت سازمانی GodAdmin هنوز متصل نشده است؛ این بخش فعلاً در حالت محدود نمایش داده می‌شود.");
+   }
+   sessionExpired();throw Error("نشست سازمانی پایان یافته است. دوباره وارد شوید.")
+ }
  if(!response.ok){
    let message="دریافت اطلاعات با خطا مواجه شد.";
    try{const e=await response.json();if(typeof e.detail==="string")message=e.detail}catch{}
@@ -26,13 +31,14 @@ async function request(url,options={}){
 }
 function cleanMedia(){for(const fn of app.cleanup.splice(0)){try{fn()}catch{}}}
 function sessionExpired(){
+ const wasBootstrap=!!app.user?.bootstrap_mode;
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  if(app.idleTimer){clearTimeout(app.idleTimer);app.idleTimer=null}
  app.user=null;app.csrf=null;$("nav").hidden=true;$("logout").hidden=true;$("admin-entry").hidden=true;
  document.body.classList.add("auth-screen");
  const m=root(),login=el("section","login-card"),a=el("a","button primary","ورود امن به فضای کار ←");
- a.href="/auth/login";
+ a.href=wasBootstrap?"/admin/":"/auth/login";
  add(login,el("span","eyebrow","AVAN · INTELLIGENT WORKSPACE"),
   el("h1","","هوش جلسات در کنار تصمیم‌های شما"),
   el("p","","برای ادامه، با حساب سازمانی خود وارد شوید. زمان نشست پس از ده دقیقه بی‌فعالیتی پایان می‌یابد."),a);
@@ -85,7 +91,11 @@ function recordActivity(){
  app.idleTimer=setTimeout(signOut,600000);
  if(Date.now()-app.lastHeartbeat<60000)return;
  app.lastHeartbeat=Date.now();
- request("/auth/heartbeat",{method:"POST"}).catch(()=>{});
+ if(app.user.bootstrap_mode){
+  fetch("/admin/api/heartbeat",{credentials:"same-origin",cache:"no-store"}).catch(()=>{});
+ }else{
+  request("/auth/heartbeat",{method:"POST"}).catch(()=>{});
+ }
 }
 for(const eventName of ["pointerdown","keydown","touchstart"]){
  document.addEventListener(eventName,recordActivity,{passive:true});
