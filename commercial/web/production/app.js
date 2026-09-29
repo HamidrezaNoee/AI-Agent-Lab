@@ -42,14 +42,17 @@ function statusName(value){return {TO_DO:"در جریان",COMPLETED:"تکمیل
 function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم",GodAdmin:"مدیر کل سامانه"}[role]||role}
 function setupUser(user){
  app.user=user;app.csrf=user.csrf;$("nav").hidden=false;
- $("pm-nav").hidden=!user.workspace_access;
+ const workspaceNavigation=user.workspace_navigation!==undefined?!!user.workspace_navigation:!!user.workspace_access;
+ $("pm-nav").hidden=!workspaceNavigation;
  $("platform-nav").hidden=!user.is_godadmin;
  $("admin-nav").hidden=!user.is_godadmin;
  $("admin-entry").hidden=true;$("logout").hidden=false;
  document.body.classList.remove("auth-screen");
  $("person-name").textContent=user.name+" · "+titleCase(user.role);
  $("company-name").textContent=user.company;
- $("company-sub").textContent=user.department||"مدیریت جلسات";
+ $("company-sub").textContent=user.workspace_degraded
+   ?(user.department||"مدیریت سامانه")+" · اتصال سازمانی نیازمند بررسی"
+   :(user.department||"مدیریت جلسات");
  $("logout").onclick=signOut;
  recordActivity();
  document.querySelectorAll("#nav button").forEach(b=>b.addEventListener("click",()=>select(b.dataset.page)));
@@ -84,7 +87,8 @@ function select(page){
  const orgPage=!platformPage&&!adminPage;
  if(platformPage&&!app.user?.is_godadmin)return;
  if(adminPage&&!app.user?.is_godadmin)return;
- if(orgPage&&!app.user?.workspace_access)return;
+ const workspaceNavigation=app.user?.workspace_navigation!==undefined?!!app.user.workspace_navigation:!!app.user?.workspace_access;
+ if(orgPage&&!workspaceNavigation)return;
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
@@ -93,7 +97,18 @@ function select(page){
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
  const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
- if(work)work().catch(err=>{const target=root();add(target,note(err.message,true))});
+ if(work)work().catch(err=>{
+  const target=root();
+  if(orgPage&&app.user?.is_godadmin){
+   heading(target,labels[page]||"فضای کاری سازمان","این بخش در Workspace باقی می‌ماند؛ اختلال منبع داده باعث انتقال به تنظیمات نمی‌شود.");
+   add(target,note(err.message||"منبع داده سازمانی موقتاً در دسترس نیست.",true));
+   const actions=el("div","flex");
+   add(actions,
+     link("تلاش دوباره",()=>select(page),"button primary"),
+     link("مدیریت سامانه",()=>select("system-management"),"button secondary"));
+   add(target,actions);
+  }else add(target,note(err.message,true));
+ });
 }
 async function fetchMeetings(cursor=null){
  const url="/api/meetings?limit=30"+(cursor!==null?"&cursor="+encodeURIComponent(cursor):"");
@@ -189,7 +204,8 @@ async function askQuestion(question){
 async function init(){
  try{
   const user=await request("/api/me");setupUser(user);
-  if(user.workspace_access)select("overview");
+  const workspaceNavigation=user.workspace_navigation!==undefined?!!user.workspace_navigation:!!user.workspace_access;
+  if(workspaceNavigation)select("overview");
   else if(user.is_godadmin)select("platform-overview");
   else select("overview");
  }
