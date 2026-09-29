@@ -104,6 +104,14 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertFalse(app.sessions)
         signed=self.bootstrap_login(rotated,code)
         self.assertEqual(signed.status_code,200)
+        bootstrap_workspace=self.client.get("/",follow_redirects=False)
+        self.assertEqual(bootstrap_workspace.status_code,200)
+        bootstrap_me=self.client.get("/api/me").json()
+        self.assertTrue(bootstrap_me["bootstrap_mode"])
+        self.assertTrue(bootstrap_me["is_godadmin"])
+        self.assertTrue(bootstrap_me["workspace_navigation"])
+        self.assertFalse(bootstrap_me["workspace_access"])
+        self.assertFalse(bootstrap_me["platform_access"])
         csrf={"X-AVAN-ADMIN-CSRF":signed.json()["csrf"]}
         payload={"tenant_id":TENANT,"subject":"operator","otp":"000000"}
         self.assertEqual(self.client.post("/admin/api/identity/bind-godadmin",
