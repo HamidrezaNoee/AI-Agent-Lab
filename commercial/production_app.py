@@ -574,7 +574,9 @@ def current_user(value=Depends(_principal_for_request)):
             return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
                     "role":"GodAdmin","department":"مدیریت سامانه",
                     "csrf":session["csrf"],"subject":principal.subject,
-                    "modules":[1,3],"is_godadmin":True,"workspace_access":False,
+                    "modules":[1,3],"is_godadmin":True,
+                    "workspace_navigation":True,"workspace_access":False,
+                    "workspace_degraded":True,
                     "license_expires_at":None,"license_mode":"platform"}
     else:
         scope=_store_response(lambda con,scope:scope,principal)
@@ -585,7 +587,8 @@ def current_user(value=Depends(_principal_for_request)):
             "modules":sorted(license_data["modules"]),
             "license_expires_at":license_data["expires_at"],
             "license_mode":license_data.get("mode", "licensed"),
-            "is_godadmin":godadmin,"workspace_access":True}
+            "is_godadmin":godadmin,"workspace_navigation":True,
+            "workspace_access":True,"workspace_degraded":False}
 
 
 @app.get("/api/questions")
