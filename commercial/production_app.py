@@ -86,7 +86,7 @@ async def security_headers(request:Request,call_next):
     response.headers["Content-Security-Policy"]=(
         "default-src 'none'; script-src 'self'; style-src 'self'; "
         "connect-src 'self'; media-src 'self' blob:; img-src 'self' data:; font-src 'self'; "
-        "form-action 'self'; base-uri 'none'; frame-ancestors "
+        "frame-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors "
         + ("'self'" if embedded_admin else "'none'")
     )
     return response
