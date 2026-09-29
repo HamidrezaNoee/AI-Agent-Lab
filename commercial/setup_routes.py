@@ -166,7 +166,7 @@ def captcha_config(request:Request):
         raise HTTPException(503,"سرویس ضدربات داخلی آوان در دسترس نیست.")
 
 @router.get("/api/state")
-def state(request:Request):
+def state(request:Request,response:Response):
     _local(request)
     _prune()
     bound=bool(setup.godadmin_identity())
@@ -176,7 +176,12 @@ def state(request:Request):
         except HTTPException:
             session=None
     else:
-        session=_sessions.get(request.cookies.get("avan_godadmin",""))
+        sid=request.cookies.get("avan_godadmin","")
+        session=_sessions.get(sid)
+        if session and sid:
+            # Transparent migration for browsers that still hold the legacy
+            # /admin-scoped cookie from older AVAN builds.
+            _cookie(response,sid)
     p=setup.password_state()
     return {"authenticated":bool(session),"password_changed":p["changed"],
             "mfa_enrolled":p["totp"],
