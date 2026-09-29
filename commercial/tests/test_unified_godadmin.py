@@ -104,6 +104,9 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertFalse(app.sessions)
         signed=self.bootstrap_login(rotated,code)
         self.assertEqual(signed.status_code,200)
+        set_cookies=signed.headers.get_list("set-cookie")
+        self.assertTrue(any("avan_godadmin=" in item and "Path=/" in item and "Max-Age=1800" in item
+                            for item in set_cookies))
         bootstrap_workspace=self.client.get("/",follow_redirects=False)
         self.assertEqual(bootstrap_workspace.status_code,200)
         bootstrap_me=self.client.get("/api/me").json()
