@@ -17,24 +17,30 @@
    <div class="company"><span class="status-dot"></span><div><strong id="company-name">سازمان</strong><small id="company-sub">اطلاعات جلسات و مصوبات</small></div></div>
    <nav id="nav" aria-label="بخش‌های برنامه" hidden>
     <div id="pm-nav">
-    <button type="button" data-page="overview" class="active">◫ &nbsp; نمای کلی</button>
-    <button type="button" data-page="meetings">▤ &nbsp; جلسات و مصوبات</button>
-    <button type="button" data-page="assistant">✦ &nbsp; دستیار مدیریتی</button>
-    <button type="button" data-page="bi">▦ &nbsp; BI همه فرایندها</button>
-    <button type="button" data-page="reports">▥ &nbsp; گزارش اقدامات</button>
-    <button type="button" data-page="secretary">▧ &nbsp; دبیر هوشمند</button>
-    <button type="button" data-page="monitor">◷ &nbsp; هشدار و پیگیری</button>
+     <span class="nav-section-title">فضای کاری سازمان</span>
+     <button type="button" data-page="overview" class="active">◫ &nbsp; نمای کلی</button>
+     <button type="button" data-page="meetings">▤ &nbsp; جلسات و مصوبات</button>
+     <button type="button" data-page="assistant">✦ &nbsp; دستیار مدیریتی</button>
+     <button type="button" data-page="bi">▦ &nbsp; BI همه فرایندها</button>
+     <button type="button" data-page="reports">▥ &nbsp; گزارش اقدامات</button>
+     <button type="button" data-page="secretary">▧ &nbsp; دبیر هوشمند</button>
+     <button type="button" data-page="monitor">◷ &nbsp; هشدار و پیگیری</button>
     </div>
     <div id="platform-nav" hidden>
+     <span class="nav-section-title">پلتفرم آوان</span>
      <button type="button" data-page="platform-overview">◫ &nbsp; نمای کلی پلتفرم</button>
      <button type="button" data-page="platform-assistant">✦ &nbsp; دستیار پلتفرم</button>
      <button type="button" data-page="platform-bi">▦ &nbsp; گزارش BPMSها</button>
+    </div>
+    <div id="admin-nav" hidden>
+     <span class="nav-section-title">سامانه</span>
+     <button type="button" data-page="system-management" class="system-management-nav">⚙ &nbsp; مدیریت سامانه</button>
     </div>
    </nav>
    <p class="sidebar-foot">اطلاعات براساس سطح دسترسی حساب سازمانی نمایش داده می‌شود.</p>
   </aside>
   <div class="workspace">
-   <header class="topbar"><span id="breadcrumb">آوان</span><div class="top-user"><label class="theme-control" for="theme-choice">پوسته <select id="theme-choice" aria-label="انتخاب پوسته"><option value="light">روشن</option><option value="dark">تیره</option><option value="green">سبز</option><option value="blue">آبی</option><option value="red">ایران رور</option></select></label><a href="/admin/" id="admin-entry" class="admin-entry" aria-label="ورود به تنظیمات GodAdmin" hidden>⚙ تنظیمات GodAdmin</a><span id="person-name">ورود سازمانی</span><button type="button" id="logout" class="link-button" hidden>خروج</button></div></header>
+   <header class="topbar"><span id="breadcrumb">آوان</span><div class="top-user"><label class="theme-control" for="theme-choice">پوسته <select id="theme-choice" aria-label="انتخاب پوسته"><option value="light">روشن</option><option value="dark">تیره</option><option value="green">سبز</option><option value="blue">آبی</option><option value="red">ایران رور</option></select></label><span id="admin-entry" hidden></span><span id="person-name">ورود سازمانی</span><button type="button" id="logout" class="link-button" hidden>خروج</button></div></header>
    <main id="main"><section class="login-card"><span class="eyebrow">AVAN · INTELLIGENT WORKSPACE</span><h1>تصمیم‌های بهتر، با هوش جلسات شما</h1><p>مصوبات را پیگیری کنید، از داده‌های مجاز سازمان سؤال بپرسید و برای جلسهٔ بعد با شناخت روشن‌تری آماده شوید.</p><div class="login-chips"><span>✦ دستیار مدیریتی</span><span>▦ تحلیل جلسات</span><span>◷ پایش اقدامات</span></div><a class="button primary" href="/auth/login">ورود امن به فضای کار ←</a></section></main>
    <footer>آوان · اطلاعات فقط براساس مجوزهای سازمانی و وضعیت جاری ثبت‌شده نمایش داده می‌شوند.</footer>
   </div>
