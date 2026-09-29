@@ -238,8 +238,9 @@ def login(request:Request,body:Login):
         challenge=secrets.token_urlsafe(48)
         _pending_mfa[challenge]={"remote":remote,"expires":time.time()+120,"tries":0}
         response=JSONResponse({"mfa_required":True,"challenge":challenge})
-        if existing:response.delete_cookie("avan_godadmin",path="/")
-    response.delete_cookie("avan_godadmin",path="/admin")
+        if existing:
+            response.delete_cookie("avan_godadmin",path="/")
+            response.delete_cookie("avan_godadmin",path="/admin")
         return response
     attempts.clear()
     return _complete_bootstrap_login(False)
