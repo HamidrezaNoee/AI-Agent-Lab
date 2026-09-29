@@ -81,7 +81,7 @@ def _prune():
 def _cookie(response,token:str):
     secure=os.getenv("AVAN_ADMIN_ORIGIN","http://127.0.0.1:8188").startswith("https://")
     response.set_cookie("avan_godadmin",token,httponly=True,secure=secure,
-                        samesite="strict",path="/admin",max_age=1800)
+                        samesite="strict",path="/",max_age=1800)
 
 def _turnstile_check(token:str,remote:str)->bool:
     from .turnstile import verify
@@ -113,6 +113,26 @@ def _ready(request:Request):
     if not state["changed"] or not state["totp"] or not row.get("mfa"):
         raise HTTPException(403,"ابتدا رمز اولیه را تغییر دهید و احراز هویت دومرحله‌ای را فعال کنید.")
     return sid,row
+
+def bootstrap_workspace_session(request:Request):
+    """Return a fully-MFA bootstrap GodAdmin session for the unified shell.
+
+    This grants system-management navigation only. It never creates an
+    organizational Principal and therefore cannot authorize customer data.
+    """
+    if setup.godadmin_identity():
+        return None
+    _local(request);_prune()
+    sid=request.cookies.get("avan_godadmin","")
+    row=_sessions.get(sid)
+    if not row:
+        return None
+    state=setup.password_state()
+    if not state["changed"] or not state["totp"] or not row.get("mfa"):
+        return None
+    row["expires"]=time.time()+1800
+    return sid,row
+
 
 
 @router.get("/")
@@ -214,7 +234,7 @@ def login(request:Request,body:Login):
         challenge=secrets.token_urlsafe(48)
         _pending_mfa[challenge]={"remote":remote,"expires":time.time()+120,"tries":0}
         response=JSONResponse({"mfa_required":True,"challenge":challenge})
-        if existing:response.delete_cookie("avan_godadmin",path="/admin")
+        if existing:response.delete_cookie("avan_godadmin",path="/")
         return response
     attempts.clear()
     return _complete_bootstrap_login(False)
@@ -261,7 +281,7 @@ def change_password(body:NewPassword,session=Depends(_required)):
     _sessions.clear()
     _pending_mfa.clear()
     response=JSONResponse({"password_changed":True,"login_again":True})
-    response.delete_cookie("avan_godadmin",path="/admin")
+    response.delete_cookie("avan_godadmin",path="/")
     return response
 
 def _totp_setup_payload(secret:str)->dict:
@@ -317,7 +337,7 @@ def totp_confirm(body:Totp,session=Depends(_required)):
     _sessions.clear()
     _pending_mfa.clear()
     response=JSONResponse({"mfa_enrolled":True,"login_again":True})
-    response.delete_cookie("avan_godadmin",path="/admin")
+    response.delete_cookie("avan_godadmin",path="/")
     return response
 
 @router.post("/api/logout")
@@ -327,7 +347,7 @@ def logout(session=Depends(_required)):
     sid,_=session
     _sessions.pop(sid,None)
     response=JSONResponse({"signed_out":True})
-    response.delete_cookie("avan_godadmin",path="/admin")
+    response.delete_cookie("avan_godadmin",path="/")
     return response
 
 @router.get("/api/settings")
@@ -401,7 +421,7 @@ def bind_godadmin(body:GodAdminBinding,session=Depends(_ready)):
     _sessions.clear()
     _pending_mfa.clear()
     response=JSONResponse({"bound":True,"login_url":"/auth/login"})
-    response.delete_cookie("avan_godadmin",path="/admin")
+    response.delete_cookie("avan_godadmin",path="/")
     return response
 
 class GodAdminAccount(BaseModel):
