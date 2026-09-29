@@ -1,5 +1,5 @@
-if(new URLSearchParams(window.location.search).get("embedded")==="1"){document.body.classList.add("admin-embedded");}
 "use strict";
+if(new URLSearchParams(window.location.search).get("embedded")==="1"){document.body.classList.add("admin-embedded");}
 const state={csrf:null,user:null,settings:null,stage:"login",page:"connections",authMode:"bootstrap"};
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n}
