@@ -118,6 +118,9 @@ def _ready(request:Request):
 @router.get("/")
 def admin_home(request:Request):
     _local(request)
+    if setup.godadmin_identity() and request.query_params.get("embedded")!="1":
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse("/",status_code=303)
     return FileResponse(WEB/"index.html",media_type="text/html; charset=utf-8")
 
 @router.get("/assets/app.css")
