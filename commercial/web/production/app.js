@@ -39,11 +39,13 @@ function sessionExpired(){
  add(m,login);
 }
 function statusName(value){return {TO_DO:"در جریان",COMPLETED:"تکمیل‌شده",DRAFT:"پیش‌نویس",CANCELLED:"لغوشده",PAUSED:"متوقف",Open:"باز",Closed:"بسته‌شده"}[value]||value}
-function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم"}[role]||role}
+function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم",GodAdmin:"مدیر کل سامانه"}[role]||role}
 function setupUser(user){
  app.user=user;app.csrf=user.csrf;$("nav").hidden=false;
- $("pm-nav").hidden=!!user.is_godadmin;$("platform-nav").hidden=!user.is_godadmin;
- $("admin-entry").hidden=!user.is_godadmin;$("logout").hidden=false;
+ $("pm-nav").hidden=!user.workspace_access;
+ $("platform-nav").hidden=!user.is_godadmin;
+ $("admin-nav").hidden=!user.is_godadmin;
+ $("admin-entry").hidden=true;$("logout").hidden=false;
  document.body.classList.remove("auth-screen");
  $("person-name").textContent=user.name+" · "+titleCase(user.role);
  $("company-name").textContent=user.company;
@@ -77,15 +79,20 @@ for(const eventName of ["pointerdown","keydown","touchstart"]){
 }
 window.addEventListener("storage",event=>{if(event.key==="avan-logout"&&app.user)sessionExpired()});
 function select(page){
- if(app.user?.is_godadmin?!page.startsWith("platform-"):page.startsWith("platform-"))return;
+ const platformPage=page.startsWith("platform-");
+ const adminPage=page==="system-management";
+ const orgPage=!platformPage&&!adminPage;
+ if(platformPage&&!app.user?.is_godadmin)return;
+ if(adminPage&&!app.user?.is_godadmin)return;
+ if(orgPage&&!app.user?.workspace_access)return;
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها"};
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
- const m=root();add(m,el("p","muted","در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI}[page];
+ const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
  if(work)work().catch(err=>{const target=root();add(target,note(err.message,true))});
 }
 async function fetchMeetings(cursor=null){
@@ -182,7 +189,9 @@ async function askQuestion(question){
 async function init(){
  try{
   const user=await request("/api/me");setupUser(user);
-  if(user.is_godadmin)select("platform-overview");else select("overview");
+  if(user.workspace_access)select("overview");
+  else if(user.is_godadmin)select("platform-overview");
+  else select("overview");
  }
  catch(err){
   if(err.message.includes("نشست سازمانی"))return;
@@ -193,12 +202,26 @@ async function init(){
 }
 document.addEventListener("DOMContentLoaded",init);
 
+async function systemManagement(){
+ if(!app.user?.is_godadmin)return;
+ const m=root();
+ heading(m,"مدیریت سامانه","تنظیمات، اتصال‌ها، کاربران، لایسنس و زیرساخت آوان در همان فضای کاری.");
+ const frameWrap=el("section","system-admin-shell");
+ const frame=el("iframe","system-admin-frame");
+ frame.src="/admin/?embedded=1";
+ frame.title="مدیریت سامانه آوان";
+ frame.setAttribute("loading","eager");
+ frame.setAttribute("referrerpolicy","same-origin");
+ frame.setAttribute("aria-label","مدیریت سامانه");
+ add(frameWrap,frame);add(m,frameWrap);
+}
+
 async function platformOverview(){
  const status=await request("/api/platform/status");if(app.page!=="platform-overview")return;
  const m=root();heading(m,"فضای کار GodAdmin","پیکربندی و استفاده از ابزارهای آوان و گزارش BPMSهای متصل.");
  const stats=el("div","stats");for(const [label,value] of [["BPMS متصل",status.sources.filter(s=>s.enabled).length],["دستیار هوشمند",status.enabled?"فعال":"نیازمند تنظیم"],["نقش",app.user.role]])add(stats,add(el("div","stat"),el("span","",label),el("strong","",value)));add(m,stats);
  const panel=card("ابزارهای کاری","گزارش هر BPMS از آداپتر خواندنی همان سامانه دریافت می‌شود.");
- const settings=el("a","button secondary","تنظیم اتصال‌ها ←");settings.href="/admin/";
+ const settings=link("مدیریت سامانه",()=>select("system-management"),"button secondary");
  add(panel,link("دستیار پلتفرم",()=>select("platform-assistant"),"button primary")," ",link("گزارش BPMSها",()=>select("platform-bi"))," ",settings);add(m,panel);
  if(!status.sources.some(s=>s.enabled))add(m,note("برای نمایش گزارش فرایندهای دیگر، یک مبدل AVAN REST v1 را در تنظیمات GodAdmin وصل کنید."));
 }
@@ -226,7 +249,7 @@ async function platformBI(){
  const status=await request("/api/platform/status");if(app.page!=="platform-bi")return;app.voiceEnabled=status.voice_enabled;
  const m=root();heading(m,"گزارش BPMSهای متصل","اطلاعات هر موتور فقط از آداپتر همان منبع و در دامنه سازمان تنظیم‌شده دریافت می‌شود.");
  const enabled=status.sources.filter(s=>s.enabled);
- if(!enabled.length){const settings=el("a","button primary","افزودن اتصال در GodAdmin ←");settings.href="/admin/";add(m,note("هنوز هیچ مبدل خواندنی AVAN REST v1 فعال نشده است."),settings);return}
+ if(!enabled.length){const settings=link("افزودن اتصال در مدیریت سامانه",()=>select("system-management"),"button primary");add(m,note("هنوز هیچ مبدل خواندنی AVAN REST v1 فعال نشده است."),settings);return}
  const p=card("انتخاب منبع و بازه"),source=el("select"),period=el("select"),out=el("div"),analysis=card("تحلیل زبان طبیعی","مدل فقط به گزارش منبع انتخابی دسترسی دارد.");
  source.setAttribute("aria-label","منبع BPMS");period.setAttribute("aria-label","بازه گزارش");
  for(const s of enabled){const opt=el("option","",s.name);opt.value=s.id;add(source,opt)}
