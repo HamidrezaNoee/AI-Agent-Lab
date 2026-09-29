@@ -41,7 +41,7 @@ const server=http.createServer((req,res)=>{
   else if(path==='/api/bi/ask')data={...answer,report_type:'process_bi'};
   else if(path.endsWith('/export'))return route.fulfill({contentType:'text/csv',body:'process,count\nخرید,2'});
   else if(path==='/admin/api/state')data={authenticated:true,password_changed:true,mfa_enrolled:true,mfa_authenticated:true,csrf:'test'};
-  else if(path==='/admin/api/settings')data={ai:{enabled:true,model:'gpt-4.1-mini',voice_enabled:true,api_key:'********'},sql:{},password_state:{changed:true,totp:true}};
+  else if(path==='/admin/api/settings')data={ai:{enabled:true,model:'gpt-4.1-mini',voice_enabled:true,api_key:'********'},mysql:{},processmaker:{},sql:{},password_state:{changed:true,totp:true}};
   else if(path==='/admin/api/ai/save')data={saved:true};
   else if(path==='/admin/api/license/status')data={valid:true,max_users:10,active_users:3,remaining_days:30,modules:[1,2,3,4]};
   await route.fulfill({json:data});
@@ -75,10 +75,17 @@ const server=http.createServer((req,res)=>{
  await page.setViewportSize({width:1400,height:1000});
  await page.locator('[data-page=system-management]').click();
  const adminFrame=page.frameLocator('.system-admin-frame');
+ const processMakerTop=adminFrame.getByRole('button',{name:'ProcessMaker',exact:true});
+ if(await processMakerTop.count()!==1)throw Error('ProcessMaker must have exactly one top-level settings owner');
+ if(await adminFrame.getByRole('button',{name:'داده‌های ProcessMaker',exact:true}).count())throw Error('Legacy duplicate ProcessMaker settings tab still exists');
+ await processMakerTop.click();
+ await adminFrame.getByRole('button',{name:'داده‌ها و MySQL',exact:true}).waitFor();
+ await adminFrame.getByRole('button',{name:'OAuth و API',exact:true}).click();
+ await adminFrame.getByText('اتصال ProcessMaker',{exact:true}).waitFor();
  await adminFrame.getByRole('button',{name:'هوش مصنوعی',exact:true}).click();
  await adminFrame.locator('input[name=api_key]').fill('private-test-value');
  await adminFrame.getByRole('button',{name:'ذخیره تنظیمات',exact:true}).click();
  await adminFrame.getByText('تنظیمات ذخیره شد.',{exact:true}).waitFor();
  if(await adminFrame.locator('input[name=api_key]').inputValue())throw Error('Key not cleared');
- await browser.close();server.close();if(errors.length)throw Error(errors.join('\n'));console.log('UI PASS: organization workspace, saved chat, grounded answer, voice upload, draft lifecycle, monitor, BI, mobile layout, unified side-menu system management');
+ await browser.close();server.close();if(errors.length)throw Error(errors.join('\n'));console.log('UI PASS: organization workspace, clean single-owner management IA, ProcessMaker subtabs, AI settings, mobile layout and core workflows');
 })().catch(e=>{console.error(e);server.close();process.exit(1)});
