@@ -505,3 +505,33 @@ body.avan-admin.admin-embedded:has(.panel.login){background:#0c2537 url('/assets
 @media(max-width:700px){
  body.avan-admin.admin-embedded>main{padding:14px!important}
 }
+
+
+/* Always-visible configuration guidance for every management section. */
+.settings-guide{
+ background:linear-gradient(145deg,var(--surface,#fff),var(--surface-soft,#f7fafc));
+ border:1px solid var(--line,var(--border));border-right:5px solid #dc9d25;
+ border-radius:15px;padding:18px 20px;margin:14px 0 20px;
+ box-shadow:0 8px 28px rgba(17,48,71,.035);
+}
+.settings-guide-head{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;color:var(--ink,#183751)}
+.settings-guide-icon{display:grid;place-items:center;width:30px;height:30px;border-radius:10px;background:#fff6dc;border:1px solid #f0d796}
+.settings-guide-steps{margin:14px 0 8px;padding:0 23px 0 0;color:var(--subtle,#546b80);font-size:12px;line-height:2.15}
+.settings-guide-steps li{margin:5px 0;padding-right:4px}
+.settings-guide-steps li::marker{color:var(--accent,var(--teal));font-weight:800}
+.settings-guide-fields{margin-top:14px;border-top:1px solid var(--line,var(--border));padding-top:11px;overflow:auto}
+.settings-guide-fields table{width:100%;border-collapse:collapse;font-size:11px}
+.settings-guide-fields td{padding:8px 9px;vertical-align:top;border-bottom:1px dashed var(--line,var(--border));line-height:1.9}
+.settings-guide-fields tr:last-child td{border-bottom:0}
+.settings-guide-key{width:150px;direction:ltr;text-align:left;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:700;color:var(--accent,var(--teal))}
+.token-helper{margin:18px 0;background:var(--surface-soft,#f7fafc);box-shadow:none}
+.token-helper-row{display:grid;grid-template-columns:150px minmax(0,1fr) auto;align-items:center;gap:10px;margin:9px 0}
+.token-helper-row strong{font-size:11px}
+.token-helper-value{direction:ltr;text-align:left;overflow-wrap:anywhere;padding:9px 11px;border:1px solid var(--line,var(--border));border-radius:9px;background:var(--surface,#fff);font:12px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace}
+.token-command{direction:ltr;text-align:left;white-space:pre-wrap;overflow:auto;padding:14px;border-radius:11px;background:#0d2030;color:#d8f7ff;border:1px solid #29475d;font:12px/1.8 ui-monospace,SFMono-Regular,Consolas,monospace}
+@media(max-width:700px){
+ .settings-guide{padding:15px}
+ .settings-guide-key{width:105px}
+ .token-helper-row{grid-template-columns:1fr}
+ .token-helper-row button{justify-self:start}
+}
