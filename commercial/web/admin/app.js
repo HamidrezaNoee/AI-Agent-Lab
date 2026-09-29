@@ -725,9 +725,9 @@ async function renderConnections(m,settings){
    }
   });
  singleton("ProcessMaker · API کاربران",settings.processmaker?.base_url?
-  settings.processmaker.base_url+" · "+settings.processmaker.workspace:
+  settings.processmaker.base_url+" · "+settings.processmaker.workspace+" · "+(settings.processmaker.token_managed?"OAuth با تمدید خودکار":"توکن دستی"):
   "اتصال تشخیصی API کاربران؛ داده‌های جلسه از MySQL خوانده می‌شوند.",!!settings.processmaker?.base_url,"processmaker","processmaker/check-saved",{
-   label:settings.processmaker?.base_url?"تنظیم‌شده":"ثبت‌نشده",
+   label:settings.processmaker?.base_url?(settings.processmaker.token_managed?"OAuth خودکار":"توکن دستی"):"ثبت‌نشده",
    actions:(actions,out)=>append(actions,btn("حذف",async()=>{
     if(!confirm("تنظیمات و توکن API تشخیصی ProcessMaker از آوان حذف شوند؟ اتصال MySQL جلسات حفظ می‌شود."))return;
     try{await api("processmaker/remove",{confirmation:"REMOVE_PM_API"});await showSettings("connections")}
