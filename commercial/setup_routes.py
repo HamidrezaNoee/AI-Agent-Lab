@@ -32,16 +32,28 @@ _attempts=defaultdict(deque)
 _pending_mfa={}
 
 def _local(request:Request):
-    # Docker Desktop maps host localhost through a private bridge gateway.
-    # Host port MUST remain published on 127.0.0.1 only. Never expose this
-    # admin console via a public reverse proxy until SSO/MFA review.
+    # Before the organizational GodAdmin identity is bound, bootstrap remains
+    # strictly host-local. After binding, the same OIDC/MFA-protected GodAdmin
+    # may open the management surface inside the normal AVAN workspace.
     origin=request.url.hostname
+    if setup.godadmin_identity():
+        allowed={"localhost","127.0.0.1","testserver"}
+        for raw in (os.getenv("AVAN_PUBLIC_ORIGIN",""),
+                    os.getenv("AVAN_ADMIN_ORIGIN","")):
+            try:
+                host=urlsplit(raw).hostname
+                if host:allowed.add(host)
+            except ValueError:
+                pass
+        if origin not in allowed:
+            raise HTTPException(403,"نشانی مدیریت سامانه مجاز نیست.")
+        return True
     if origin not in ("localhost","127.0.0.1","testserver"):
-        raise HTTPException(403,"پنل نصب فقط از همان رایانه قابل دسترسی است.")
+        raise HTTPException(403,"راه‌اندازی اولیه فقط از همان رایانه قابل دسترسی است.")
     remote=request.client.host if request.client else ""
     try:
         if origin!="testserver" and not (ip_address(remote).is_private or ip_address(remote).is_loopback):
-            raise HTTPException(403,"ورود مدیریتی از شبکه عمومی مجاز نیست.")
+            raise HTTPException(403,"ورود مدیریتی اولیه از شبکه عمومی مجاز نیست.")
     except ValueError:
         if origin!="testserver":
             raise HTTPException(403,"آدرس درخواست مجاز نیست.")
@@ -53,6 +65,9 @@ def _origin(request:Request):
     allowed={expected}
     if expected=="http://127.0.0.1:8188":
         allowed.add("http://localhost:8188")
+    if setup.godadmin_identity():
+        public=os.getenv("AVAN_PUBLIC_ORIGIN","").rstrip("/")
+        if public:allowed.add(public)
     if origin and origin.rstrip("/") not in allowed:
         raise HTTPException(403,"منشأ درخواست معتبر نیست.")
 
