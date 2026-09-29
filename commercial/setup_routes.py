@@ -608,31 +608,53 @@ class PMConfig(BaseModel):
     model_config=ConfigDict(extra="forbid")
     base_url:str=Field(min_length=12,max_length=500)
     workspace:str=Field(min_length=1,max_length=48)
-    bearer_token:str=Field(min_length=8,max_length=8192)
+    bearer_token:str=Field(default="",max_length=8192)
+    oauth_client_id:str=Field(default="",max_length=256)
+    oauth_client_secret:str=Field(default="",max_length=4096)
+    refresh_token:str=Field(default="",max_length=8192)
+    access_token_expires_at:float|None=None
+    token_managed:bool=False
 
-def _pm_check(config:PMConfig)->int:
-    # This is a GET-only directory check. Admin tokens work too: user role
-    # is not constrained or changed by AVAN.
-    base=config.base_url.rstrip("/")
+
+class PMOAuthConnect(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    base_url:str=Field(min_length=12,max_length=500)
+    workspace:str=Field(min_length=1,max_length=48)
+    client_id:str=Field(min_length=1,max_length=256)
+    client_secret:str=Field(min_length=1,max_length=4096)
+    username:str=Field(min_length=1,max_length=160)
+    password:str=Field(min_length=1,max_length=512)
+
+
+def _pm_target(base_url:str,workspace:str)->tuple[str,str]:
+    base=base_url.rstrip("/")
     parsed=urlsplit(base)
     if (not parsed.hostname or parsed.username or parsed.password or
         parsed.query or parsed.fragment or parsed.path not in ("","/") or
-        not re.fullmatch(r"[A-Za-z0-9_-]{1,48}",config.workspace)):
+        not re.fullmatch(r"[A-Za-z0-9_-]{1,48}",workspace)):
         raise HTTPException(422,"نشانی اصلی ProcessMaker یا Workspace معتبر نیست.")
     local_lab_http=(os.getenv("AVAN_PM_ALLOW_LOCAL_HTTP")=="1" and
                     parsed.scheme=="http" and
                     parsed.hostname.lower()=="host.docker.internal" and
-                    parsed.port in (84, 443))
+                    parsed.port in (84,443))
     if parsed.scheme!="https" and not local_lab_http:
         raise HTTPException(422,"در نصب آزمایشی آدرس http://host.docker.internal:443 یا :84 را مطابق پورت واقعی ProcessMaker وارد کنید؛ در نصب عملیاتی HTTPS الزامی است.")
-    url=base+"/api/1.0/"+config.workspace+"/users"
+    return base,workspace
+
+
+def _pm_directory_check(base_url:str,workspace:str,access_token:str)->int:
+    base,workspace=_pm_target(base_url,workspace)
+    if (not isinstance(access_token,str) or len(access_token.strip())<8 or
+        len(access_token)>8192 or any(c in access_token for c in ("\r","\n","\x00"))):
+        raise HTTPException(422,"توکن ProcessMaker معتبر نیست.")
+    url=base+"/api/1.0/"+workspace+"/users"
     try:
         with httpx.Client(timeout=8,follow_redirects=False,trust_env=False) as http:
             response=http.get(url,params={"status":"all","start":0,"limit":1},
-                              headers={"Authorization":"Bearer "+config.bearer_token,
+                              headers={"Authorization":"Bearer "+access_token.strip(),
                                        "Accept":"application/json"})
             if response.status_code in (401,403):
-                raise HTTPException(401,"توکن ProcessMaker نامعتبر، منقضی یا فاقد مجوز مشاهده کاربران است؛ توکن تازه دریافت کنید.")
+                raise HTTPException(401,"توکن ProcessMaker نامعتبر، منقضی یا فاقد مجوز مشاهده کاربران است.")
             if response.status_code!=200:
                 raise HTTPException(503,"API کاربران ProcessMaker پاسخ HTTP "+str(response.status_code)+" داد؛ آدرس و Workspace را بررسی کنید.")
             if len(response.content)>20000 or not isinstance(response.json(),(list,dict)):
@@ -644,24 +666,158 @@ def _pm_check(config:PMConfig)->int:
         raise HTTPException(502,"پاسخ JSON کاربران ProcessMaker نامعتبر است.")
 
 
+def _pm_oauth_token(base_url:str,workspace:str,payload:dict)->dict:
+    base,workspace=_pm_target(base_url,workspace)
+    url=base+"/"+workspace+"/oauth2/token"
+    try:
+        with httpx.Client(timeout=10,follow_redirects=False,trust_env=False) as http:
+            response=http.post(url,data=payload,headers={
+                "Accept":"application/json",
+                "Content-Type":"application/x-www-form-urlencoded",
+            })
+            if response.status_code in (400,401,403):
+                raise HTTPException(401,"ProcessMaker اطلاعات OAuth یا حساب کاربری را نپذیرفت؛ Client ID، Client Secret، نام کاربری و رمز را بررسی کنید.")
+            if response.status_code!=200:
+                raise HTTPException(503,"Token Endpoint پروسس‌میکر پاسخ HTTP "+str(response.status_code)+" داد.")
+            if len(response.content)>32768:
+                raise HTTPException(502,"پاسخ OAuth پروسس‌میکر بیش از حد بزرگ است.")
+            result=response.json()
+    except httpx.RequestError:
+        raise HTTPException(503,"اتصال آوان به Token Endpoint پروسس‌میکر برقرار نیست.")
+    except ValueError:
+        raise HTTPException(502,"پاسخ OAuth پروسس‌میکر JSON معتبر نیست.")
+    access=result.get("access_token")
+    refresh=result.get("refresh_token")
+    if (not isinstance(access,str) or not 8<=len(access)<=8192 or
+        any(c in access for c in ("\r","\n","\x00"))):
+        raise HTTPException(502,"ProcessMaker access_token معتبر برنگرداند.")
+    if refresh is not None and (not isinstance(refresh,str) or len(refresh)>8192 or
+                                any(c in refresh for c in ("\r","\n","\x00"))):
+        raise HTTPException(502,"ProcessMaker refresh_token معتبر برنگرداند.")
+    try:expires=max(30,min(int(result.get("expires_in") or 86400),31536000))
+    except (TypeError,ValueError):expires=86400
+    return {"access_token":access,"refresh_token":refresh or "",
+            "expires_in":expires,"token_type":str(result.get("token_type") or "Bearer")}
+
+
+def _pm_managed_config(base_url:str,workspace:str,client_id:str,client_secret:str,
+                       tokens:dict,previous_refresh:str="")->dict:
+    refresh=tokens.get("refresh_token") or previous_refresh
+    if not refresh:
+        raise HTTPException(502,"ProcessMaker refresh_token برنگرداند؛ برای تمدید خودکار باید Refresh Token فعال باشد.")
+    return {
+        "base_url":base_url.rstrip("/"),
+        "workspace":workspace,
+        "bearer_token":tokens["access_token"],
+        "oauth_client_id":client_id,
+        "oauth_client_secret":client_secret,
+        "refresh_token":refresh,
+        "access_token_expires_at":time.time()+int(tokens["expires_in"]),
+        "token_managed":True,
+    }
+
+
+def _pm_refresh_saved(saved:dict)->dict:
+    if not saved.get("token_managed"):
+        raise HTTPException(409,"این اتصال با توکن دستی ثبت شده است؛ یک‌بار اتصال OAuth خودکار را انجام دهید.")
+    client_id=str(saved.get("oauth_client_id") or "")
+    client_secret=str(saved.get("oauth_client_secret") or "")
+    refresh=str(saved.get("refresh_token") or "")
+    if not client_id or not client_secret or not refresh:
+        raise HTTPException(409,"اطلاعات تمدید خودکار ProcessMaker کامل نیست؛ اتصال OAuth را دوباره انجام دهید.")
+    tokens=_pm_oauth_token(saved["base_url"],saved["workspace"],{
+        "grant_type":"refresh_token",
+        "client_id":client_id,
+        "client_secret":client_secret,
+        "refresh_token":refresh,
+    })
+    updated=_pm_managed_config(saved["base_url"],saved["workspace"],
+                               client_id,client_secret,tokens,refresh)
+    setup.put_setting("processmaker",updated)
+    setup.audit("PROCESSMAKER_OAUTH_TOKEN_REFRESHED")
+    return updated
+
+
+def _pm_valid_saved(saved:dict)->dict:
+    if not saved:
+        raise HTTPException(404,"اتصال ProcessMaker هنوز ذخیره نشده است.")
+    if saved.get("token_managed"):
+        try:expires=float(saved.get("access_token_expires_at") or 0)
+        except (TypeError,ValueError):expires=0
+        if expires<=time.time()+90:
+            return _pm_refresh_saved(saved)
+    return saved
+
+
+def _pm_check(config:PMConfig)->int:
+    return _pm_directory_check(config.base_url,config.workspace,config.bearer_token)
+
+
 @router.post("/api/processmaker/check")
 def pm_check(body:PMConfig,session=Depends(_ready)):
     _pm_check(body)
-    return {"connected":True,"directory_request":"GET","account_role_not_restricted":True}
+    return {"connected":True,"directory_request":"GET",
+            "account_role_not_restricted":True}
 
 
 @router.post("/api/processmaker/check-saved")
 def pm_check_saved(session=Depends(_ready)):
     saved=setup.get_setting("processmaker") or {}
-    if not saved:raise HTTPException(404,"اتصال ProcessMaker هنوز ذخیره نشده است.")
-    _pm_check(PMConfig.model_validate(saved))
-    return {"connected":True,"directory_request":"GET"}
+    saved=_pm_valid_saved(saved)
+    try:
+        _pm_directory_check(saved["base_url"],saved["workspace"],saved.get("bearer_token",""))
+    except HTTPException as exc:
+        if exc.status_code==401 and saved.get("token_managed"):
+            saved=_pm_refresh_saved(saved)
+            _pm_directory_check(saved["base_url"],saved["workspace"],saved["bearer_token"])
+        else:
+            raise
+    return {"connected":True,"directory_request":"GET",
+            "token_managed":bool(saved.get("token_managed")),
+            "expires_at":saved.get("access_token_expires_at")}
+
 
 @router.post("/api/processmaker/save")
 def pm_save(body:PMConfig,session=Depends(_ready)):
     _pm_check(body)
-    setup.put_setting("processmaker",body.model_dump())
-    return {"saved":True,"note":"اتصال تأیید شد؛ همگام‌سازی کاربران هنوز به تأیید هویت‌نامه و سیاست ابطال دسترسی نیاز دارد."}
+    setup.put_setting("processmaker",{
+        "base_url":body.base_url.rstrip("/"),
+        "workspace":body.workspace,
+        "bearer_token":body.bearer_token,
+        "token_managed":False,
+    })
+    return {"saved":True,"token_managed":False,
+            "note":"توکن دستی ذخیره شد؛ برای تمدید خودکار از اتصال OAuth استفاده کنید."}
+
+
+@router.post("/api/processmaker/oauth-connect")
+def pm_oauth_connect(body:PMOAuthConnect,session=Depends(_ready)):
+    tokens=_pm_oauth_token(body.base_url,body.workspace,{
+        "grant_type":"password",
+        "scope":"*",
+        "client_id":body.client_id,
+        "client_secret":body.client_secret,
+        "username":body.username,
+        "password":body.password,
+    })
+    config=_pm_managed_config(body.base_url,body.workspace,
+                              body.client_id,body.client_secret,tokens)
+    _pm_directory_check(config["base_url"],config["workspace"],config["bearer_token"])
+    setup.put_setting("processmaker",config)
+    setup.audit("PROCESSMAKER_OAUTH_CONNECTED")
+    return {"saved":True,"connected":True,"token_managed":True,
+            "expires_at":config["access_token_expires_at"],
+            "password_stored":False,"refresh_token_stored":True}
+
+
+@router.post("/api/processmaker/oauth-refresh")
+def pm_oauth_refresh(session=Depends(_ready)):
+    saved=setup.get_setting("processmaker") or {}
+    refreshed=_pm_refresh_saved(saved)
+    _pm_directory_check(refreshed["base_url"],refreshed["workspace"],
+                        refreshed["bearer_token"])
+    return {"connected":True,"token_managed":True,
+            "expires_at":refreshed["access_token_expires_at"]}
 
 
 @router.post("/api/processmaker/remove")
