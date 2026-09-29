@@ -350,6 +350,10 @@ def logout(session=Depends(_required)):
     response.delete_cookie("avan_godadmin",path="/")
     return response
 
+@router.get("/api/heartbeat")
+def admin_heartbeat(session=Depends(_ready)):
+    return {"active":True}
+
 @router.get("/api/settings")
 def settings(session=Depends(_ready)):
     return setup.masked_settings()
