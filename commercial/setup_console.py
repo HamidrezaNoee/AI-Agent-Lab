@@ -234,8 +234,8 @@ def masked_settings()->dict:
     result={}
     for name in ("mysql","agent_sql","processmaker","company","ai"):
         data=get_setting(name) or {}
-        result[name]={k:("********" if (k in ("password","client_secret","bearer_token","api_key")
-                                       or k.endswith("_password") or k.endswith("_secret"))
+        result[name]={k:("********" if (k in ("password","client_secret","bearer_token","refresh_token","api_key")
+                                       or k.endswith("_password") or k.endswith("_secret") or k.endswith("_token"))
                                   and v else v)
                       for k,v in data.items()}
     result["installation_id"]=(get_setting("installation") or {}).get("installation_id")
