@@ -490,3 +490,18 @@ body.avan-admin button:disabled{opacity:.56;cursor:not-allowed}
 .avan-captcha.is-verified .avan-captcha-badge{
  color:#7df0d0;border-color:rgba(87,236,204,.34);background:rgba(14,74,67,.55);
 }
+
+
+/* Embedded mode: management is rendered inside the main AVAN workspace shell. */
+body.avan-admin.admin-embedded{background:transparent!important;min-height:100vh}
+body.avan-admin.admin-embedded>header,
+body.avan-admin.admin-embedded>footer{display:none!important}
+body.avan-admin.admin-embedded>main{
+ max-width:none!important;width:100%;min-height:100vh;margin:0!important;
+ padding:22px 24px 42px!important;
+}
+body.avan-admin.admin-embedded .panel{box-shadow:none}
+body.avan-admin.admin-embedded:has(.panel.login){background:#0c2537 url('/assets/agent-login.webp') center/cover no-repeat!important}
+@media(max-width:700px){
+ body.avan-admin.admin-embedded>main{padding:14px!important}
+}
