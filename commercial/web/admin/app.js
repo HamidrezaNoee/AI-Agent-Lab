@@ -6,9 +6,9 @@ function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.classNa
 function append(parent,...items){for(const item of items.flat())if(item!==null&&item!==undefined)parent.append(item);return parent}
 const helpContent={
  connections:{steps:[
-  "اینجا وضعیت ثبت‌شدهٔ اتصال‌ها دیده می‌شود؛ «تنظیم‌شده» نتیجهٔ بررسی زندهٔ سرویس نیست. برای اطمینان، دکمه بررسی همان اتصال را بزنید.",
-  "SQL Server داخلی آوان با Docker ساخته می‌شود. اتصال ProcessMaker از MySQL خوانده می‌شود؛ برای موتورهای دیگر ابتدا آداپتر AVAN REST v1 آماده کنید.",
-  "از این فهرست به صفحهٔ هر اتصال بروید: در BPMS می‌توانید چند منبع بسازید و هرکدام را مستقل غیرفعال کنید؛ برای Agent SQL فقط یک بانک هم‌زمان فعال است."
+  "این صفحه فقط Dashboard وضعیت است و هیچ Secret، Token، Password یا تنظیم اتصال در آن ویرایش نمی‌شود.",
+  "ProcessMaker فقط یک مالک تنظیم دارد: صفحه «ProcessMaker» با دو زیرصفحه «داده‌ها و MySQL» و «OAuth و API».",
+  "برای تغییر هر سرویس روی «مدیریت» همان کارت بزنید. این ساختار از ثبت چند نسخه متناقض از یک تنظیم جلوگیری می‌کند."
  ]},
  agentdb:{steps:[
   "برای SQL Server داخلی اطلاعاتی وارد نکنید: docker compose بانک AVANAgent و حساب AVAN_AgentApp را راه‌اندازی می‌کند؛ در فهرست «SQL Server داخلی Docker» را بررسی و فعال کنید.",
@@ -716,116 +716,79 @@ function bpmsConnectionRow(source,returnPage){
  append(row,out);return row;
 }
 async function renderConnections(m,settings){
- const p=panel("فهرست اتصال‌ها","برای هر اتصال، وضعیت پیکربندی و عملیات در دسترس را ببینید. وضعیت «تنظیم‌شده» به‌معنای آزمون زنده نیست.");
+ const p=panel("وضعیت سامانه",
+  "این صفحه فقط نمای سلامت و وضعیت پیکربندی است. هیچ اتصال یا Secret از اینجا ویرایش نمی‌شود؛ برای تغییر هر مورد وارد بخش مالک همان تنظیم شوید.");
  append(m,p);
+
  const [dbResult,bpmsResult,identityResult]=await Promise.allSettled([
-  api("agent-db/connections"),api("bpms/connections"),api("identity/status")]);
+  api("agent-db/connections"),api("bpms/connections"),api("identity/status")
+ ]);
  if(state.page!=="connections")return;
+
  const db=dbResult.status==="fulfilled"?dbResult.value:{active_id:null,connections:[]};
  const bpms=bpmsResult.status==="fulfilled"?bpmsResult.value:{sources:[]};
+ const identity=identityResult.status==="fulfilled"?identityResult.value:null;
+ const pmMysqlConfigured=!!settings.mysql?.host;
+ const pmMysqlActive=pmMysqlConfigured&&settings.mysql.enabled!==false;
+ const pmApiConfigured=!!settings.processmaker?.base_url;
+ const pmManaged=!!settings.processmaker?.token_managed;
+ const pmReady=pmMysqlActive&&pmApiConfigured;
+ const activeDb=db.connections.find(x=>x.id===db.active_id);
+
  const stats=node("div","connection-stats");
- for(const [label,value] of [["منابع BPMS فعال",bpms.sources.filter(x=>x.enabled).length],
-   ["بانک Agent",db.active_id?"فعال":"قطع"],["MySQL ProcessMaker",settings.mysql?.host?
-    (settings.mysql.enabled===false?"غیرفعال":"فعال"):"ثبت‌نشده"]]){
-  const card=node("div","connection-stat");append(card,node("small","",label),node("strong","",value));append(stats,card)}
+ const summary=[
+  ["ProcessMaker",pmReady?"آماده":(pmMysqlConfigured||pmApiConfigured?"ناقص":"ثبت‌نشده")],
+  ["بانک Agent",activeDb?"فعال":"قطع"],
+  ["هوش مصنوعی",settings.ai?.enabled?"فعال":"غیرفعال"],
+  ["BPMSهای دیگر",bpms.sources.filter(x=>x.enabled).length+" فعال"],
+  ["هویت",identity?.connected?"فعال":"نیازمند بررسی"]
+ ];
+ for(const [label,value] of summary){
+  const card=node("div","connection-stat");append(card,node("small","",label),node("strong","",value));append(stats,card)
+ }
  append(p,stats);
- if(dbResult.status==="rejected")append(p,info("دریافت فهرست بانک Agent ناموفق بود: "+dbResult.reason.message,true));
- if(bpmsResult.status==="rejected")append(p,info("دریافت منابع BPMS ناموفق بود: "+bpmsResult.reason.message,true));
- const list=node("div","connection-list");append(p,list);
- const singleton=(title,detail,configured,page,checkPath,options={})=>{
-  const actions=node("div","connection-actions"),out=node("div","full connection-feedback");
-  const edit=btn(configured?"به‌روزرسانی":"افزودن",()=>showSettings(page),"secondary");append(actions,edit);
-  if(configured&&checkPath){const check=btn("بررسی اتصال",()=>verifyConnection(check,out,checkPath,title),"secondary");append(actions,check)}
-  if(configured&&options.actions)options.actions(actions,out);
-  const active=options.active===undefined?configured:options.active;
-  const label=options.label||(configured?(active?"فعال":"غیرفعال"):"ثبت‌نشده");
-  const row=connectionItem(title,detail,{active,label},actions);
-  append(row,out);append(list,row);
+
+ if(dbResult.status==="rejected")append(p,info("وضعیت بانک Agent قابل دریافت نیست: "+dbResult.reason.message,true));
+ if(bpmsResult.status==="rejected")append(p,info("وضعیت BPMSها قابل دریافت نیست: "+bpmsResult.reason.message,true));
+ if(identityResult.status==="rejected")append(p,info("وضعیت هویت سازمانی قابل دریافت نیست.",true));
+
+ const list=node("div","connection-list status-only-list");append(p,list);
+ const statusRow=(title,description,active,label,target,onOpen)=>{
+  const actions=node("div","connection-actions");
+  const open=btn("مدیریت",onOpen||(()=>showSettings(target)),"secondary");
+  append(actions,open);
+  append(list,connectionItem(title,description,{active,label},actions));
  };
- singleton("ProcessMaker · MySQL",settings.mysql?.host?
-  settings.mysql.host+":"+(settings.mysql.port||3306)+" · "+settings.mysql.database:
-  "داده‌های فرایند از بانک Workspace خوانده می‌شوند.",!!settings.mysql?.host,"mysql","mysql/check-saved",{
-   active:!!settings.mysql?.host&&settings.mysql.enabled!==false,
-   actions:(actions,out)=>{
-    const active=settings.mysql.enabled!==false;
-    const toggle=btn(active?"غیرفعال‌سازی":"فعال‌سازی",async()=>{
-     if(active&&!confirm("اتصال MySQL غیرفعال شود؟ دسترسی کاربران به داده‌های ProcessMaker تا فعال‌سازی مجدد متوقف می‌شود."))return;
-     toggle.disabled=true;out.replaceChildren();
-     try{await api("mysql/enabled",{enabled:!active});await showSettings("connections")}
-     catch(err){showError(out,err)}finally{toggle.disabled=false}
-    },active?"secondary":"");
-    const remove=btn("حذف",async()=>{
-     if(!confirm("تنظیمات و رمز اتصال MySQL در آوان حذف شوند؟ این کار داده‌های ProcessMaker را حذف نمی‌کند و تا ثبت دوباره اتصال، دسترسی جلسات متوقف می‌شود."))return;
-     remove.disabled=true;out.replaceChildren();
-     try{await api("mysql/remove",{confirmation:"REMOVE_MYSQL_SOURCE"});await showSettings("connections")}
-     catch(err){showError(out,err)}finally{remove.disabled=false}
-    },"secondary danger");append(actions,toggle,remove);
-   }
-  });
- singleton("ProcessMaker · API کاربران",settings.processmaker?.base_url?
-  settings.processmaker.base_url+" · "+settings.processmaker.workspace+" · "+(settings.processmaker.token_managed?"OAuth با تمدید خودکار":"توکن دستی"):
-  "اتصال تشخیصی API کاربران؛ داده‌های جلسه از MySQL خوانده می‌شوند.",!!settings.processmaker?.base_url,"processmaker","processmaker/check-saved",{
-   label:settings.processmaker?.base_url?(settings.processmaker.token_managed?"OAuth خودکار":"توکن دستی"):"ثبت‌نشده",
-   actions:(actions,out)=>append(actions,btn("حذف",async()=>{
-    if(!confirm("تنظیمات و توکن API تشخیصی ProcessMaker از آوان حذف شوند؟ اتصال MySQL جلسات حفظ می‌شود."))return;
-    try{await api("processmaker/remove",{confirmation:"REMOVE_PM_API"});await showSettings("connections")}
-    catch(err){showError(out,err)}
-   },"secondary danger"))
-  });
- singleton("مدل هوش مصنوعی",settings.ai?.model||"مدل و کلید API از تنظیمات هوش مصنوعی تعیین می‌شوند.",
-  !!settings.ai?.api_key,"ai",settings.ai?.enabled?"ai/check":null,{
-   active:!!settings.ai?.enabled,
-   actions:(actions,out)=>{
-    const toggle=btn(settings.ai.enabled?"غیرفعال‌سازی":"فعال‌سازی",async()=>{
-     toggle.disabled=true;out.replaceChildren();
-     try{await api("ai/save",{enabled:!settings.ai.enabled,model:settings.ai.model||"gpt-4.1-mini",
-      api_key:"",voice_enabled:!!settings.ai.voice_enabled,
-      transcription_model:settings.ai.transcription_model||"gpt-4o-mini-transcribe",
-      speech_model:settings.ai.speech_model||"gpt-4o-mini-tts",voice:settings.ai.voice||"alloy"});
-      await showSettings("connections")}
-     catch(err){showError(out,err)}finally{toggle.disabled=false}
-    },settings.ai.enabled?"secondary":"");
-    const remove=btn("حذف کلید",async()=>{
-     if(!confirm("کلید API هوش مصنوعی حذف و دستیار غیرفعال شود؟ گفت‌وگوهای ذخیره‌شده حذف نمی‌شوند."))return;
-     try{await api("ai/remove",{confirmation:"REMOVE_AI_KEY"});await showSettings("connections")}
-     catch(err){showError(out,err)}
-    },"secondary danger");append(actions,toggle,remove);
-   }
-  });
- if(identityResult.status==="fulfilled"){
-  const identity=identityResult.value;
-  singleton("هویت سازمانی · Keycloak",identity.connected?
-   "Realm "+identity.realm+" · سرویس داخلی Docker":"سرویس هویت هنوز آماده نیست.",
-   !!identity.connected,"identity",null);
- }
- const agentSection=node("section","connection-group");append(agentSection,
-  node("h3","","بانک‌های اختصاصی Agent"),node("p","hint","فقط یک SQL Server هم‌زمان فعال است."));
- for(const connection of db.connections){
-  const actions=node("div","connection-actions"),out=node("div","full connection-feedback");
-  const check=btn("بررسی",async()=>{check.disabled=true;out.replaceChildren();
-   try{await api("agent-db/connections/check",{connection_id:connection.id});out.replaceChildren(info("ساختار و حساب محدود تأیید شد."))}
-   catch(err){showError(out,err)}finally{check.disabled=false}},"secondary");
-  append(actions,check);
-  if(!connection.managed)append(actions,btn("ویرایش",()=>{state.agentEditId=connection.id;showSettings("agentdb")},"secondary"));
-  if(!connection.active)append(actions,btn("فعال‌سازی",async()=>{try{await api("agent-db/connections/activate",{connection_id:connection.id});await showSettings("connections")}catch(err){showError(out,err)}}));
-  if(connection.active)append(actions,btn("قطع اتصال",async()=>{
-   if(!confirm("قطع اتصال فعال، گفتگوها و گزارش‌های ذخیره‌شدهٔ Agent را تا فعال‌سازی مجدد از دسترس خارج می‌کند. ادامه می‌دهید؟"))return;
-   try{await api("agent-db/connections/disconnect",{confirmation:"DISCONNECT"});await showSettings("connections")}
-   catch(err){showError(out,err)}},"secondary"));
-  if(!connection.managed&&!connection.active)append(actions,btn("حذف",async()=>{
-   if(!confirm("پروفایل این اتصال حذف شود؟ بانک SQL Server حذف نمی‌شود."))return;
-   try{await api("agent-db/connections/delete",{connection_id:connection.id});await showSettings("connections")}
-   catch(err){showError(out,err)}},"secondary danger"));
-  const row=connectionItem(connection.name,connection.server+" · AVANAgent"+(connection.managed?" · Docker":" · خارجی"),
-   {active:connection.active,label:connection.active?"فعال":"غیرفعال"},actions);
-  append(row,out);append(agentSection,row);
- }
- append(agentSection,btn("+ اتصال SQL Server خارجی",()=>{state.agentEditId="new";showSettings("agentdb")},"secondary"));append(list,agentSection);
- const bpmsSection=node("section","connection-group");append(bpmsSection,
-  node("h3","","موتورهای BPMS دیگر"),node("p","hint","هر منبع جداگانه و فقط‌خواندنی است."));
- for(const source of bpms.sources)append(bpmsSection,bpmsConnectionRow(source,"connections"));
- if(!bpms.sources.length)append(bpmsSection,info("هنوز آداپتر BPMS دیگری ثبت نشده است."));
- append(bpmsSection,btn("+ افزودن BPMS",()=>{state.bpmsEdit="new";showSettings("bpms")},"secondary"));append(list,bpmsSection);
+
+ const pmParts=[
+  "MySQL: "+(pmMysqlConfigured?(pmMysqlActive?"فعال":"غیرفعال"):"ثبت‌نشده"),
+  "API: "+(pmApiConfigured?(pmManaged?"OAuth خودکار":"توکن دستی"):"ثبت‌نشده")
+ ];
+ statusRow("ProcessMaker",pmParts.join(" · "),pmReady,
+   pmReady?"آماده":(pmMysqlConfigured||pmApiConfigured?"نیازمند تکمیل":"ثبت‌نشده"),
+   "processmaker",()=>showSettings("processmaker"));
+
+ statusRow("بانک اختصاصی Agent",
+   activeDb?(activeDb.name+" · "+activeDb.server):(db.connections.length+" پروفایل ثبت‌شده · بدون اتصال فعال"),
+   !!activeDb,activeDb?"فعال":"قطع","agentdb");
+
+ statusRow("هوش مصنوعی",
+   settings.ai?.model?settings.ai.model+" · "+(settings.ai.enabled?"فعال":"غیرفعال"):"کلید و مدل هنوز تنظیم نشده‌اند.",
+   !!settings.ai?.enabled,settings.ai?.enabled?"فعال":(settings.ai?.api_key?"غیرفعال":"ثبت‌نشده"),"ai");
+
+ statusRow("اتصالات BPMS دیگر",
+   bpms.sources.length?bpms.sources.length+" منبع ثبت‌شده · "+bpms.sources.filter(x=>x.enabled).length+" فعال":"هیچ منبع خارجی ثبت نشده است.",
+   bpms.sources.some(x=>x.enabled),bpms.sources.length?bpms.sources.filter(x=>x.enabled).length+" فعال":"ثبت‌نشده","bpms");
+
+ statusRow("هویت و دسترسی سازمانی",
+   identity?.connected?("Keycloak · Realm "+identity.realm):"هویت سازمانی هنوز آماده یا قابل بررسی نیست.",
+   !!identity?.connected,identity?.connected?"فعال":"نیازمند بررسی","organization",
+   ()=>{state.orgSub="identity";showSettings("organization")});
+
+ const noteBox=node("div","settings-clean-note");
+ append(noteBox,node("strong","","قاعده مدیریت تنظیمات"),
+  node("p","hint","هر Secret و اتصال فقط در یک صفحه ویرایش می‌شود. این Dashboard فقط وضعیت را نشان می‌دهد تا تنظیم تکراری یا متناقض ایجاد نشود."));
+ append(p,noteBox);
 }
 function renderMysql(m,config){
  const p=panel("داده‌های ProcessMaker", "اتصال فقط‌خواندنی به MySQL فرایندها؛ اطلاعات جلسه در خود ProcessMaker نگهداری می‌شود.");
