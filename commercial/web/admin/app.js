@@ -1,6 +1,6 @@
 "use strict";
 if(new URLSearchParams(window.location.search).get("embedded")==="1"){document.body.classList.add("admin-embedded");}
-const state={csrf:null,user:null,settings:null,stage:"login",page:"connections",authMode:"bootstrap"};
+const state={csrf:null,user:null,settings:null,stage:"login",page:"connections",authMode:"bootstrap",pmSub:"mysql",orgSub:"company"};
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n}
 function append(parent,...items){for(const item of items.flat())if(item!==null&&item!==undefined)parent.append(item);return parent}
@@ -595,14 +595,54 @@ function showTotpEnroll(){
 }
 
 const menu=[
- ["connections","همه اتصال‌ها"],["agentdb","بانک اختصاصی Agent"],["bpms","اتصالات BPMS"],["mysql","داده‌های ProcessMaker"],["company","اطلاعات سازمان"],["identity","هویت سازمانی"],["processmaker","ProcessMaker"],
- ["ai","هوش مصنوعی"],["license","لایسنس و شناسه نصب"],["users","کاربران و سازمان"]
+ ["connections","وضعیت سامانه"],
+ ["processmaker","ProcessMaker"],
+ ["agentdb","بانک Agent"],
+ ["bpms","اتصالات BPMS"],
+ ["ai","هوش مصنوعی"],
+ ["organization","سازمان و دسترسی"],
+ ["license","لایسنس"]
 ];
+
+function settingsSubnav(items,active,onChange){
+ const nav=node("nav","settings-subnav");
+ nav.setAttribute("aria-label","زیرمجموعه تنظیمات");
+ for(const [code,title] of items){
+  const item=btn(title,()=>onChange(code),code===active?"active":"secondary");
+  if(code===active)item.setAttribute("aria-current","page");
+  append(nav,item);
+ }
+ return nav;
+}
+
+async function renderProcessMakerHub(m,settings){
+ const items=[["mysql","داده‌ها و MySQL"],["oauth","OAuth و API"]];
+ append(m,settingsSubnav(items,state.pmSub,code=>{state.pmSub=code;showSettings("processmaker")}));
+ const guide=settingsGuide(state.pmSub==="mysql"?"mysql":"processmaker");
+ if(guide)append(m,guide);
+ if(state.pmSub==="mysql")renderMysql(m,settings.mysql||{});
+ else renderPm(m,settings.processmaker||{});
+}
+
+async function renderOrganizationHub(m){
+ const items=[["company","اطلاعات سازمان"],["identity","هویت و ورود"],["users","کاربران و دسترسی"]];
+ append(m,settingsSubnav(items,state.orgSub,code=>{state.orgSub=code;showSettings("organization")}));
+ const guide=settingsGuide(state.orgSub);
+ if(guide)append(m,guide);
+ if(state.orgSub==="company")await renderCompany(m);
+ else if(state.orgSub==="identity")await renderIdentity(m);
+ else await renderUsers(m);
+}
 async function showSettings(page=state.page){
+ // Backward-compatible aliases from older UI links; they now land in one owner page.
+ if(page==="mysql"){state.pmSub="mysql";page="processmaker"}
+ else if(page==="users"||page==="company"||page==="identity"){state.orgSub=page;page="organization"}
+ else if(page==="processmaker"&&state.pmSub!=="mysql"&&state.pmSub!=="oauth")state.pmSub="oauth";
+
  const settings=await api("settings");state.settings=settings;state.page=page;
  const m=main();
  const hero=node("div","admin-hero");append(hero,node("span","eyebrow","AVAN · CONTROL CENTER"),
-  node("h1","","مدیریت سامانه"),node("p","intro","اتصال‌ها و تنظیمات آوان از همینجا مدیریت می‌شوند. رمزها پس از ذخیره دوباره به مرورگر نمایش داده نمی‌شوند."));append(m,hero);
+  node("h1","","مدیریت سامانه"),node("p","intro","هر تنظیم فقط در یک بخش مدیریت می‌شود؛ «وضعیت سامانه» صرفاً نمای سلامت و مسیر دسترسی به تنظیمات است."));append(m,hero);
  const tabs=node("nav","tabs");
  tabs.setAttribute("aria-label","بخش‌های تنظیمات");
  for(const [code,title] of menu){const item=btn(title,()=>{state.bpmsEdit=null;showSettings(code)},state.page===code?"active":"");
@@ -622,19 +662,17 @@ async function showSettings(page=state.page){
     catch(err){append(m,info(err.message,true))}
    }
  },"secondary"));append(m,tabs);
- const guide=settingsGuide(page);
- if(guide)append(m,guide);
- if(page==="connections")await renderConnections(m,settings);
- else if(page==="agentdb")await renderAgentDatabase(m);
- else if(page==="bpms")await renderBPMS(m);
- else if(page==="mysql")renderMysql(m,settings.mysql||{});
- else if(page==="company")await renderCompany(m);
- else if(page==="identity")await renderIdentity(m);
- else if(page==="processmaker")renderPm(m,settings.processmaker||{});
- else if(page==="ai")renderAI(m,settings.ai||{});
- else if(page==="license")await renderLicense(m,settings);
- else if(page==="users")await renderUsers(m);
- else await renderCompany(m);
+
+ if(page==="connections"){
+  const guide=settingsGuide("connections");if(guide)append(m,guide);
+  await renderConnections(m,settings);
+ }else if(page==="processmaker")await renderProcessMakerHub(m,settings);
+ else if(page==="agentdb"){const guide=settingsGuide("agentdb");if(guide)append(m,guide);await renderAgentDatabase(m)}
+ else if(page==="bpms"){const guide=settingsGuide("bpms");if(guide)append(m,guide);await renderBPMS(m)}
+ else if(page==="ai"){const guide=settingsGuide("ai");if(guide)append(m,guide);renderAI(m,settings.ai||{})}
+ else if(page==="organization")await renderOrganizationHub(m);
+ else if(page==="license"){const guide=settingsGuide("license");if(guide)append(m,guide);await renderLicense(m,settings)}
+ else await renderConnections(m,settings);
 }
 
 function connectionItem(name,description,status,actions){
