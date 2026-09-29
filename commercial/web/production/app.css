@@ -14,3 +14,33 @@
 #pm-nav,#platform-nav{display:grid;gap:7px}
 #pm-nav[hidden],#platform-nav[hidden]{display:none!important}
 @media(max-width:900px){#pm-nav,#platform-nav{display:flex;flex-wrap:wrap}}
+
+
+/* Unified workspace navigation + embedded system management. */
+.nav-section-title{
+ display:block;padding:18px 12px 7px;color:#91a0b1;font-size:10px;font-weight:800;
+ letter-spacing:.4px;border-top:1px solid var(--border);margin-top:8px;
+}
+#pm-nav .nav-section-title{border-top:0;margin-top:0;padding-top:0}
+#admin-nav{display:grid;gap:7px}
+#admin-nav[hidden]{display:none!important}
+.system-management-nav{border:1px solid transparent!important}
+.system-management-nav.active{
+ background:linear-gradient(90deg,#e9f4f2,#eef8fb)!important;
+ color:var(--teal)!important;border-color:#d5ebe7!important;
+}
+.system-admin-shell{
+ width:100%;min-height:calc(100vh - 190px);padding:0;margin:0;
+ border:1px solid var(--border);border-radius:16px;background:var(--white);
+ overflow:hidden;box-shadow:var(--shadow);
+}
+.system-admin-frame{
+ display:block;width:100%;height:calc(100vh - 190px);min-height:720px;
+ border:0;background:transparent;
+}
+@media(max-width:900px){
+ #admin-nav{display:flex;flex-wrap:wrap}
+ .nav-section-title{width:100%;border-top:1px solid var(--border);padding:12px 8px 4px}
+ .system-admin-shell{min-height:760px}
+ .system-admin-frame{height:760px;min-height:760px}
+}
