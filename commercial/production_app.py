@@ -201,7 +201,12 @@ def health():
 @app.get("/")
 def home(request:Request):
     from .setup_console import get_setting,godadmin_identity
-    if not get_setting("oidc") or not godadmin_identity():
+    if not godadmin_identity():
+        from .setup_routes import bootstrap_workspace_session
+        if bootstrap_workspace_session(request):
+            return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
+        return RedirectResponse("/admin/",status_code=303)
+    if not get_setting("oidc"):
         return RedirectResponse("/admin/",status_code=303)
     _purge()
     if request.cookies.get("avan_session","") not in sessions:
@@ -558,11 +563,24 @@ def _store_response(action, principal):
 
 
 @app.get("/api/me")
-def current_user(value=Depends(_principal_for_request)):
-    _,session,principal=value
+def current_user(request:Request):
     from .setup_console import get_setting,is_godadmin,godadmin_identity
     if not godadmin_identity():
-        raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
+        from .setup_routes import bootstrap_workspace_session
+        bootstrap=bootstrap_workspace_session(request)
+        if not bootstrap:
+            raise HTTPException(status_code=401,detail="ورود GodAdmin لازم است.")
+        _,session=bootstrap
+        company=get_setting("company") or {}
+        return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
+                "role":"GodAdmin","department":"مدیریت سامانه",
+                "csrf":session["csrf"],"subject":"bootstrap-godadmin",
+                "modules":[],"is_godadmin":True,"bootstrap_mode":True,
+                "platform_access":False,"workspace_navigation":True,
+                "workspace_access":False,"workspace_degraded":True,
+                "license_expires_at":None,"license_mode":"bootstrap"}
+    value=_principal_for_request(request)
+    _,session,principal=value
     godadmin=is_godadmin(principal)
     if godadmin:
         try:
@@ -574,8 +592,8 @@ def current_user(value=Depends(_principal_for_request)):
             return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
                     "role":"GodAdmin","department":"مدیریت سامانه",
                     "csrf":session["csrf"],"subject":principal.subject,
-                    "modules":[1,3],"is_godadmin":True,
-                    "workspace_navigation":True,"workspace_access":False,
+                    "modules":[1,3],"is_godadmin":True,"bootstrap_mode":False,
+                    "platform_access":True,"workspace_navigation":True,"workspace_access":False,
                     "workspace_degraded":True,
                     "license_expires_at":None,"license_mode":"platform"}
     else:
@@ -587,7 +605,8 @@ def current_user(value=Depends(_principal_for_request)):
             "modules":sorted(license_data["modules"]),
             "license_expires_at":license_data["expires_at"],
             "license_mode":license_data.get("mode", "licensed"),
-            "is_godadmin":godadmin,"workspace_navigation":True,
+            "is_godadmin":godadmin,"bootstrap_mode":False,
+            "platform_access":godadmin,"workspace_navigation":True,
             "workspace_access":True,"workspace_degraded":False}
 
 
