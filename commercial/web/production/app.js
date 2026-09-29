@@ -44,7 +44,7 @@ function setupUser(user){
  app.user=user;app.csrf=user.csrf;$("nav").hidden=false;
  const workspaceNavigation=user.workspace_navigation!==undefined?!!user.workspace_navigation:!!user.workspace_access;
  $("pm-nav").hidden=!workspaceNavigation;
- $("platform-nav").hidden=!user.is_godadmin;
+ $("platform-nav").hidden=!(user.is_godadmin&&user.platform_access!==false);
  $("admin-nav").hidden=!user.is_godadmin;
  $("admin-entry").hidden=true;$("logout").hidden=false;
  document.body.classList.remove("auth-screen");
@@ -60,6 +60,16 @@ function setupUser(user){
 async function signOut(){
  if(!app.csrf){sessionExpired();return}
  try{
+  if(app.user?.bootstrap_mode){
+   const response=await fetch("/admin/api/logout",{
+    method:"POST",credentials:"same-origin",cache:"no-store",
+    headers:{"Accept":"application/json","X-AVAN-ADMIN-CSRF":app.csrf}
+   });
+   if(!response.ok)throw Error("خروج انجام نشد.");
+   sessionExpired();
+   window.location.assign("/admin/");
+   return;
+  }
   const response=await request("/auth/logout",{method:"POST"});
   sessionExpired();
   try{localStorage.setItem("avan-logout",String(Date.now()))}catch(_){}
@@ -85,7 +95,7 @@ function select(page){
  const platformPage=page.startsWith("platform-");
  const adminPage=page==="system-management";
  const orgPage=!platformPage&&!adminPage;
- if(platformPage&&!app.user?.is_godadmin)return;
+ if(platformPage&&(!app.user?.is_godadmin||app.user?.platform_access===false))return;
  if(adminPage&&!app.user?.is_godadmin)return;
  const workspaceNavigation=app.user?.workspace_navigation!==undefined?!!app.user.workspace_navigation:!!app.user?.workspace_access;
  if(orgPage&&!workspaceNavigation)return;
@@ -206,7 +216,7 @@ async function init(){
   const user=await request("/api/me");setupUser(user);
   const workspaceNavigation=user.workspace_navigation!==undefined?!!user.workspace_navigation:!!user.workspace_access;
   if(workspaceNavigation)select("overview");
-  else if(user.is_godadmin)select("platform-overview");
+  else if(user.is_godadmin&&user.platform_access!==false)select("platform-overview");
   else select("overview");
  }
  catch(err){
