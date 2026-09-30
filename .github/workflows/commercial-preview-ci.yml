@@ -89,16 +89,19 @@ jobs:
         run: |
           node --check commercial/web/production/app.js
           node --check commercial/web/admin/app.js
+          node --check commercial/web/admin/login-scene.js
           node --check commercial/web/admin/help.js
           node --check infra/keycloak/themes/avan/login/resources/js/otp-motion.js
           node --check infra/keycloak/themes/avan/login/resources/js/captcha-ui.js
           node --check infra/keycloak/themes/avan/login/resources/js/login-reveal.js
+          node --check infra/keycloak/themes/avan/login/resources/js/login-scene.js
       - name: Browser smoke test with isolated API fixtures
         run: |
           npm install --no-save --package-lock=false playwright
           npx playwright install --with-deps chromium
           node commercial/tests/ui_smoke.cjs
           node commercial/tests/management_render_smoke.cjs
+          node commercial/tests/login_scene_smoke.cjs
       - name: Validate env-free first-run Compose
         run: |
           docker compose config --quiet
