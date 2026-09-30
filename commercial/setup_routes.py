@@ -836,6 +836,319 @@ def pm_remove(body:RemoveConnection,session=Depends(_ready)):
     setup.put_setting('processmaker',{})
     return {'deleted':True}
 
+class PMProfileSave(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    id:str|None=Field(default=None,pattern=r"^[0-9a-f]{24}$")
+    name:str=Field(min_length=2,max_length=100)
+    mysql_host:str=Field(min_length=1,max_length=253,pattern=r"^[A-Za-z0-9_.:-]+$")
+    mysql_port:int=Field(default=3306,ge=1,le=65535)
+    mysql_database:str=Field(default="bitnami_pm",pattern=r"^(?:wf_[A-Za-z0-9_]{1,48}|bitnami_pm)$")
+    mysql_username:str=Field(min_length=1,max_length=128)
+    mysql_password:str=Field(default="",max_length=512)
+    mysql_tls:bool=False
+    mysql_ca_pem:str=Field(default="",max_length=16000)
+    mysql_timezone:str=Field(default="Asia/Tehran",max_length=80)
+    oauth_base_url:str=Field(min_length=12,max_length=500)
+    oauth_workspace:str=Field(min_length=1,max_length=48)
+    oauth_client_id:str=Field(min_length=1,max_length=256)
+    oauth_client_secret:str=Field(default="",max_length=4096)
+    oauth_username:str=Field(default="",max_length=160)
+    oauth_password:str=Field(default="",max_length=512)
+    activate:bool=True
+
+
+class BPMSCatalogRef(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    connection_type:Literal["processmaker","adapter"]
+    id:str=Field(pattern=r"^[0-9a-f]{24}$")
+
+
+class BPMSCatalogCopy(BPMSCatalogRef):
+    name:str|None=Field(default=None,min_length=2,max_length=100)
+
+
+def _pm_profiles_state()->dict:
+    raw=setup.get_setting("processmaker_profiles") or {}
+    profiles=raw.get("profiles") if isinstance(raw,dict) else None
+    active_id=raw.get("active_id") if isinstance(raw,dict) else None
+    if not isinstance(profiles,list):
+        profiles=[]
+    clean=[p for p in profiles if isinstance(p,dict) and
+           re.fullmatch(r"[0-9a-f]{24}",str(p.get("id",""))) and
+           isinstance(p.get("name"),str)]
+    if not clean:
+        legacy_mysql=setup.get_setting("mysql") or {}
+        legacy_api=setup.get_setting("processmaker") or {}
+        if legacy_mysql or legacy_api:
+            identifier=secrets.token_hex(12)
+            clean=[{"id":identifier,"name":"ProcessMaker اصلی",
+                    "engine":"processmaker","mysql":legacy_mysql,"api":legacy_api}]
+            active_id=identifier
+            setup.put_setting("processmaker_profiles",
+                              {"active_id":active_id,"profiles":clean})
+            setup.audit("PROCESSMAKER_PROFILE_MIGRATED")
+    if active_id and not any(p["id"]==active_id for p in clean):
+        active_id=None
+    return {"active_id":active_id,"profiles":clean}
+
+
+def _pm_profiles_write(state:dict)->None:
+    setup.put_setting("processmaker_profiles",{
+        "active_id":state.get("active_id"),
+        "profiles":state.get("profiles",[])
+    })
+
+
+def _pm_profile_public(profile:dict,active_id:str|None)->dict:
+    mysql=profile.get("mysql") or {}
+    api=profile.get("api") or {}
+    return {
+        "id":profile["id"],"name":profile["name"],
+        "connection_type":"processmaker","engine":"processmaker",
+        "active":profile["id"]==active_id,
+        "mysql":{"host":mysql.get("host"),"port":mysql.get("port",3306),
+                 "database":mysql.get("database"),"username":mysql.get("username"),
+                 "tls":bool(mysql.get("tls")),"timezone":mysql.get("timezone","Asia/Tehran"),
+                 "has_password":bool(mysql.get("password")),
+                 "has_ca":bool(mysql.get("ca_pem"))},
+        "oauth":{"base_url":api.get("base_url"),"workspace":api.get("workspace"),
+                 "client_id":api.get("oauth_client_id"),
+                 "token_managed":bool(api.get("token_managed")),
+                 "expires_at":api.get("access_token_expires_at"),
+                 "has_client_secret":bool(api.get("oauth_client_secret")),
+                 "has_refresh_token":bool(api.get("refresh_token"))},
+    }
+
+
+def _pm_profile_activate(state:dict,profile:dict)->None:
+    mysql=dict(profile.get("mysql") or {})
+    api=dict(profile.get("api") or {})
+    if not mysql or not api:
+        raise HTTPException(409,"اتصال ProcessMaker کامل نیست.")
+    setup.put_setting("mysql",mysql)
+    setup.put_setting("processmaker",api)
+    state["active_id"]=profile["id"]
+    _pm_profiles_write(state)
+
+
+def _pm_profile_refresh(profile:dict,state:dict)->dict:
+    api=dict(profile.get("api") or {})
+    if not api.get("token_managed"):
+        raise HTTPException(409,"این اتصال ProcessMaker تمدید خودکار OAuth ندارد.")
+    client_id=str(api.get("oauth_client_id") or "")
+    client_secret=str(api.get("oauth_client_secret") or "")
+    refresh=str(api.get("refresh_token") or "")
+    if not client_id or not client_secret or not refresh:
+        raise HTTPException(409,"اطلاعات Refresh Token این اتصال کامل نیست.")
+    tokens=_pm_oauth_token(api["base_url"],api["workspace"],{
+        "grant_type":"refresh_token","client_id":client_id,
+        "client_secret":client_secret,"refresh_token":refresh,
+    })
+    updated=_pm_managed_config(api["base_url"],api["workspace"],
+                               client_id,client_secret,tokens,refresh)
+    profile["api"]=updated
+    state["profiles"]=[profile if p["id"]==profile["id"] else p
+                       for p in state["profiles"]]
+    if state.get("active_id")==profile["id"]:
+        setup.put_setting("processmaker",updated)
+    _pm_profiles_write(state)
+    setup.audit("PROCESSMAKER_PROFILE_TOKEN_REFRESHED")
+    return profile
+
+
+def _pm_profile_test(profile:dict,state:dict)->dict:
+    mysql=profile.get("mysql") or {}
+    api=profile.get("api") or {}
+    if not mysql or not api:
+        raise HTTPException(409,"تنظیمات اتصال ProcessMaker کامل نیست.")
+    _mysql_check(MySQLConfig.model_validate(mysql))
+    if api.get("token_managed"):
+        try:expires=float(api.get("access_token_expires_at") or 0)
+        except (TypeError,ValueError):expires=0
+        if expires<=time.time()+90:
+            profile=_pm_profile_refresh(profile,state)
+            api=profile["api"]
+    try:
+        _pm_directory_check(api["base_url"],api["workspace"],api.get("bearer_token",""))
+    except HTTPException as exc:
+        if exc.status_code==401 and api.get("token_managed"):
+            profile=_pm_profile_refresh(profile,state)
+            api=profile["api"]
+            _pm_directory_check(api["base_url"],api["workspace"],api["bearer_token"])
+        else:
+            raise
+    return {"connected":True,"mysql":True,"oauth":True,
+            "active":state.get("active_id")==profile["id"],
+            "expires_at":api.get("access_token_expires_at")}
+
+
+def _pm_profile_from_body(body:PMProfileSave,state:dict)->dict:
+    previous=next((p for p in state["profiles"] if p["id"]==body.id),None) if body.id else None
+    identifier=body.id or secrets.token_hex(12)
+    if body.id and not previous:
+        raise HTTPException(404,"اتصال ProcessMaker برای ویرایش پیدا نشد.")
+
+    previous_mysql=(previous or {}).get("mysql") or {}
+    mysql_password=body.mysql_password
+    mysql_same=(previous_mysql.get("host")==body.mysql_host and
+                int(previous_mysql.get("port") or 3306)==body.mysql_port and
+                previous_mysql.get("database")==body.mysql_database and
+                previous_mysql.get("username")==body.mysql_username)
+    if not mysql_password and mysql_same:
+        mysql_password=str(previous_mysql.get("password") or "")
+    if not mysql_password:
+        raise HTTPException(422,"رمز MySQL برای اتصال جدید یا تغییر مقصد لازم است.")
+    mysql={
+        "host":body.mysql_host,"port":body.mysql_port,
+        "database":body.mysql_database,"username":body.mysql_username,
+        "password":mysql_password,"tls":body.mysql_tls,
+        "ca_pem":body.mysql_ca_pem or str(previous_mysql.get("ca_pem") or ""),
+        "timezone":body.mysql_timezone,"enabled":True,
+    }
+    _mysql_check(MySQLConfig.model_validate(mysql))
+
+    previous_api=(previous or {}).get("api") or {}
+    same_oauth=(str(previous_api.get("base_url") or "").rstrip("/")==body.oauth_base_url.rstrip("/") and
+                previous_api.get("workspace")==body.oauth_workspace and
+                previous_api.get("oauth_client_id")==body.oauth_client_id)
+    client_secret=body.oauth_client_secret.strip()
+    if not client_secret and same_oauth:
+        client_secret=str(previous_api.get("oauth_client_secret") or "")
+
+    username=body.oauth_username.strip()
+    password=body.oauth_password
+    if bool(username)!=bool(password):
+        raise HTTPException(422,"برای ساخت Token، نام کاربری و رمز ProcessMaker را با هم وارد کنید.")
+
+    if username and password:
+        if not client_secret:
+            raise HTTPException(422,"Client Secret برای دریافت Token لازم است.")
+        tokens=_pm_oauth_token(body.oauth_base_url,body.oauth_workspace,{
+            "grant_type":"password","scope":"*",
+            "client_id":body.oauth_client_id,
+            "client_secret":client_secret,
+            "username":username,"password":password,
+        })
+        api=_pm_managed_config(body.oauth_base_url,body.oauth_workspace,
+                               body.oauth_client_id,client_secret,tokens)
+    else:
+        if not previous_api or not same_oauth:
+            raise HTTPException(422,"برای اتصال جدید یا تغییر OAuth، نام کاربری و رمز ProcessMaker را وارد کنید.")
+        api=dict(previous_api)
+        if client_secret:
+            api["oauth_client_secret"]=client_secret
+
+    _pm_directory_check(api["base_url"],api["workspace"],api.get("bearer_token",""))
+    return {"id":identifier,"name":body.name.strip(),
+            "engine":"processmaker","mysql":mysql,"api":api}
+
+
+@router.get("/api/bpms/catalog")
+def bpms_catalog(session=Depends(_ready)):
+    from .bpms_registry import sources
+    state=_pm_profiles_state()
+    native=[_pm_profile_public(p,state.get("active_id")) for p in state["profiles"]]
+    adapters=[{**row,"connection_type":"adapter",
+               "engine":row.get("engine","other"),"active":bool(row.get("enabled"))}
+              for row in sources()]
+    return {"connections":native+adapters,
+            "types":[
+                {"id":"processmaker","label":"ProcessMaker","native":True},
+                {"id":"camunda","label":"Camunda","native":False},
+                {"id":"appian","label":"Appian","native":False},
+                {"id":"uipath","label":"UiPath","native":False},
+                {"id":"servicenow","label":"ServiceNow","native":False},
+                {"id":"other","label":"سایر / AVAN REST v1","native":False},
+            ]}
+
+
+@router.post("/api/bpms/processmaker/save")
+def bpms_processmaker_save(body:PMProfileSave,session=Depends(_ready)):
+    state=_pm_profiles_state()
+    if not body.id and len(state["profiles"])>=12:
+        raise HTTPException(409,"حداکثر ۱۲ اتصال ProcessMaker قابل ثبت است.")
+    profile=_pm_profile_from_body(body,state)
+    state["profiles"]=[p for p in state["profiles"] if p["id"]!=profile["id"]]+[profile]
+    if body.activate or state.get("active_id")==profile["id"]:
+        _pm_profile_activate(state,profile)
+    else:
+        _pm_profiles_write(state)
+    setup.audit("PROCESSMAKER_PROFILE_SAVED")
+    return {"saved":True,"id":profile["id"],
+            "active":state.get("active_id")==profile["id"]}
+
+
+@router.post("/api/bpms/catalog/test")
+def bpms_catalog_test(body:BPMSCatalogRef,session=Depends(_ready)):
+    if body.connection_type=="processmaker":
+        state=_pm_profiles_state()
+        profile=next((p for p in state["profiles"] if p["id"]==body.id),None)
+        if not profile:raise HTTPException(404,"اتصال ProcessMaker پیدا نشد.")
+        return _pm_profile_test(profile,state)
+    from .bpms_registry import check_saved,BPMSUnavailable
+    try:return check_saved(body.id)
+    except BPMSUnavailable as exc:raise HTTPException(503,str(exc))
+
+
+@router.post("/api/bpms/catalog/copy")
+def bpms_catalog_copy(body:BPMSCatalogCopy,session=Depends(_ready)):
+    if body.connection_type=="processmaker":
+        state=_pm_profiles_state()
+        source=next((p for p in state["profiles"] if p["id"]==body.id),None)
+        if not source:raise HTTPException(404,"اتصال ProcessMaker پیدا نشد.")
+        if len(state["profiles"])>=12:raise HTTPException(409,"حداکثر تعداد اتصال ProcessMaker ثبت شده است.")
+        copied={**source,"id":secrets.token_hex(12),
+                "name":(body.name or (source["name"]+" - کپی")).strip(),
+                "mysql":dict(source.get("mysql") or {}),
+                "api":dict(source.get("api") or {})}
+        state["profiles"].append(copied);_pm_profiles_write(state)
+        setup.audit("PROCESSMAKER_PROFILE_COPIED")
+        return {"saved":True,"id":copied["id"],"active":False}
+    from .bpms_registry import copy_source,BPMSUnavailable
+    try:return copy_source(body.id,body.name)
+    except BPMSUnavailable as exc:raise HTTPException(409,str(exc))
+
+
+@router.post("/api/bpms/catalog/delete")
+def bpms_catalog_delete(body:BPMSCatalogRef,session=Depends(_ready)):
+    if body.connection_type=="processmaker":
+        state=_pm_profiles_state()
+        source=next((p for p in state["profiles"] if p["id"]==body.id),None)
+        if not source:raise HTTPException(404,"اتصال ProcessMaker پیدا نشد.")
+        state["profiles"]=[p for p in state["profiles"] if p["id"]!=body.id]
+        if state.get("active_id")==body.id:
+            state["active_id"]=None
+            setup.put_setting("mysql",{})
+            setup.put_setting("processmaker",{})
+        _pm_profiles_write(state);setup.audit("PROCESSMAKER_PROFILE_DELETED")
+        return {"deleted":True}
+    from .bpms_registry import delete,BPMSUnavailable
+    try:return delete(body.id)
+    except BPMSUnavailable as exc:raise HTTPException(404,str(exc))
+
+
+@router.post("/api/bpms/processmaker/activate")
+def bpms_processmaker_activate(body:BPMSCatalogRef,session=Depends(_ready)):
+    if body.connection_type!="processmaker":
+        raise HTTPException(422,"نوع اتصال برای فعال‌سازی بومی معتبر نیست.")
+    state=_pm_profiles_state()
+    profile=next((p for p in state["profiles"] if p["id"]==body.id),None)
+    if not profile:raise HTTPException(404,"اتصال ProcessMaker پیدا نشد.")
+    _pm_profile_test(profile,state)
+    _pm_profile_activate(state,profile)
+    setup.audit("PROCESSMAKER_PROFILE_ACTIVATED")
+    return {"activated":True,"id":body.id}
+
+
+@router.get("/api/bpms/processmaker/profile/{profile_id}")
+def bpms_processmaker_profile(profile_id:str,session=Depends(_ready)):
+    if not re.fullmatch(r"[0-9a-f]{24}",profile_id):
+        raise HTTPException(422,"شناسه اتصال معتبر نیست.")
+    state=_pm_profiles_state()
+    profile=next((p for p in state["profiles"] if p["id"]==profile_id),None)
+    if not profile:raise HTTPException(404,"اتصال ProcessMaker پیدا نشد.")
+    return _pm_profile_public(profile,state.get("active_id"))
+
 @router.get("/api/users/pending")
 def pending_staff(session=Depends(_ready)):
     from .pending_identities import list_pending
