@@ -31,6 +31,7 @@ class SourceConfig(BaseModel):
     id:str|None=Field(None,pattern=r"^[0-9a-f]{24}$")
     name:str=Field(min_length=2,max_length=100)
     kind:Literal["avan-rest-v1"]="avan-rest-v1"
+    engine:Literal["camunda","appian","uipath","servicenow","other"]="other"
     base_url:str=Field(min_length=12,max_length=255)
     bearer_token:str=Field(default="",max_length=8192)
     enabled:bool=True
@@ -126,7 +127,8 @@ def _all():
 
 def sources():
     return [{k:v for k,v in row.items() if k!="bearer_token"}
-            | {"has_token":bool(row.get("bearer_token"))} for row in _all()]
+            | {"engine":row.get("engine","other"),"has_token":bool(row.get("bearer_token"))}
+            for row in _all()]
 
 
 def signature():
@@ -156,6 +158,26 @@ def _candidate(candidate:SourceConfig):
 def check(candidate:SourceConfig):
     _,data=_candidate(candidate)
     return identity(data)
+
+def check_saved(identifier:str):
+    source=next((s for s in _all() if s["id"]==identifier),None)
+    if not source:raise BPMSUnavailable("Connection does not exist")
+    return identity(source)
+
+
+def copy_source(identifier:str,name:str|None=None):
+    stored=_all()
+    source=next((s for s in stored if s["id"]==identifier),None)
+    if not source:raise BPMSUnavailable("Connection does not exist")
+    if len(stored)>=MAX_SOURCES:raise BPMSUnavailable("Connection limit reached")
+    copied={**source,
+            "id":secrets.token_hex(12),
+            "name":(name or (source["name"]+" - کپی")).strip(),
+            "enabled":False}
+    if not 2<=len(copied["name"])<=100:
+        raise BPMSUnavailable("Connection name is invalid")
+    setup.put_setting("bpms_connections",{"sources":stored+[copied]})
+    return {"id":copied["id"],"saved":True,"copied_from":identifier,"enabled":False}
 
 
 def save(candidate:SourceConfig):
