@@ -157,6 +157,12 @@ def admin_js(request:Request):
     _local(request)
     return FileResponse(WEB/"app.js",media_type="text/javascript; charset=utf-8")
 
+@router.get("/assets/login-scene.js")
+def admin_login_scene_js(request:Request):
+    _local(request)
+    return FileResponse(WEB/"login-scene.js",media_type="text/javascript; charset=utf-8")
+
+
 @router.get("/help/")
 def admin_help(request:Request):
     _local(request)
