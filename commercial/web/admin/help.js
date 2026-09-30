@@ -110,22 +110,38 @@ const topics={
   ],fields:[]
  },
  appearance:{
-  title:"تنظیمات ظاهری",lead:"ظاهر Scene صفحه ورود بدون تغییر طراحی کارت Login از این بخش مدیریت می‌شود.",
-  flow:["انتخاب پس‌زمینه","تنظیم کره","تنظیم Hover و مدار","ویرایش المان‌ها","ذخیره و همگام‌سازی با Login سازمانی"],
+  title:"ویرایشگر کامل ظاهر Login",lead:"Scene Editor V4 کنترل کامل Background، Globe، Orbit، Hover و هر Node را بدون تغییر منطق امنیتی Login در اختیار GodAdmin می‌گذارد.",
+  flow:["انتخاب Background","تنظیم Crop و نور","تنظیم Globe","تنظیم Orbit و Hover","ویرایش تک‌تک Nodeها","ذخیره امن","همگام‌سازی با Keycloak"],
   steps:[
-   ["پس‌زمینه","PNG، JPG یا WebP را انتخاب کن؛ Browser آن را قبل از ذخیره به WebP و حداکثر ۱۹۲۰×۱۰۸۰ تبدیل می‌کند."],
-   ["کره زنده","اندازه، روشنایی، اشباع رنگ و Glow کره را تنظیم کن؛ کره و شبکه Canvas مستقل از تصویر پس‌زمینه هستند."],
-   ["Hover","حالت کارت، Tooltip، فقط عنوان، فقط Glow یا بدون Hover را انتخاب و ضریب بزرگ‌شدن را مشخص کن."],
-   ["المان‌ها","برای هر Node می‌توان SVG، عنوان، متن کوتاه، توضیح، Tag و رنگ Glow را تغییر داد یا المان جدید ساخت."],
-   ["SVG امن","SVG در Backend پاک‌سازی می‌شود؛ Script، event handler، href و تگ‌های غیرمجاز ذخیره نمی‌شوند."],
-   ["همگام‌سازی","تنظیمات عمومی Appearance روی Volume جداگانه نوشته می‌شوند تا Login Keycloak هم همان ظاهر را بخواند."]
+   ["Background","PNG/JPG/WebP را انتخاب کن. Browser تصویر را حداکثر تا ۱۹۲۰×۱۰۸۰ به WebP تبدیل می‌کند. Fit، موقعیت X/Y، Brightness، Contrast، Saturation، Blur، Dark Layer، Overlay Color/Opacity و Parallax مستقل هستند."],
+   ["Globe","کره از Background جداست. می‌توانی Sprite پیش‌فرض آوان را نگه داری یا تصویر کره خودت را بدهی؛ X/Y، Scale، Opacity، Brightness، Contrast، Saturation، Hue، Glow و Wobble مستقل‌اند."],
+   ["شبکه کره","Rotation Speed، تراکم نقاط، اندازه نقاط و Opacity نقاط Canvas قابل تنظیم‌اند؛ این تنظیمات روی تصویر کره اعمال نمی‌شوند و لایه شبکه را جدا کنترل می‌کنند."],
+   ["Orbit","سرعت کلی حرکت، ضخامت و Opacity خطوط، Glow و دو رنگ اصلی/ثانویه Orbit قابل تنظیم‌اند. نمایش خطوط Orbit را هم می‌توان خاموش کرد بدون اینکه Nodeها متوقف شوند."],
+   ["Hover","Mode می‌تواند Card، Tooltip، Label، Glow یا None باشد. Scale و Duration سراسری تعریف می‌شوند و هر Node می‌تواند Scale اختصاصی داشته باشد."],
+   ["Node مستقل","برای هر Node: فعال/غیرفعال، ترتیب، عنوان، Subtitle، Description، Tags، SVG، Accent Color، Size، Hover Scale، Glow، Opacity، Radius، Ellipse، Start Angle، Speed/Direction، Card Side و Label Mode مستقل است."],
+   ["جهت حرکت","Speed مثبت و منفی جهت حرکت را تعیین می‌کند؛ عدد صفر Node را روی موقعیت فعلی ثابت می‌کند. Orbit Speed سراسری نیز روی همه Speedها ضرب می‌شود."],
+   ["Card Side","Auto بسته به محل Node سمت مناسب را انتخاب می‌کند؛ Left/Right/Top/Bottom برای طراحی ثابت قابل اجبار است."],
+   ["SVG امن","فایل SVG یا کد SVG پذیرفته می‌شود ولی Preview خام قبل از Sanitise اجرا نمی‌شود. Backend فقط تگ‌ها و Attributeهای گرافیکی مجاز را نگه می‌دارد."],
+   ["Persistence","تنظیمات در Store رمزگذاری‌شده آوان ذخیره و نسخه Sanitised عمومی در Volume avan-ui منتشر می‌شود تا Keycloak همان ظاهر را بخواند."]
   ],
   fields:[
-   ["Background","تصویر Raster؛ حداکثر ۵MB بعد از بهینه‌سازی."],
-   ["Hover scale","ضریب بزرگ‌شدن Node هنگام Hover."],
-   ["Hover mode","card / tooltip / label / glow / none."],
-   ["SVG","فقط svg/g/path/circle/rect/line/polyline/polygon/ellipse و attributeهای امن."],
-   ["Tags","حداکثر ۸ Tag برای هر المان."]
+   ["Background Fit","cover / contain / stretch / auto"],
+   ["Background X/Y","۰ تا ۱۰۰ درصد؛ محل کانون تصویر داخل صفحه."],
+   ["Blur","۰ تا ۲۰px؛ برای تصویر مرجع بهتر است معمولاً ۰ تا ۲ بماند."],
+   ["Parallax","۰ تا ۳۰px؛ میزان حرکت آرام Background با Mouse."],
+   ["Globe X/Y","محل مرکز کره در صفحه؛ پیش‌فرض نزدیک سمت چپ است."],
+   ["Globe Scale","۰٫۵۵ تا ۱٫۸۵ برابر."],
+   ["Globe Hue","از ‎-۱۸۰ تا +۱۸۰ درجه برای تغییر تون رنگ."],
+   ["Point Density","۰٫۵ تا ۲٫۵؛ هرچه بیشتر، نقاط Canvas متراکم‌تر و بار GPU بیشتر."],
+   ["Node Size","۴۰ تا ۱۱۰px؛ مقدار اختصاصی هر Node اگر ۰ باشد از Default استفاده می‌کند."],
+   ["Hover Scale","۱ تا ۱٫۸ سراسری؛ Override هر Node تا ۱٫۸۵."],
+   ["Radius","فاصله Node از مرکز کره؛ حدود ۰٫۷۵ تا ۱٫۹۵."],
+   ["Ellipse","کشیدگی عمودی مسیر؛ ۱ دایره و مقدار کمتر Orbit تخت‌تر."],
+   ["Angle","زاویه شروع بر حسب رادیان."],
+   ["Speed","از ‎-0.001 تا +0.001؛ علامت جهت و قدرمطلق سرعت را مشخص می‌کند."],
+   ["Card Width","۱۲۰ تا ۳۲۰px."],
+   ["SVG","حداکثر ۵۰۰۰ کاراکتر؛ script/event/href و عناصر غیرمجاز حذف یا رد می‌شوند."],
+   ["Tags","حداکثر ۸ Tag، هرکدام حداکثر ۳۰ کاراکتر."]
   ]
  },
  license:{
