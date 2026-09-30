@@ -535,6 +535,7 @@ const menu=[
  ["agentdb","بانک Agent"],
  ["ai","هوش مصنوعی"],
  ["organization","سازمان و دسترسی"],
+ ["appearance","تنظیمات ظاهری"],
  ["license","لایسنس"]
 ];
 
@@ -586,6 +587,7 @@ async function showSettings(page=state.page){
   else if(page==="agentdb")await renderAgentDatabase(contentHost);
   else if(page==="ai")renderAI(contentHost,settings.ai||{});
   else if(page==="organization")await renderOrganizationHub(contentHost);
+  else if(page==="appearance")await renderAppearance(contentHost);
   else if(page==="license")await renderLicense(contentHost,settings);
   else await renderConnections(contentHost,settings);
   if(!contentHost.children.length)throw Error("محتوای این بخش ساخته نشد.");
@@ -673,6 +675,159 @@ async function renderConnections(m,settings){
   node("p","hint","هر Secret و اتصال فقط در یک صفحه ویرایش می‌شود. این Dashboard فقط وضعیت را نشان می‌دهد تا تنظیم تکراری یا متناقض ایجاد نشود."));
  append(p,noteBox);
 }
+
+function appearanceImageData(file){
+ return new Promise((resolve,reject)=>{
+  if(!file||!/^image\/(png|jpeg|webp)$/.test(file.type)){reject(Error("فقط PNG، JPG یا WebP مجاز است."));return}
+  if(file.size>10*1024*1024){reject(Error("فایل اولیه باید کمتر از ۱۰ مگابایت باشد."));return}
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{
+   try{
+    const maxW=1920,maxH=1080,scale=Math.min(1,maxW/img.naturalWidth,maxH/img.naturalHeight);
+    const canvas=document.createElement("canvas");canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+    const ctx=canvas.getContext("2d");ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob=>{
+     URL.revokeObjectURL(url);
+     if(!blob){reject(Error("تبدیل تصویر انجام نشد."));return}
+     if(blob.size>5*1024*1024){reject(Error("تصویر پس از بهینه‌سازی هنوز بیش از ۵ مگابایت است."));return}
+     const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(Error("خواندن تصویر انجام نشد."));reader.readAsDataURL(blob);
+    },"image/webp",.88);
+   }catch(err){URL.revokeObjectURL(url);reject(err)}
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);reject(Error("تصویر قابل خواندن نیست."))};img.src=url;
+ });
+}
+function appearanceRange(title,value,min,max,step,suffix=""){
+ const row=node("div","appearance-slider"),label=node("label","",title),input=node("input"),out=node("output");
+ input.type="range";input.min=String(min);input.max=String(max);input.step=String(step);input.value=String(value);
+ out.textContent=String(value)+suffix;input.addEventListener("input",()=>out.textContent=input.value+suffix);
+ append(label,input);append(row,label,out);return {row,input,out};
+}
+async function renderAppearance(m){
+ const p=panel("تنظیمات ظاهری صفحه ورود",
+  "Scene زنده صفحه Login از اینجا کنترل می‌شود. طراحی مستطیل Login مستقل است؛ این تنظیمات فقط پس‌زمینه، کره و المان‌های چرخان را تغییر می‌دهند.");
+ append(m,p);
+ const out=node("div"),config=await api("appearance");
+ let background=config.background_image||"";
+ const elements=(config.elements||[]).map(x=>({...x,tags:[...(x.tags||[])]}));
+ const grid=node("div","appearance-grid");
+
+ const bgCard=node("section","appearance-card");
+ append(bgCard,node("h3","","پس‌زمینه Login"),node("p","hint","تصویر روی Browser به WebP حداکثر ۱۹۲۰×۱۰۸۰ تبدیل می‌شود و در Store پایدار ذخیره می‌شود."));
+ const preview=node("div","appearance-preview");
+ if(background)preview.style.backgroundImage='url("'+background.replaceAll('"','%22')+'")';
+ const file=node("input");file.type="file";file.accept="image/png,image/jpeg,image/webp";
+ const position=selectField("محل تصویر","background_position",[
+  {value:"center",label:"وسط"},{value:"left",label:"چپ"},{value:"right",label:"راست"},{value:"top",label:"بالا"},{value:"bottom",label:"پایین"}
+ ],config.background_position||"center");
+ const clearBg=btn("بازگشت به پس‌زمینه پیش‌فرض",()=>{background="";preview.style.backgroundImage="";file.value="";}, "secondary");
+ file.addEventListener("change",async()=>{
+  if(!file.files?.[0])return;
+  try{background=await appearanceImageData(file.files[0]);preview.style.backgroundImage='url("'+background+'")';out.replaceChildren(info("تصویر آماده ذخیره است."))}
+  catch(err){file.value="";showError(out,err)}
+ });
+ append(bgCard,preview,file,position,clearBg);
+
+ const visual=node("section","appearance-card");
+ append(visual,node("h3","","شدت و اندازه Scene"),node("p","hint","مقادیر زیر بدون تغییر کارت Login، ظاهر کره و محیط را کنترل می‌کنند."));
+ const bgBright=appearanceRange("روشنایی پس‌زمینه",config.background_brightness??1.1,.55,1.5,.05,"×");
+ const bgDim=appearanceRange("لایه تیره روی پس‌زمینه",config.background_dim??.05,0,.75,.05);
+ const globeScale=appearanceRange("اندازه کره",config.globe_scale??1.18,.7,1.65,.05,"×");
+ const globeBright=appearanceRange("روشنایی کره",config.globe_brightness??1.24,.65,1.8,.05,"×");
+ const globeSat=appearanceRange("اشباع رنگ کره",config.globe_saturation??1.18,.5,1.8,.05,"×");
+ const globeGlow=appearanceRange("Glow کره",config.globe_glow??1.15,0,2,.05,"×");
+ append(visual,bgBright.row,bgDim.row,globeScale.row,globeBright.row,globeSat.row,globeGlow.row);
+
+ const behavior=node("section","appearance-card full");
+ append(behavior,node("h3","","رفتار المان‌های چرخان"),node("p","hint","Hover، بزرگ‌شدن، سرعت و نمایش کارت توضیح هر قابلیت از این بخش کنترل می‌شود."));
+ const behaviorGrid=node("div","appearance-grid");
+ const nodeSize=appearanceRange("اندازه پایه المان",config.node_size??68,44,96,1,"px");
+ const hoverScale=appearanceRange("ضریب بزرگ‌شدن Hover",config.hover_scale??1.22,1,1.65,.05,"×");
+ const orbitSpeed=appearanceRange("سرعت حرکت مدار",config.orbit_speed??1,0,3,.1,"×");
+ const hover=selectField("نوع Hover","hover_mode",[
+  {value:"card",label:"کارت عنوان + متن + Tag"},
+  {value:"tooltip",label:"Tooltip کامل"},
+  {value:"label",label:"فقط عنوان"},
+  {value:"glow",label:"فقط Glow و بزرگ‌شدن"},
+  {value:"none",label:"بدون افکت Hover"}
+ ],config.hover_mode||"card");
+ append(behaviorGrid,nodeSize.row,hoverScale.row,orbitSpeed.row,hover);
+ const checks=node("div","appearance-checks");
+ const pause=node("input");pause.type="checkbox";pause.checked=config.pause_on_hover!==false;
+ const pauseLabel=node("label");append(pauseLabel,pause,node("span","","توقف همان المان هنگام Hover"));
+ const orbits=node("input");orbits.type="checkbox";orbits.checked=config.show_orbits!==false;
+ const orbitLabel=node("label");append(orbitLabel,orbits,node("span","","نمایش خطوط مدار"));
+ const idleCards=node("input");idleCards.type="checkbox";idleCards.checked=!!config.show_idle_cards;
+ const idleLabel=node("label");append(idleLabel,idleCards,node("span","","نمایش کارت‌های توضیح حتی بدون Hover"));
+ append(checks,pauseLabel,orbitLabel,idleLabel);append(behavior,behaviorGrid,checks);
+
+ const elementSection=node("section","appearance-card full");
+ const head=node("div","section-head"),headText=node("div");
+ append(headText,node("h3","","المان‌های قابلیت‌ها"),node("p","hint","SVG، عنوان، متن کوتاه، توضیح کامل، Tag و رنگ هر Node قابل تغییر است. SVG در Backend پاک‌سازی امنیتی می‌شود."));
+ const addBtn=btn("افزودن المان",()=>{
+  if(elements.length>=12){out.replaceChildren(info("حداکثر ۱۲ المان قابل تعریف است.",true));return}
+  elements.push({id:"custom_"+Date.now(),enabled:true,title:"قابلیت جدید",subtitle:"توضیح کوتاه",description:"توضیح کامل قابلیت",tags:["AVAN"],accent:"#63ECFF",radius:1.25,ellipse:.7,angle:Math.random()*6.2,speed:.00015,svg:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 8v8M8 12h8"/></svg>'});
+  drawElements();
+ },"secondary");
+ append(head,headText,addBtn);append(elementSection,head);
+ const elementsHost=node("div","appearance-elements");append(elementSection,elementsHost);
+
+ const mkInput=(labelText,value,fieldName,opts={})=>{
+  const wrap=node("label","form-field"),label=node("span","",labelText),input=node(opts.multiline?"textarea":"input");
+  input.dataset.appearanceField=fieldName;if(!opts.multiline)input.type=opts.type||"text";input.value=value??"";if(opts.placeholder)input.placeholder=opts.placeholder;
+  append(wrap,label,input);return {wrap,input};
+ };
+ function drawElements(){
+  elementsHost.replaceChildren();
+  elements.forEach((item,index)=>{
+   const card=node("article","appearance-element");card.dataset.index=String(index);
+   const h=node("div","appearance-element-head"),left=node("div"),sample=node("span","appearance-svg-sample");
+   sample.innerHTML=item.svg||"";
+   const enabled=node("input");enabled.type="checkbox";enabled.checked=item.enabled!==false;enabled.dataset.appearanceField="enabled";
+   const enabledLabel=node("label");append(enabledLabel,enabled,node("span","",item.title||("المان "+(index+1))));
+   append(left,enabledLabel);const remove=btn("حذف",()=>{elements.splice(index,1);drawElements()},"secondary");
+   append(h,left,sample,remove);append(card,h);
+   const controls=node("div","appearance-element-controls");
+   const title=mkInput("عنوان",item.title,"title"),subtitle=mkInput("متن کوتاه",item.subtitle,"subtitle"),
+    tags=mkInput("Tagها با کاما", (item.tags||[]).join(", "), "tags"),
+    accent=mkInput("رنگ Glow",item.accent||"#63ECFF","accent",{type:"color"}),
+    desc=mkInput("توضیح کامل",item.description,"description",{multiline:true}),
+    svg=mkInput("SVG آیکن",item.svg,"svg",{multiline:true});
+   desc.wrap.classList.add("full");svg.wrap.classList.add("full");
+   append(controls,title.wrap,subtitle.wrap,tags.wrap,accent.wrap,desc.wrap,svg.wrap);append(card,controls);elementsHost.append(card);
+  });
+ }
+ drawElements();
+
+ append(grid,bgCard,visual,behavior,elementSection);append(p,grid);
+ const actions=node("div","appearance-actions");
+ append(actions,btn("ذخیره تنظیمات ظاهری",async()=>{
+  const savedElements=[...elementsHost.querySelectorAll(".appearance-element")].map((card,index)=>{
+   const value=name=>card.querySelector('[data-appearance-field="'+name+'"]');
+   const original=elements[index]||{};
+   return {
+    id:original.id||("custom_"+index),enabled:!!value("enabled")?.checked,title:value("title")?.value.trim()||"قابلیت",
+    subtitle:value("subtitle")?.value.trim()||"",description:value("description")?.value.trim()||"",
+    tags:(value("tags")?.value||"").split(",").map(x=>x.trim()).filter(Boolean).slice(0,8),
+    svg:value("svg")?.value.trim()||original.svg,accent:value("accent")?.value||"#63ECFF",
+    radius:Number(original.radius??1.25),ellipse:Number(original.ellipse??.7),angle:Number(original.angle??0),speed:Number(original.speed??.00015)
+   };
+  });
+  const payload={version:3,background_image:background,background_position:position.querySelector("select")?.value||"center",
+   background_brightness:Number(bgBright.input.value),background_dim:Number(bgDim.input.value),globe_scale:Number(globeScale.input.value),
+   globe_brightness:Number(globeBright.input.value),globe_saturation:Number(globeSat.input.value),globe_glow:Number(globeGlow.input.value),
+   node_size:Number(nodeSize.input.value),hover_scale:Number(hoverScale.input.value),hover_mode:hover.querySelector("select")?.value||"card",
+   pause_on_hover:pause.checked,show_orbits:orbits.checked,show_idle_cards:idleCards.checked,orbit_speed:Number(orbitSpeed.input.value),elements:savedElements};
+  out.replaceChildren();
+  try{const result=await api("appearance/save",payload);out.replaceChildren(info(result.identity_theme_synced?"تنظیمات ذخیره شد و Login سازمانی نیز همگام شد.":"تنظیمات ذخیره شد؛ همگام‌سازی Theme هویت در این اجرا در دسترس نبود."));setTimeout(()=>showSettings("appearance"),450)}
+  catch(err){showError(out,err)}
+ }),btn("بازگردانی ظاهر پیشنهادی آوان",async()=>{
+  if(!confirm("تنظیمات ظاهری به حالت پیشنهادی آوان بازگردد؟"))return;
+  try{await api("appearance/reset",{});await showSettings("appearance")}catch(err){showError(out,err)}
+ },"secondary"),out);
+ append(p,actions);
+}
+
 async function renderLicense(m,settings){
  const p=panel("شناسه نصب و مجوز نرم‌افزار",
    "لایسنس باید توسط ناشر امضا شده و برای همین نصب و سازمان صادر شده باشد.");
