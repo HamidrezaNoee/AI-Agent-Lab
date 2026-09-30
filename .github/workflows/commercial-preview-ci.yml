@@ -95,6 +95,27 @@ jobs:
           node --check infra/keycloak/themes/avan/login/resources/js/captcha-ui.js
           node --check infra/keycloak/themes/avan/login/resources/js/login-reveal.js
           node --check infra/keycloak/themes/avan/login/resources/js/login-scene.js
+      - name: Validate approved live login scene assets
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+          roots=[
+              Path("commercial/web/admin/scene-data"),
+              Path("infra/keycloak/themes/avan/login/resources/scene-data"),
+          ]
+          decoded=[]
+          for root in roots:
+              background="".join((root/f"bg-{i}.b64").read_text().strip() for i in range(5))
+              globe="".join((root/f"globe-{i}.b64").read_text().strip() for i in range(2))
+              b=base64.b64decode(background,validate=True)
+              g=base64.b64decode(globe,validate=True)
+              assert b[:4]==b"RIFF" and b[8:12]==b"WEBP" and len(b)>10000
+              assert g[:4]==b"RIFF" and g[8:12]==b"WEBP" and len(g)>5000
+              decoded.append((b,g))
+          assert decoded[0]==decoded[1], "Bootstrap and Keycloak login scene assets differ"
+          print("Approved AVAN Live Login V2 assets are valid and synchronized.")
+          PY
       - name: Browser smoke test with isolated API fixtures
         run: |
           npm install --no-save --package-lock=false playwright
