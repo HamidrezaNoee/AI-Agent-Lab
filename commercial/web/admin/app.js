@@ -895,10 +895,9 @@ async function renderAppearance(m){
    svgFile.addEventListener("change",async()=>{
     const file=svgFile.files?.[0];if(!file)return;
     if(file.size>30*1024){svgFile.value="";out.replaceChildren(info("فایل SVG باید کمتر از ۳۰KB باشد.",true));return}
-    try{const raw=await file.text();if(!/<svg(?:\s|>)/i.test(raw))throw Error("فایل SVG معتبر نیست.");svg.input.value=raw;sample.innerHTML=raw;out.replaceChildren(info("SVG وارد شد؛ هنگام ذخیره Backend آن را Sanitise می‌کند."))}
+    try{const raw=await file.text();if(!/<svg(?:\s|>)/i.test(raw))throw Error("فایل SVG معتبر نیست.");svg.input.value=raw;out.replaceChildren(info("SVG وارد شد. پیش‌نمایش آیکن بعد از ذخیره و Sanitise شدن توسط Backend به‌روز می‌شود."))}
     catch(err){svgFile.value="";showError(out,err)}
    });
-   svg.input.addEventListener("input",()=>{if(/<svg(?:\s|>)/i.test(svg.input.value))sample.innerHTML=svg.input.value});
    append(svgFileWrap,svgFileTitle,svgFile);
    append(controls,title.wrap,subtitle.wrap,tags.wrap,accent.wrap,size.wrap,hscale.wrap,glow.wrap,opacity.wrap,radius.wrap,ellipse.wrap,angle.wrap,speed.wrap,
     cardSide.wrap,labelMode.wrap,desc.wrap,svg.wrap,svgFileWrap);append(card,controls);elementsHost.append(card);
