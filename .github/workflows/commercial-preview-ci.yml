@@ -98,6 +98,7 @@ jobs:
           npm install --no-save --package-lock=false playwright
           npx playwright install --with-deps chromium
           node commercial/tests/ui_smoke.cjs
+          node commercial/tests/management_render_smoke.cjs
       - name: Validate env-free first-run Compose
         run: |
           docker compose config --quiet
