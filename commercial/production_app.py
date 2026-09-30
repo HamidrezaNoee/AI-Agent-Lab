@@ -55,6 +55,8 @@ async def production_lifespan(_app):
     # First Docker start therefore succeeds without .env or live credentials.
     from .setup_console import initialize
     initialize()
+    from .login_appearance import sync_public
+    sync_public()
     import asyncio
     from .agent_monitor import worker as monitor_worker
     task=asyncio.create_task(monitor_worker())
