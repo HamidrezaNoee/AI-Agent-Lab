@@ -45,11 +45,11 @@ const server=http.createServer((req,res)=>{
     };
     else if(p==='/admin/api/agent-db/connections')data={active_id:null,connections:[]};
     else if(p==='/admin/api/appearance')data={
-      version:3,background_image:'',background_position:'center',background_brightness:1.1,background_dim:.05,
-      globe_scale:1.18,globe_brightness:1.24,globe_saturation:1.18,globe_glow:1.15,node_size:68,hover_scale:1.22,
-      hover_mode:'card',pause_on_hover:true,show_orbits:true,show_idle_cards:true,orbit_speed:1,
+      version:4,background_image:'',background_fit:'cover',background_position_x:50,background_position_y:50,background_brightness:1.12,background_contrast:1.08,background_saturation:1.08,background_blur:0,background_dim:.03,overlay_color:'#031522',overlay_opacity:.05,background_parallax:6,
+      globe_image:'',globe_visible:true,globe_x:29,globe_y:44,globe_scale:1.22,globe_opacity:1,globe_brightness:1.32,globe_contrast:1.1,globe_saturation:1.22,globe_hue:0,globe_glow:1.3,globe_wobble:1,globe_rotation_speed:1,globe_point_density:1,globe_point_size:1,globe_point_opacity:1,
+      node_size:70,node_opacity:1,node_border_width:1,node_glow:1,hover_scale:1.24,hover_duration:180,hover_mode:'card',pause_on_hover:true,show_orbits:true,show_idle_cards:true,orbit_speed:1,orbit_line_width:1.15,orbit_opacity:.78,orbit_glow:1,orbit_primary:'#50EAF7',orbit_secondary:'#FF7053',card_width:176,card_opacity:.94,
       elements:[{id:'docs',enabled:true,title:'مدیریت اسناد',subtitle:'جستجوی هوشمند',description:'اسناد',tags:['RAG'],
-        svg:'<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg>',accent:'#63ECFF',radius:1.2,ellipse:.7,angle:1,speed:.00015}]
+        svg:'<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg>',accent:'#63ECFF',radius:1.2,ellipse:.7,angle:1,speed:.00015,size:0,hover_scale:0,glow:1,opacity:1,card_side:'auto',label_mode:'inherit'}]
     };
     else if(p==='/admin/api/bpms/catalog'){
       if(failBpms)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'خطای آزمایشی کاتالوگ BPMS'})});
