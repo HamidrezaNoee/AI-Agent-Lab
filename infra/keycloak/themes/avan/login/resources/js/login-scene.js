@@ -80,7 +80,13 @@
   set("--globe-saturation",num(config.globe_saturation,1.22));
   set("--globe-hue",num(config.globe_hue,0)+"deg");
   set("--globe-glow",num(config.globe_glow,1.30));
-  set("--globe-wobble",num(config.globe_wobble,1));
+  const wobble=num(config.globe_wobble,1);
+  set("--globe-wobble",wobble);
+  set("--globe-rot-a",(-.7*wobble)+"deg");
+  set("--globe-rot-b",(.8*wobble)+"deg");
+  set("--globe-rot-c",(-.25*wobble)+"deg");
+  set("--globe-scale-b",1+.018*wobble);
+  set("--globe-scale-c",1+.008*wobble);
   set("--node-size",num(config.node_size,70)+"px");
   set("--node-opacity",num(config.node_opacity,1));
   set("--node-border-width",num(config.node_border_width,1)+"px");
@@ -132,7 +138,10 @@
    el.style.setProperty("--node-accent",cap.accent||"#63ECFF");
    el.style.setProperty("--node-size-local",(num(cap.size,0)>0?num(cap.size,70):num(config.node_size,70))+"px");
    el.style.setProperty("--node-hover-local",num(cap.hover_scale,0)>0?num(cap.hover_scale,1.24):num(config.hover_scale,1.24));
+   const combinedGlow=num(cap.glow,1)*num(config.node_glow,1);
    el.style.setProperty("--node-glow-local",num(cap.glow,1));
+   el.style.setProperty("--node-glow-blur",(28*combinedGlow)+"px");
+   el.style.setProperty("--node-hover-glow-blur",(48*combinedGlow)+"px");
    el.style.setProperty("--node-opacity-local",num(cap.opacity,1));
    el.setAttribute("aria-label",safeText(cap.title));
    const icon=document.createElement("span");icon.className="avan-orbit-icon";icon.innerHTML=cap.svg||icons[cap.id]||icons.docs;
