@@ -539,7 +539,7 @@ body.avan-admin.admin-embedded:has(.panel.login){background:#0c2537 url('/assets
 .admin-hero-top>div:first-child{min-width:0}
 body.avan-admin .help-launch{
  flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;
- min-height:38px;padding:8px 13px;margin:0;border:1px solid rgba(220,157,37,.55);
+ min-height:38px;padding:8px 13px;margin:0;border:1px solid rgba(220,157,37,.55);text-decoration:none;
  border-radius:11px;background:rgba(220,157,37,.08);color:#d9a83b;font-weight:800;
 }
 body.avan-admin .help-launch:hover{background:rgba(220,157,37,.15);border-color:#dc9d25}
