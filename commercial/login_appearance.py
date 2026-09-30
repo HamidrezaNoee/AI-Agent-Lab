@@ -71,22 +71,53 @@ DEFAULT_ELEMENTS=[
 ]
 
 DEFAULT={
-    "version":3,
+    "version":4,
     "background_image":"",
-    "background_position":"center",
-    "background_brightness":1.10,
-    "background_dim":0.05,
-    "globe_scale":1.18,
-    "globe_brightness":1.24,
-    "globe_saturation":1.18,
-    "globe_glow":1.15,
-    "node_size":68,
-    "hover_scale":1.22,
+    "background_fit":"cover",
+    "background_position_x":50,
+    "background_position_y":50,
+    "background_brightness":1.12,
+    "background_contrast":1.08,
+    "background_saturation":1.08,
+    "background_blur":0.0,
+    "background_dim":0.03,
+    "overlay_color":"#031522",
+    "overlay_opacity":0.05,
+    "background_parallax":6.0,
+    "globe_image":"",
+    "globe_visible":True,
+    "globe_x":29.0,
+    "globe_y":44.0,
+    "globe_scale":1.22,
+    "globe_opacity":1.0,
+    "globe_brightness":1.32,
+    "globe_contrast":1.10,
+    "globe_saturation":1.22,
+    "globe_hue":0.0,
+    "globe_glow":1.30,
+    "globe_wobble":1.0,
+    "globe_rotation_speed":1.0,
+    "globe_point_density":1.0,
+    "globe_point_size":1.0,
+    "globe_point_opacity":1.0,
+    "node_size":70,
+    "node_opacity":1.0,
+    "node_border_width":1.0,
+    "node_glow":1.0,
+    "hover_scale":1.24,
+    "hover_duration":180,
     "hover_mode":"card",
     "pause_on_hover":True,
     "show_orbits":True,
     "show_idle_cards":True,
     "orbit_speed":1.0,
+    "orbit_line_width":1.15,
+    "orbit_opacity":0.78,
+    "orbit_glow":1.0,
+    "orbit_primary":"#50EAF7",
+    "orbit_secondary":"#FF7053",
+    "card_width":176,
+    "card_opacity":0.94,
     "elements":DEFAULT_ELEMENTS,
 }
 
@@ -146,7 +177,7 @@ def sanitize_svg(svg:str)->str:
     root.attrib.pop("width",None);root.attrib.pop("height",None)
     return ET.tostring(root,encoding="unicode",short_empty_elements=True)
 
-def validate_background(value)->str:
+def validate_image(value)->str:
     value=_text(value,"",8_000_000)
     if not value:return ""
     match=_BG.fullmatch(value)
@@ -182,10 +213,16 @@ def _element(raw:dict,index:int)->dict:
         "tags":tags,
         "svg":sanitize_svg(raw.get("svg") or base["svg"]),
         "accent":accent.upper(),
-        "radius":_number(raw.get("radius"),base["radius"],0.85,1.8),
-        "ellipse":_number(raw.get("ellipse"),base["ellipse"],0.4,1.0),
+        "radius":_number(raw.get("radius"),base["radius"],0.75,1.95),
+        "ellipse":_number(raw.get("ellipse"),base["ellipse"],0.35,1.0),
         "angle":_number(raw.get("angle"),base["angle"],-20.0,20.0),
         "speed":_number(raw.get("speed"),base["speed"],-0.001,0.001),
+        "size":_integer(raw.get("size"),0,0,110),
+        "hover_scale":_number(raw.get("hover_scale"),0.0,0.0,1.85),
+        "glow":_number(raw.get("glow"),1.0,0.0,2.5),
+        "opacity":_number(raw.get("opacity"),1.0,0.25,1.0),
+        "card_side":_text(raw.get("card_side"),"auto",10),
+        "label_mode":_text(raw.get("label_mode"),"inherit",12),
     }
 
 def normalize(raw:dict|None)->dict:
@@ -198,30 +235,69 @@ def normalize(raw:dict|None)->dict:
     for i,item in enumerate(items):
         if not isinstance(item,dict):continue
         value=_element(item,i)
+        if value["card_side"] not in {"auto","left","right","top","bottom"}:value["card_side"]="auto"
+        if value["label_mode"] not in {"inherit","always","hover","hidden"}:value["label_mode"]="inherit"
         if value["id"] in seen:raise AppearanceError("شناسه المان‌های ظاهری باید یکتا باشد.")
         seen.add(value["id"]);normalized.append(value)
     if not normalized:normalized=deepcopy(DEFAULT_ELEMENTS)
     mode=_text(raw.get("hover_mode"),DEFAULT["hover_mode"],20)
     if mode not in {"card","tooltip","label","glow","none"}:mode=DEFAULT["hover_mode"]
-    position=_text(raw.get("background_position"),DEFAULT["background_position"],20)
-    if position not in {"center","left","right","top","bottom"}:position="center"
+    fit=_text(raw.get("background_fit"),DEFAULT["background_fit"],20)
+    if fit not in {"cover","contain","stretch","auto"}:fit=DEFAULT["background_fit"]
+    overlay=_text(raw.get("overlay_color"),DEFAULT["overlay_color"],7)
+    if not _HEX.fullmatch(overlay):overlay=DEFAULT["overlay_color"]
+    orbit_primary=_text(raw.get("orbit_primary"),DEFAULT["orbit_primary"],7)
+    if not _HEX.fullmatch(orbit_primary):orbit_primary=DEFAULT["orbit_primary"]
+    orbit_secondary=_text(raw.get("orbit_secondary"),DEFAULT["orbit_secondary"],7)
+    if not _HEX.fullmatch(orbit_secondary):orbit_secondary=DEFAULT["orbit_secondary"]
     return {
-        "version":3,
-        "background_image":validate_background(raw.get("background_image","")),
-        "background_position":position,
-        "background_brightness":_number(raw.get("background_brightness"),DEFAULT["background_brightness"],0.55,1.5),
-        "background_dim":_number(raw.get("background_dim"),DEFAULT["background_dim"],0.0,0.75),
-        "globe_scale":_number(raw.get("globe_scale"),DEFAULT["globe_scale"],0.70,1.65),
-        "globe_brightness":_number(raw.get("globe_brightness"),DEFAULT["globe_brightness"],0.65,1.8),
-        "globe_saturation":_number(raw.get("globe_saturation"),DEFAULT["globe_saturation"],0.5,1.8),
-        "globe_glow":_number(raw.get("globe_glow"),DEFAULT["globe_glow"],0.0,2.0),
-        "node_size":_integer(raw.get("node_size"),DEFAULT["node_size"],44,96),
-        "hover_scale":_number(raw.get("hover_scale"),DEFAULT["hover_scale"],1.0,1.65),
+        "version":4,
+        "background_image":validate_image(raw.get("background_image","")),
+        "background_fit":fit,
+        "background_position_x":_number(raw.get("background_position_x"),DEFAULT["background_position_x"],0,100),
+        "background_position_y":_number(raw.get("background_position_y"),DEFAULT["background_position_y"],0,100),
+        "background_brightness":_number(raw.get("background_brightness"),DEFAULT["background_brightness"],0.45,1.7),
+        "background_contrast":_number(raw.get("background_contrast"),DEFAULT["background_contrast"],0.5,1.8),
+        "background_saturation":_number(raw.get("background_saturation"),DEFAULT["background_saturation"],0.0,2.0),
+        "background_blur":_number(raw.get("background_blur"),DEFAULT["background_blur"],0.0,20.0),
+        "background_dim":_number(raw.get("background_dim"),DEFAULT["background_dim"],0.0,0.8),
+        "overlay_color":overlay.upper(),
+        "overlay_opacity":_number(raw.get("overlay_opacity"),DEFAULT["overlay_opacity"],0.0,0.8),
+        "background_parallax":_number(raw.get("background_parallax"),DEFAULT["background_parallax"],0.0,30.0),
+        "globe_image":validate_image(raw.get("globe_image","")),
+        "globe_visible":bool(raw.get("globe_visible",DEFAULT["globe_visible"])),
+        "globe_x":_number(raw.get("globe_x"),DEFAULT["globe_x"],8.0,60.0),
+        "globe_y":_number(raw.get("globe_y"),DEFAULT["globe_y"],18.0,82.0),
+        "globe_scale":_number(raw.get("globe_scale"),DEFAULT["globe_scale"],0.55,1.85),
+        "globe_opacity":_number(raw.get("globe_opacity"),DEFAULT["globe_opacity"],0.0,1.0),
+        "globe_brightness":_number(raw.get("globe_brightness"),DEFAULT["globe_brightness"],0.5,2.0),
+        "globe_contrast":_number(raw.get("globe_contrast"),DEFAULT["globe_contrast"],0.5,1.8),
+        "globe_saturation":_number(raw.get("globe_saturation"),DEFAULT["globe_saturation"],0.0,2.0),
+        "globe_hue":_number(raw.get("globe_hue"),DEFAULT["globe_hue"],-180.0,180.0),
+        "globe_glow":_number(raw.get("globe_glow"),DEFAULT["globe_glow"],0.0,2.5),
+        "globe_wobble":_number(raw.get("globe_wobble"),DEFAULT["globe_wobble"],0.0,2.0),
+        "globe_rotation_speed":_number(raw.get("globe_rotation_speed"),DEFAULT["globe_rotation_speed"],0.0,3.0),
+        "globe_point_density":_number(raw.get("globe_point_density"),DEFAULT["globe_point_density"],0.5,2.5),
+        "globe_point_size":_number(raw.get("globe_point_size"),DEFAULT["globe_point_size"],0.5,2.5),
+        "globe_point_opacity":_number(raw.get("globe_point_opacity"),DEFAULT["globe_point_opacity"],0.1,1.0),
+        "node_size":_integer(raw.get("node_size"),DEFAULT["node_size"],40,110),
+        "node_opacity":_number(raw.get("node_opacity"),DEFAULT["node_opacity"],0.25,1.0),
+        "node_border_width":_number(raw.get("node_border_width"),DEFAULT["node_border_width"],0.0,4.0),
+        "node_glow":_number(raw.get("node_glow"),DEFAULT["node_glow"],0.0,2.5),
+        "hover_scale":_number(raw.get("hover_scale"),DEFAULT["hover_scale"],1.0,1.8),
+        "hover_duration":_integer(raw.get("hover_duration"),DEFAULT["hover_duration"],0,1200),
         "hover_mode":mode,
         "pause_on_hover":bool(raw.get("pause_on_hover",DEFAULT["pause_on_hover"])),
         "show_orbits":bool(raw.get("show_orbits",DEFAULT["show_orbits"])),
         "show_idle_cards":bool(raw.get("show_idle_cards",DEFAULT["show_idle_cards"])),
         "orbit_speed":_number(raw.get("orbit_speed"),DEFAULT["orbit_speed"],0.0,3.0),
+        "orbit_line_width":_number(raw.get("orbit_line_width"),DEFAULT["orbit_line_width"],0.2,4.0),
+        "orbit_opacity":_number(raw.get("orbit_opacity"),DEFAULT["orbit_opacity"],0.0,1.0),
+        "orbit_glow":_number(raw.get("orbit_glow"),DEFAULT["orbit_glow"],0.0,2.5),
+        "orbit_primary":orbit_primary.upper(),
+        "orbit_secondary":orbit_secondary.upper(),
+        "card_width":_integer(raw.get("card_width"),DEFAULT["card_width"],120,320),
+        "card_opacity":_number(raw.get("card_opacity"),DEFAULT["card_opacity"],0.35,1.0),
         "elements":normalized,
     }
 
