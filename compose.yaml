@@ -148,6 +148,8 @@ services:
     build:
       context: .
       dockerfile: commercial/Dockerfile.production
+      args:
+        PIP_INDEX_URL: ${AVAN_PIP_INDEX_URL:-https://pypi.org/simple}
     restart: unless-stopped
     init: true
     ports:
