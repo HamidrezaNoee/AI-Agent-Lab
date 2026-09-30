@@ -157,6 +157,24 @@ def admin_js(request:Request):
     _local(request)
     return FileResponse(WEB/"app.js",media_type="text/javascript; charset=utf-8")
 
+@router.get("/help/")
+def admin_help(request:Request):
+    _local(request)
+    return FileResponse(WEB/"help.html",media_type="text/html; charset=utf-8")
+
+
+@router.get("/assets/help.css")
+def admin_help_css(request:Request):
+    _local(request)
+    return FileResponse(WEB/"help.css",media_type="text/css; charset=utf-8")
+
+
+@router.get("/assets/help.js")
+def admin_help_js(request:Request):
+    _local(request)
+    return FileResponse(WEB/"help.js",media_type="text/javascript; charset=utf-8")
+
+
 @router.get("/api/captcha/config")
 def captcha_config(request:Request):
     _local(request)
