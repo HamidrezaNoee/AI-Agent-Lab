@@ -21,8 +21,8 @@ COPY commercial/requirements-production.txt /app/requirements.txt
 RUN python -m pip install --no-cache-dir -r /app/requirements.txt \
  && groupadd --gid 10001 avan \
  && useradd --uid 10001 --gid 10001 --system --create-home avan \
- && mkdir -p /var/lib/avan \
- && chown 10001:10001 /var/lib/avan
+ && mkdir -p /var/lib/avan /var/lib/avan-ui \
+ && chown 10001:10001 /var/lib/avan /var/lib/avan-ui
 COPY --chown=10001:10001 commercial/__init__.py /app/commercial/__init__.py
 COPY --chown=10001:10001 commercial/security.py /app/commercial/security.py
 COPY --chown=10001:10001 commercial/meeting_questions.py /app/commercial/meeting_questions.py
@@ -37,6 +37,7 @@ COPY --chown=10001:10001 commercial/pending_identities.py /app/commercial/pendin
 COPY --chown=10001:10001 commercial/processmaker_directory.py /app/commercial/processmaker_directory.py
 COPY --chown=10001:10001 commercial/setup_console.py /app/commercial/setup_console.py
 COPY --chown=10001:10001 commercial/setup_routes.py /app/commercial/setup_routes.py
+COPY --chown=10001:10001 commercial/login_appearance.py /app/commercial/login_appearance.py
 COPY --chown=10001:10001 commercial/turnstile.py /app/commercial/turnstile.py
 COPY --chown=10001:10001 commercial/bpms_registry.py /app/commercial/bpms_registry.py
 COPY --chown=10001:10001 commercial/bpms_tools.py /app/commercial/bpms_tools.py
