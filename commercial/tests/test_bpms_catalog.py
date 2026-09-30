@@ -1,3 +1,4 @@
+from commercial import setup_console as setup
 from unittest.mock import patch
 
 from commercial import setup_routes as routes
@@ -125,3 +126,7 @@ def test_deleting_active_processmaker_profile_clears_runtime_legacy_connection()
     assert data["mysql"]=={}
     assert data["processmaker"]=={}
     assert data["processmaker_profiles"]["active_id"] is None
+
+
+def test_processmaker_profile_store_is_registered():
+    assert "processmaker_profiles" in setup.ALLOWED_SETTINGS
