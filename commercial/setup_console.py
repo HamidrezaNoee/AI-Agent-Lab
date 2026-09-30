@@ -118,8 +118,14 @@ def _seal(name:str,obj:dict)->bytes:
 def _unseal(name:str,blob:bytes)->dict:
     return json.loads(AESGCM(KEYFILE.read_bytes()).decrypt(blob[:12],blob[12:],name.encode()).decode())
 
+ALLOWED_SETTINGS=frozenset({
+    "installation","mysql","oidc","processmaker","processmaker_profiles",
+    "company","license","ai","agent_sql","agent_sql_pending",
+    "agent_sql_connections","bpms_connections"
+})
+
 def put_setting(name:str,value:dict):
-    if name not in ("installation","mysql","oidc","processmaker","company","license","ai","agent_sql","agent_sql_pending","agent_sql_connections","bpms_connections"):
+    if name not in ALLOWED_SETTINGS:
         raise SetupError("Unsupported setup setting")
     enc=_seal(name,value)
     with _db() as con:
