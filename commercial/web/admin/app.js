@@ -704,69 +704,144 @@ function appearanceRange(title,value,min,max,step,suffix=""){
  append(label,input);append(row,label,out);return {row,input,out};
 }
 async function renderAppearance(m){
- const p=panel("تنظیمات ظاهری صفحه ورود",
-  "Scene زنده صفحه Login از اینجا کنترل می‌شود. طراحی مستطیل Login مستقل است؛ این تنظیمات فقط پس‌زمینه، کره و المان‌های چرخان را تغییر می‌دهند.");
+ const p=panel("ویرایشگر کامل ظاهر صفحه ورود",
+  "پس‌زمینه، کره، مدارها، Hover و تک‌تک Nodeها مستقل و قابل تنظیم‌اند. کارت اصلی Login و منطق امنیتی ورود از این Editor جدا نگه داشته شده‌اند.");
  append(m,p);
  const out=node("div"),config=await api("appearance");
- let background=config.background_image||"";
+ let background=config.background_image||"",globeImage=config.globe_image||"";
  const elements=(config.elements||[]).map(x=>({...x,tags:[...(x.tags||[])]}));
  const grid=node("div","appearance-grid");
 
- const bgCard=node("section","appearance-card");
- append(bgCard,node("h3","","پس‌زمینه Login"),node("p","hint","تصویر روی Browser به WebP حداکثر ۱۹۲۰×۱۰۸۰ تبدیل می‌شود و در Store پایدار ذخیره می‌شود."));
- const preview=node("div","appearance-preview");
- if(background)preview.style.backgroundImage='url("'+background.replaceAll('"','%22')+'")';
- const file=node("input");file.type="file";file.accept="image/png,image/jpeg,image/webp";
- const position=selectField("محل تصویر","background_position",[
-  {value:"center",label:"وسط"},{value:"left",label:"چپ"},{value:"right",label:"راست"},{value:"top",label:"بالا"},{value:"bottom",label:"پایین"}
- ],config.background_position||"center");
- const clearBg=btn("بازگشت به پس‌زمینه پیش‌فرض",()=>{background="";preview.style.backgroundImage="";file.value="";}, "secondary");
- file.addEventListener("change",async()=>{
-  if(!file.files?.[0])return;
-  try{background=await appearanceImageData(file.files[0]);preview.style.backgroundImage='url("'+background+'")';out.replaceChildren(info("تصویر آماده ذخیره است."))}
-  catch(err){file.value="";showError(out,err)}
- });
- append(bgCard,preview,file,position,clearBg);
+ const range=(title,key,value,min,max,step,suffix="")=>{
+  const r=appearanceRange(title,value,min,max,step,suffix);r.input.dataset.appearanceGlobal=key;return r;
+ };
+ const select=(title,key,items,value)=>{
+  const s=selectField(title,key,items,value);s.querySelector("select").dataset.appearanceGlobal=key;return s;
+ };
+ const color=(title,key,value)=>{
+  const w=field(title,key,value,{type:"color"});w.querySelector("input").dataset.appearanceGlobal=key;return w;
+ };
+ const check=(labelText,key,value)=>{
+  const label=node("label"),input=node("input");input.type="checkbox";input.checked=!!value;input.dataset.appearanceGlobal=key;
+  append(label,input,node("span","",labelText));return {label,input};
+ };
+ const imagePicker=(title,current,setter,preview,clearLabel)=>{
+  const box=node("div","appearance-upload"),label=node("label","form-field"),caption=node("span","",title),input=node("input");
+  input.type="file";input.accept="image/png,image/jpeg,image/webp";append(label,caption,input);append(box,label);
+  input.addEventListener("change",async()=>{
+   const file=input.files?.[0];if(!file)return;
+   try{
+    const data=await appearanceImageData(file);setter(data);preview.style.backgroundImage='url("'+data+'")';
+    out.replaceChildren(info("تصویر آماده ذخیره است."));
+   }catch(err){input.value="";showError(out,err)}
+  });
+  append(box,btn(clearLabel,()=>{setter("");preview.style.backgroundImage="";input.value=""},"secondary"));
+  return box;
+ };
 
- const visual=node("section","appearance-card");
- append(visual,node("h3","","شدت و اندازه Scene"),node("p","hint","مقادیر زیر بدون تغییر کارت Login، ظاهر کره و محیط را کنترل می‌کنند."));
- const bgBright=appearanceRange("روشنایی پس‌زمینه",config.background_brightness??1.1,.55,1.5,.05,"×");
- const bgDim=appearanceRange("لایه تیره روی پس‌زمینه",config.background_dim??.05,0,.75,.05);
- const globeScale=appearanceRange("اندازه کره",config.globe_scale??1.18,.7,1.65,.05,"×");
- const globeBright=appearanceRange("روشنایی کره",config.globe_brightness??1.24,.65,1.8,.05,"×");
- const globeSat=appearanceRange("اشباع رنگ کره",config.globe_saturation??1.18,.5,1.8,.05,"×");
- const globeGlow=appearanceRange("Glow کره",config.globe_glow??1.15,0,2,.05,"×");
- append(visual,bgBright.row,bgDim.row,globeScale.row,globeBright.row,globeSat.row,globeGlow.row);
+ const intro=node("div","appearance-editor-summary");
+ append(intro,
+  node("strong","","Scene Editor V4"),
+  node("span","","تمام مقادیر زیر در Store پایدار ذخیره و با Login سازمانی Keycloak همگام می‌شوند."),
+  node("span","","حداکثر ۱۲ Node · SVG امن · تصاویر Raster تا ۵MB بعد از بهینه‌سازی"));
+ append(p,intro);
 
+ // Background
+ const bg=node("section","appearance-card full");
+ append(bg,node("h3","","۱. پس‌زمینه صفحه Login"),
+  node("p","hint","تصویر، محل Crop، Fit، نور، رنگ، Blur، Overlay و Parallax جداگانه کنترل می‌شوند."));
+ const bgPreview=node("div","appearance-preview appearance-preview-wide");
+ if(background)bgPreview.style.backgroundImage='url("'+background.replaceAll('"','%22')+'")';
+ append(bg,bgPreview,imagePicker("انتخاب تصویر پس‌زمینه",background,v=>background=v,bgPreview,"حذف تصویر و استفاده از پیش‌فرض"));
+ const bgControls=node("div","appearance-control-grid");
+ const bgFit=select("نوع نمایش تصویر","background_fit",[
+  {value:"cover",label:"Cover · پر کردن صفحه"},{value:"contain",label:"Contain · نمایش کامل"},
+  {value:"stretch",label:"Stretch · کشیده تا کل صفحه"},{value:"auto",label:"Auto · اندازه طبیعی"}
+ ],config.background_fit||"cover");
+ const bgX=range("موقعیت افقی تصویر","background_position_x",config.background_position_x??50,0,100,1,"%");
+ const bgY=range("موقعیت عمودی تصویر","background_position_y",config.background_position_y??50,0,100,1,"%");
+ const bgBright=range("روشنایی پس‌زمینه","background_brightness",config.background_brightness??1.12,.45,1.7,.05,"×");
+ const bgContrast=range("Contrast پس‌زمینه","background_contrast",config.background_contrast??1.08,.5,1.8,.05,"×");
+ const bgSat=range("Saturation پس‌زمینه","background_saturation",config.background_saturation??1.08,0,2,.05,"×");
+ const bgBlur=range("Blur پس‌زمینه","background_blur",config.background_blur??0,0,20,.5,"px");
+ const bgDim=range("Dark layer","background_dim",config.background_dim??.03,0,.8,.02);
+ const overlayColor=color("رنگ Overlay","overlay_color",config.overlay_color||"#031522");
+ const overlayOpacity=range("شدت Overlay رنگی","overlay_opacity",config.overlay_opacity??.05,0,.8,.02);
+ const bgParallax=range("مقدار Parallax با حرکت Mouse","background_parallax",config.background_parallax??6,0,30,1,"px");
+ append(bgControls,bgFit,bgX.row,bgY.row,bgBright.row,bgContrast.row,bgSat.row,bgBlur.row,bgDim.row,overlayColor,overlayOpacity.row,bgParallax.row);
+ append(bg,bgControls);
+
+ // Globe
+ const globe=node("section","appearance-card full");
+ append(globe,node("h3","","۲. کره و شبکه هوشمند"),
+  node("p","hint","کره دیگر بخشی از عکس Background نیست؛ موقعیت، تصویر، نور، چرخش و نقاط شبکه مستقل‌اند."));
+ const globePreview=node("div","appearance-globe-preview");
+ if(globeImage)globePreview.style.backgroundImage='url("'+globeImage.replaceAll('"','%22')+'")';
+ const globeVisible=check("نمایش کره", "globe_visible", config.globe_visible!==false);
+ append(globe,globeVisible.label,imagePicker("تصویر سفارشی کره؛ در صورت خالی بودن Sprite آوان استفاده می‌شود",globeImage,v=>globeImage=v,globePreview,"بازگشت به کره پیش‌فرض"));
+ const globeControls=node("div","appearance-control-grid");
+ const globeX=range("موقعیت افقی مرکز کره","globe_x",config.globe_x??29,8,60,.5,"%");
+ const globeY=range("موقعیت عمودی مرکز کره","globe_y",config.globe_y??44,18,82,.5,"%");
+ const globeScale=range("اندازه کره","globe_scale",config.globe_scale??1.22,.55,1.85,.05,"×");
+ const globeOpacity=range("Opacity کره","globe_opacity",config.globe_opacity??1,0,1,.05);
+ const globeBright=range("روشنایی کره","globe_brightness",config.globe_brightness??1.32,.5,2,.05,"×");
+ const globeContrast=range("Contrast کره","globe_contrast",config.globe_contrast??1.1,.5,1.8,.05,"×");
+ const globeSat=range("Saturation کره","globe_saturation",config.globe_saturation??1.22,0,2,.05,"×");
+ const globeHue=range("Hue Rotate کره","globe_hue",config.globe_hue??0,-180,180,5,"°");
+ const globeGlow=range("Glow کره","globe_glow",config.globe_glow??1.3,0,2.5,.05,"×");
+ const globeWobble=range("شدت حرکت آرام کره","globe_wobble",config.globe_wobble??1,0,2,.05,"×");
+ const globeRotation=range("سرعت چرخش شبکه کره","globe_rotation_speed",config.globe_rotation_speed??1,0,3,.1,"×");
+ const pointDensity=range("تراکم نقاط شبکه","globe_point_density",config.globe_point_density??1,.5,2.5,.1,"×");
+ const pointSize=range("اندازه نقاط شبکه","globe_point_size",config.globe_point_size??1,.5,2.5,.1,"×");
+ const pointOpacity=range("Opacity نقاط شبکه","globe_point_opacity",config.globe_point_opacity??1,.1,1,.05);
+ append(globeControls,globeX.row,globeY.row,globeScale.row,globeOpacity.row,globeBright.row,globeContrast.row,globeSat.row,globeHue.row,
+  globeGlow.row,globeWobble.row,globeRotation.row,pointDensity.row,pointSize.row,pointOpacity.row);
+ append(globe,globeControls);
+
+ // Global node/orbit/hover
  const behavior=node("section","appearance-card full");
- append(behavior,node("h3","","رفتار المان‌های چرخان"),node("p","hint","Hover، بزرگ‌شدن، سرعت و نمایش کارت توضیح هر قابلیت از این بخش کنترل می‌شود."));
- const behaviorGrid=node("div","appearance-grid");
- const nodeSize=appearanceRange("اندازه پایه المان",config.node_size??68,44,96,1,"px");
- const hoverScale=appearanceRange("ضریب بزرگ‌شدن Hover",config.hover_scale??1.22,1,1.65,.05,"×");
- const orbitSpeed=appearanceRange("سرعت حرکت مدار",config.orbit_speed??1,0,3,.1,"×");
- const hover=selectField("نوع Hover","hover_mode",[
-  {value:"card",label:"کارت عنوان + متن + Tag"},
-  {value:"tooltip",label:"Tooltip کامل"},
+ append(behavior,node("h3","","۳. مدارها، Nodeها و رفتار Hover"),
+  node("p","hint","این مقادیر Default کل Scene هستند؛ هر Node پایین‌تر می‌تواند اندازه، Hover و مسیر خودش را Override کند."));
+ const behaviorControls=node("div","appearance-control-grid");
+ const nodeSize=range("اندازه پیش‌فرض Node","node_size",config.node_size??70,40,110,1,"px");
+ const nodeOpacity=range("Opacity همه Nodeها","node_opacity",config.node_opacity??1,.25,1,.05);
+ const nodeBorder=range("ضخامت Border Node","node_border_width",config.node_border_width??1,0,4,.1,"px");
+ const nodeGlow=range("Glow عمومی Node","node_glow",config.node_glow??1,0,2.5,.05,"×");
+ const hoverScale=range("بزرگ‌شدن پیش‌فرض Hover","hover_scale",config.hover_scale??1.24,1,1.8,.05,"×");
+ const hoverDuration=range("مدت Animation Hover","hover_duration",config.hover_duration??180,0,1200,20,"ms");
+ const hover=select("رفتار Hover","hover_mode",[
+  {value:"card",label:"Card · عنوان + توضیح + Tag"},
+  {value:"tooltip",label:"Tooltip کامل و شناور"},
   {value:"label",label:"فقط عنوان"},
   {value:"glow",label:"فقط Glow و بزرگ‌شدن"},
-  {value:"none",label:"بدون افکت Hover"}
+  {value:"none",label:"بدون واکنش Hover"}
  ],config.hover_mode||"card");
- append(behaviorGrid,nodeSize.row,hoverScale.row,orbitSpeed.row,hover);
- const checks=node("div","appearance-checks");
- const pause=node("input");pause.type="checkbox";pause.checked=config.pause_on_hover!==false;
- const pauseLabel=node("label");append(pauseLabel,pause,node("span","","توقف همان المان هنگام Hover"));
- const orbits=node("input");orbits.type="checkbox";orbits.checked=config.show_orbits!==false;
- const orbitLabel=node("label");append(orbitLabel,orbits,node("span","","نمایش خطوط مدار"));
- const idleCards=node("input");idleCards.type="checkbox";idleCards.checked=!!config.show_idle_cards;
- const idleLabel=node("label");append(idleLabel,idleCards,node("span","","نمایش کارت‌های توضیح حتی بدون Hover"));
- append(checks,pauseLabel,orbitLabel,idleLabel);append(behavior,behaviorGrid,checks);
+ const orbitSpeed=range("سرعت کلی حرکت Nodeها","orbit_speed",config.orbit_speed??1,0,3,.1,"×");
+ const orbitWidth=range("ضخامت خطوط مدار","orbit_line_width",config.orbit_line_width??1.15,.2,4,.1,"px");
+ const orbitOpacity=range("Opacity خطوط مدار","orbit_opacity",config.orbit_opacity??.78,0,1,.05);
+ const orbitGlow=range("Glow خطوط مدار","orbit_glow",config.orbit_glow??1,0,2.5,.05,"×");
+ const orbitPrimary=color("رنگ اصلی مدار","orbit_primary",config.orbit_primary||"#50EAF7");
+ const orbitSecondary=color("رنگ دوم مدار","orbit_secondary",config.orbit_secondary||"#FF7053");
+ const cardWidth=range("عرض کارت توضیح","card_width",config.card_width??176,120,320,5,"px");
+ const cardOpacity=range("Opacity کارت توضیح","card_opacity",config.card_opacity??.94,.35,1,.05);
+ append(behaviorControls,nodeSize.row,nodeOpacity.row,nodeBorder.row,nodeGlow.row,hoverScale.row,hoverDuration.row,hover,
+  orbitSpeed.row,orbitWidth.row,orbitOpacity.row,orbitGlow.row,orbitPrimary,orbitSecondary,cardWidth.row,cardOpacity.row);
+ const behaviorChecks=node("div","appearance-checks");
+ const pause=check("توقف همان Node هنگام Hover","pause_on_hover",config.pause_on_hover!==false);
+ const orbits=check("نمایش خطوط مدار","show_orbits",config.show_orbits!==false);
+ const idleCards=check("نمایش کم‌رنگ Card حتی بدون Hover","show_idle_cards",!!config.show_idle_cards);
+ append(behaviorChecks,pause.label,orbits.label,idleCards.label);append(behavior,behaviorControls,behaviorChecks);
 
+ // Elements
  const elementSection=node("section","appearance-card full");
  const head=node("div","section-head"),headText=node("div");
- append(headText,node("h3","","المان‌های قابلیت‌ها"),node("p","hint","SVG، عنوان، متن کوتاه، توضیح کامل، Tag و رنگ هر Node قابل تغییر است. SVG در Backend پاک‌سازی امنیتی می‌شود."));
- const addBtn=btn("افزودن المان",()=>{
-  if(elements.length>=12){out.replaceChildren(info("حداکثر ۱۲ المان قابل تعریف است.",true));return}
-  elements.push({id:"custom_"+Date.now(),enabled:true,title:"قابلیت جدید",subtitle:"توضیح کوتاه",description:"توضیح کامل قابلیت",tags:["AVAN"],accent:"#63ECFF",radius:1.25,ellipse:.7,angle:Math.random()*6.2,speed:.00015,svg:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 8v8M8 12h8"/></svg>'});
+ append(headText,node("h3","","۴. تنظیم مستقل هر المان چرخان"),
+  node("p","hint","ترتیب، SVG، متن، Tag، اندازه، Hover، Glow، Opacity، شعاع/کشیدگی/زاویه/سرعت مدار و محل Card برای هر Node مستقل است."));
+ const addBtn=btn("＋ افزودن Node",()=>{
+  if(elements.length>=12){out.replaceChildren(info("حداکثر ۱۲ Node قابل تعریف است.",true));return}
+  elements.push({id:"custom_"+Date.now(),enabled:true,title:"قابلیت جدید",subtitle:"توضیح کوتاه",description:"توضیح کامل قابلیت",tags:["AVAN"],accent:"#63ECFF",
+    radius:1.25,ellipse:.7,angle:Math.random()*6.2,speed:.00015,size:0,hover_scale:0,glow:1,opacity:1,card_side:"auto",label_mode:"inherit",
+    svg:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 8v8M8 12h8"/></svg>'});
   drawElements();
  },"secondary");
  append(head,headText,addBtn);append(elementSection,head);
@@ -774,69 +849,102 @@ async function renderAppearance(m){
 
  const mkInput=(labelText,value,fieldName,opts={})=>{
   const wrap=node("label","form-field"),label=node("span","",labelText),input=node(opts.multiline?"textarea":"input");
-  input.dataset.appearanceField=fieldName;if(!opts.multiline)input.type=opts.type||"text";input.value=value??"";if(opts.placeholder)input.placeholder=opts.placeholder;
-  append(wrap,label,input);return {wrap,input};
+  input.dataset.appearanceField=fieldName;if(!opts.multiline)input.type=opts.type||"text";input.value=value??"";
+  if(opts.min!==undefined)input.min=String(opts.min);if(opts.max!==undefined)input.max=String(opts.max);if(opts.step!==undefined)input.step=String(opts.step);
+  if(opts.placeholder)input.placeholder=opts.placeholder;append(wrap,label,input);return {wrap,input};
+ };
+ const mkSelect=(labelText,value,fieldName,items)=>{
+  const wrap=node("label","form-field"),label=node("span","",labelText),sel=node("select");sel.dataset.appearanceField=fieldName;
+  items.forEach(([v,t])=>{const o=node("option","",t);o.value=v;if(v===value)o.selected=true;sel.append(o)});append(wrap,label,sel);return {wrap,input:sel};
  };
  function drawElements(){
   elementsHost.replaceChildren();
   elements.forEach((item,index)=>{
    const card=node("article","appearance-element");card.dataset.index=String(index);
-   const h=node("div","appearance-element-head"),left=node("div"),sample=node("span","appearance-svg-sample");
+   const h=node("div","appearance-element-head"),identity=node("div","appearance-element-identity"),sample=node("span","appearance-svg-sample");
    sample.innerHTML=item.svg||"";
    const enabled=node("input");enabled.type="checkbox";enabled.checked=item.enabled!==false;enabled.dataset.appearanceField="enabled";
-   const enabledLabel=node("label");append(enabledLabel,enabled,node("span","",item.title||("المان "+(index+1))));
-   append(left,enabledLabel);const remove=btn("حذف",()=>{elements.splice(index,1);drawElements()},"secondary");
-   append(h,left,sample,remove);append(card,h);
+   const enabledLabel=node("label");append(enabledLabel,enabled,node("strong","",item.title||("Node "+(index+1))));
+   append(identity,node("span","appearance-order",String(index+1)),enabledLabel);
+   const actions=node("div","actions");
+   append(actions,
+    btn("↑",()=>{if(index>0){[elements[index-1],elements[index]]=[elements[index],elements[index-1]];drawElements()}},"secondary"),
+    btn("↓",()=>{if(index<elements.length-1){[elements[index+1],elements[index]]=[elements[index],elements[index+1]];drawElements()}},"secondary"),
+    btn("کپی",()=>{if(elements.length<12){const copy=structuredClone(elements[index]);copy.id="copy_"+Date.now();copy.title+=" · کپی";elements.splice(index+1,0,copy);drawElements()}},"secondary"),
+    btn("حذف",()=>{elements.splice(index,1);drawElements()},"secondary"));
+   append(h,identity,sample,actions);append(card,h);
    const controls=node("div","appearance-element-controls");
    const title=mkInput("عنوان",item.title,"title"),subtitle=mkInput("متن کوتاه",item.subtitle,"subtitle"),
-    tags=mkInput("Tagها با کاما", (item.tags||[]).join(", "), "tags"),
-    accent=mkInput("رنگ Glow",item.accent||"#63ECFF","accent",{type:"color"}),
-    desc=mkInput("توضیح کامل",item.description,"description",{multiline:true}),
-    svg=mkInput("SVG آیکن",item.svg,"svg",{multiline:true});
+    tags=mkInput("Tagها؛ با کاما جدا کن",(item.tags||[]).join(", "), "tags"),
+    accent=mkInput("رنگ اختصاصی",item.accent||"#63ECFF","accent",{type:"color"}),
+    size=mkInput("اندازه Node؛ ۰ یعنی Default",item.size??0,"size",{type:"number",min:0,max:110,step:1}),
+    hscale=mkInput("Hover Scale؛ ۰ یعنی Default",item.hover_scale??0,"hover_scale",{type:"number",min:0,max:1.85,step:.05}),
+    glow=mkInput("Glow اختصاصی",item.glow??1,"glow",{type:"number",min:0,max:2.5,step:.05}),
+    opacity=mkInput("Opacity Node",item.opacity??1,"opacity",{type:"number",min:.25,max:1,step:.05}),
+    radius=mkInput("شعاع مدار",item.radius??1.25,"radius",{type:"number",min:.75,max:1.95,step:.01}),
+    ellipse=mkInput("کشیدگی عمودی مدار",item.ellipse??.7,"ellipse",{type:"number",min:.35,max:1,step:.01}),
+    angle=mkInput("زاویه شروع؛ رادیان",item.angle??0,"angle",{type:"number",min:-20,max:20,step:.01}),
+    speed=mkInput("سرعت/جهت؛ منفی = برعکس",item.speed??.00015,"speed",{type:"number",min:-.001,max:.001,step:.00001}),
+    cardSide=mkSelect("محل Card",item.card_side||"auto","card_side",[["auto","خودکار"],["left","چپ"],["right","راست"],["top","بالا"],["bottom","پایین"]]),
+    labelMode=mkSelect("نمایش Label",item.label_mode||"inherit","label_mode",[["inherit","طبق تنظیم Hover"],["always","همیشه"],["hover","فقط Hover"],["hidden","مخفی"]]),
+    desc=mkInput("توضیح کامل Tooltip",item.description,"description",{multiline:true}),
+    svg=mkInput("کد SVG آیکن",item.svg,"svg",{multiline:true});
    desc.wrap.classList.add("full");svg.wrap.classList.add("full");
-   const svgFileWrap=node("label","form-field full"),svgFileTitle=node("span","","یا فایل SVG را انتخاب کنید"),svgFile=node("input");
+   const svgFileWrap=node("label","form-field full"),svgFileTitle=node("span","","یا فایل SVG انتخاب کن"),svgFile=node("input");
    svgFile.type="file";svgFile.accept=".svg,image/svg+xml";
    svgFile.addEventListener("change",async()=>{
     const file=svgFile.files?.[0];if(!file)return;
     if(file.size>30*1024){svgFile.value="";out.replaceChildren(info("فایل SVG باید کمتر از ۳۰KB باشد.",true));return}
-    try{
-     const raw=await file.text();
-     if(!/<svg(?:\s|>)/i.test(raw))throw Error("فایل انتخاب‌شده SVG معتبر نیست.");
-     svg.input.value=raw;out.replaceChildren(info("SVG وارد شد؛ پس از ذخیره در Backend پاک‌سازی امنیتی می‌شود."));
-    }catch(err){svgFile.value="";showError(out,err)}
+    try{const raw=await file.text();if(!/<svg(?:\s|>)/i.test(raw))throw Error("فایل SVG معتبر نیست.");svg.input.value=raw;sample.innerHTML=raw;out.replaceChildren(info("SVG وارد شد؛ هنگام ذخیره Backend آن را Sanitise می‌کند."))}
+    catch(err){svgFile.value="";showError(out,err)}
    });
+   svg.input.addEventListener("input",()=>{if(/<svg(?:\s|>)/i.test(svg.input.value))sample.innerHTML=svg.input.value});
    append(svgFileWrap,svgFileTitle,svgFile);
-   append(controls,title.wrap,subtitle.wrap,tags.wrap,accent.wrap,desc.wrap,svg.wrap,svgFileWrap);append(card,controls);elementsHost.append(card);
+   append(controls,title.wrap,subtitle.wrap,tags.wrap,accent.wrap,size.wrap,hscale.wrap,glow.wrap,opacity.wrap,radius.wrap,ellipse.wrap,angle.wrap,speed.wrap,
+    cardSide.wrap,labelMode.wrap,desc.wrap,svg.wrap,svgFileWrap);append(card,controls);elementsHost.append(card);
   });
  }
  drawElements();
 
- append(grid,bgCard,visual,behavior,elementSection);append(p,grid);
+ append(grid,bg,globe,behavior,elementSection);append(p,grid);
+
+ const getGlobal=key=>p.querySelector('[data-appearance-global="'+key+'"]');
+ const n=key=>Number(getGlobal(key)?.value);
+ const b=key=>!!getGlobal(key)?.checked;
+ const v=key=>getGlobal(key)?.value||"";
  const actions=node("div","appearance-actions");
- append(actions,btn("ذخیره تنظیمات ظاهری",async()=>{
-  const savedElements=[...elementsHost.querySelectorAll(".appearance-element")].map((card,index)=>{
-   const value=name=>card.querySelector('[data-appearance-field="'+name+'"]');
-   const original=elements[index]||{};
-   return {
-    id:original.id||("custom_"+index),enabled:!!value("enabled")?.checked,title:value("title")?.value.trim()||"قابلیت",
-    subtitle:value("subtitle")?.value.trim()||"",description:value("description")?.value.trim()||"",
-    tags:(value("tags")?.value||"").split(",").map(x=>x.trim()).filter(Boolean).slice(0,8),
-    svg:value("svg")?.value.trim()||original.svg,accent:value("accent")?.value||"#63ECFF",
-    radius:Number(original.radius??1.25),ellipse:Number(original.ellipse??.7),angle:Number(original.angle??0),speed:Number(original.speed??.00015)
-   };
-  });
-  const payload={version:3,background_image:background,background_position:position.querySelector("select")?.value||"center",
-   background_brightness:Number(bgBright.input.value),background_dim:Number(bgDim.input.value),globe_scale:Number(globeScale.input.value),
-   globe_brightness:Number(globeBright.input.value),globe_saturation:Number(globeSat.input.value),globe_glow:Number(globeGlow.input.value),
-   node_size:Number(nodeSize.input.value),hover_scale:Number(hoverScale.input.value),hover_mode:hover.querySelector("select")?.value||"card",
-   pause_on_hover:pause.checked,show_orbits:orbits.checked,show_idle_cards:idleCards.checked,orbit_speed:Number(orbitSpeed.input.value),elements:savedElements};
-  out.replaceChildren();
-  try{const result=await api("appearance/save",payload);out.replaceChildren(info(result.identity_theme_synced?"تنظیمات ذخیره شد و Login سازمانی نیز همگام شد.":"تنظیمات ذخیره شد؛ همگام‌سازی Theme هویت در این اجرا در دسترس نبود."));setTimeout(()=>showSettings("appearance"),450)}
-  catch(err){showError(out,err)}
- }),btn("بازگردانی ظاهر پیشنهادی آوان",async()=>{
-  if(!confirm("تنظیمات ظاهری به حالت پیشنهادی آوان بازگردد؟"))return;
-  try{await api("appearance/reset",{});await showSettings("appearance")}catch(err){showError(out,err)}
- },"secondary"),out);
+ append(actions,
+  btn("ذخیره همه تنظیمات ظاهری",async()=>{
+   const savedElements=[...elementsHost.querySelectorAll(".appearance-element")].map((card,index)=>{
+    const val=name=>card.querySelector('[data-appearance-field="'+name+'"]'),original=elements[index]||{};
+    return {id:original.id||("custom_"+index),enabled:!!val("enabled")?.checked,title:val("title")?.value.trim()||"قابلیت",
+     subtitle:val("subtitle")?.value.trim()||"",description:val("description")?.value.trim()||"",
+     tags:(val("tags")?.value||"").split(",").map(x=>x.trim()).filter(Boolean).slice(0,8),
+     svg:val("svg")?.value.trim()||original.svg,accent:val("accent")?.value||"#63ECFF",
+     size:Number(val("size")?.value||0),hover_scale:Number(val("hover_scale")?.value||0),glow:Number(val("glow")?.value||1),opacity:Number(val("opacity")?.value||1),
+     radius:Number(val("radius")?.value||1.25),ellipse:Number(val("ellipse")?.value||.7),angle:Number(val("angle")?.value||0),speed:Number(val("speed")?.value||.00015),
+     card_side:val("card_side")?.value||"auto",label_mode:val("label_mode")?.value||"inherit"};
+   });
+   const payload={version:4,background_image:background,background_fit:v("background_fit"),background_position_x:n("background_position_x"),background_position_y:n("background_position_y"),
+    background_brightness:n("background_brightness"),background_contrast:n("background_contrast"),background_saturation:n("background_saturation"),background_blur:n("background_blur"),
+    background_dim:n("background_dim"),overlay_color:v("overlay_color"),overlay_opacity:n("overlay_opacity"),background_parallax:n("background_parallax"),
+    globe_image:globeImage,globe_visible:b("globe_visible"),globe_x:n("globe_x"),globe_y:n("globe_y"),globe_scale:n("globe_scale"),globe_opacity:n("globe_opacity"),
+    globe_brightness:n("globe_brightness"),globe_contrast:n("globe_contrast"),globe_saturation:n("globe_saturation"),globe_hue:n("globe_hue"),globe_glow:n("globe_glow"),
+    globe_wobble:n("globe_wobble"),globe_rotation_speed:n("globe_rotation_speed"),globe_point_density:n("globe_point_density"),globe_point_size:n("globe_point_size"),globe_point_opacity:n("globe_point_opacity"),
+    node_size:n("node_size"),node_opacity:n("node_opacity"),node_border_width:n("node_border_width"),node_glow:n("node_glow"),hover_scale:n("hover_scale"),hover_duration:n("hover_duration"),
+    hover_mode:v("hover_mode"),pause_on_hover:b("pause_on_hover"),show_orbits:b("show_orbits"),show_idle_cards:b("show_idle_cards"),orbit_speed:n("orbit_speed"),
+    orbit_line_width:n("orbit_line_width"),orbit_opacity:n("orbit_opacity"),orbit_glow:n("orbit_glow"),orbit_primary:v("orbit_primary"),orbit_secondary:v("orbit_secondary"),
+    card_width:n("card_width"),card_opacity:n("card_opacity"),elements:savedElements};
+   out.replaceChildren();
+   try{
+    const result=await api("appearance/save",payload);
+    out.replaceChildren(info(result.identity_theme_synced?"ظاهر V4 ذخیره شد و Keycloak نیز همگام شد. برای دیدن نتیجه Login را با Ctrl+F5 باز کن.":"ظاهر V4 ذخیره شد؛ همگام‌سازی فایل عمومی Keycloak در این اجرا انجام نشد."));
+   }catch(err){showError(out,err)}
+  }),
+  btn("بازگردانی کامل ظاهر پیشنهادی آوان",async()=>{
+   if(!confirm("تمام تنظیمات Scene، Background، Globe و Nodeها به پیش‌فرض V4 برگردد؟"))return;
+   try{await api("appearance/reset",{});await showSettings("appearance")}catch(err){showError(out,err)}
+  },"secondary"),out);
  append(p,actions);
 }
 
