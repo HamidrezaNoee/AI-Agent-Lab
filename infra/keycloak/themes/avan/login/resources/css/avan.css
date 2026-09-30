@@ -441,63 +441,121 @@ body.avan-signin{margin:0;min-height:100vh;background:#081c2c url('../img/agent-
 }
 
 
-/* Live login scene: new boardroom background + animated globe overlays + selectable capability nodes. */
+/* Approved AVAN Live Login V2: cleaned boardroom, independent live globe and interactive capabilities. */
 body.avan-signin{
- background:#081827 var(--avan-live-login-bg) center/cover no-repeat fixed!important;
+ background-color:#071522!important;
+ background-image:var(--avan-live-login-bg,none)!important;
+ background-position:center!important;
+ background-size:cover!important;
+ background-repeat:no-repeat!important;
+ background-attachment:fixed!important;
  overflow:hidden;
 }
-.avan-signin .signin-layout{position:relative;z-index:5}
-.avan-signin .avan-live-scene{position:fixed;inset:0;z-index:1;overflow:hidden;pointer-events:none}
-.avan-signin .avan-globe-fx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.avan-signin .avan-orbit-layer{position:absolute;inset:0;pointer-events:none}
+.avan-signin .signin-layout{position:relative;z-index:7}
+.avan-signin .avan-live-scene{position:fixed;inset:0;z-index:2;overflow:hidden;pointer-events:none;isolation:isolate}
+.avan-signin .avan-live-scene::after{
+ content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+ background:linear-gradient(90deg,rgba(3,18,31,.02),rgba(3,18,31,.02) 55%,rgba(3,18,31,.25));
+}
+.avan-signin .avan-globe-wrap{
+ position:absolute;z-index:1;left:29%;top:43%;width:min(34vw,520px);aspect-ratio:1;
+ transform:translate(-50%,-50%);pointer-events:none;
+ filter:drop-shadow(0 0 30px rgba(42,224,248,.18));will-change:translate;
+}
+.avan-signin .avan-globe-halo{
+ position:absolute;inset:-10%;border-radius:50%;
+ background:radial-gradient(circle,rgba(30,211,236,.09),transparent 61%);
+ box-shadow:0 0 92px rgba(32,212,240,.11);animation:avanGlobeHalo 4.8s ease-in-out infinite;
+}
+.avan-signin .avan-globe-image{
+ position:absolute;inset:8%;width:84%;height:84%;object-fit:cover;border-radius:50%;
+ opacity:0;transform-origin:50% 50%;filter:saturate(1.12) contrast(1.04) brightness(.97);
+ transition:opacity .45s ease;animation:avanGlobeWobble 13s ease-in-out infinite alternate;
+}
+.avan-signin .avan-live-scene.is-ready .avan-globe-image{opacity:1}
+.avan-signin .avan-globe-canvas{position:absolute;inset:0;width:100%;height:100%;filter:drop-shadow(0 0 14px rgba(72,235,250,.22))}
+.avan-signin .avan-globe-orbits{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.avan-signin .avan-globe-orbits ellipse{fill:none;stroke-width:1.1;opacity:.42}
+.avan-signin .avan-globe-orbits .o1{stroke:rgba(74,226,243,.54)}
+.avan-signin .avan-globe-orbits .o2{stroke:rgba(255,112,83,.35)}
+.avan-signin .avan-globe-orbits .o3{stroke:rgba(89,215,239,.27)}
+.avan-signin .avan-orbit-layer{position:absolute;inset:0;z-index:3;pointer-events:none}
 .avan-signin .avan-orbit-node{
- position:absolute;left:0;top:0;width:54px;height:54px;margin:0!important;padding:0!important;
+ position:absolute;left:0;top:0;width:64px;height:64px;margin:0!important;padding:0!important;
  display:grid;place-items:center;border-radius:50%!important;
- border:1px solid rgba(115,235,255,.58)!important;
- background:linear-gradient(160deg,rgba(9,50,72,.92),rgba(5,30,49,.96))!important;
- color:#eafcff!important;box-shadow:0 0 0 5px rgba(35,215,241,.045),0 0 24px rgba(42,219,245,.18),inset 0 1px 0 rgba(255,255,255,.1)!important;
- pointer-events:auto;cursor:pointer!important;transition:width .2s ease,height .2s ease,border-color .2s ease,box-shadow .2s ease,filter .2s ease;
+ border:1px solid rgba(111,235,250,.62)!important;
+ background:linear-gradient(160deg,rgba(10,55,79,.92),rgba(5,29,48,.97))!important;
+ color:#effcff!important;
+ box-shadow:0 0 0 6px rgba(39,214,240,.05),0 0 28px rgba(47,221,243,.23),inset 0 1px 0 rgba(255,255,255,.11)!important;
+ pointer-events:auto;cursor:pointer!important;
+ transition:width .18s ease,height .18s ease,box-shadow .18s ease,border-color .18s ease,filter .18s ease;
  will-change:transform;
 }
+.avan-signin .avan-orbit-node.orange{
+ border-color:rgba(255,126,96,.72)!important;
+ box-shadow:0 0 0 6px rgba(255,111,83,.045),0 0 28px rgba(255,102,77,.18),inset 0 1px 0 rgba(255,255,255,.1)!important;
+}
 .avan-signin .avan-orbit-node:hover,.avan-signin .avan-orbit-node:focus-visible,.avan-signin .avan-orbit-node.is-selected{
- width:60px;height:60px;border-color:#78f5ff!important;
- box-shadow:0 0 0 7px rgba(35,215,241,.07),0 0 34px rgba(45,226,250,.34),inset 0 1px 0 rgba(255,255,255,.15)!important;
- filter:saturate(1.18) brightness(1.08);outline:none;
+ width:70px;height:70px;outline:none;border-color:#86f7ff!important;
+ box-shadow:0 0 0 8px rgba(39,214,240,.075),0 0 42px rgba(55,230,248,.4),inset 0 1px 0 rgba(255,255,255,.16)!important;
+ filter:brightness(1.08) saturate(1.15);
 }
-.avan-signin .avan-orbit-icon{display:grid;place-items:center;width:31px;height:31px}
-.avan-signin .avan-orbit-icon svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.avan-signin .avan-orbit-icon{display:grid;place-items:center;width:33px;height:33px}
+.avan-signin .avan-orbit-icon svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .avan-signin .avan-orbit-label{
- position:absolute;top:62px;left:50%;transform:translateX(-50%);
- min-width:max-content;max-width:170px;padding:5px 8px;border-radius:999px;
- background:rgba(4,27,44,.78);border:1px solid rgba(90,221,244,.18);
- color:#a8d7e6;font-size:10px;font-weight:700;white-space:nowrap;
- opacity:0;translate:0 -3px;transition:opacity .16s ease,translate .16s ease;pointer-events:none;
+ position:absolute;top:73px;left:50%;transform:translateX(-50%) translateY(-4px);
+ min-width:max-content;max-width:210px;padding:6px 9px;border-radius:999px;
+ background:rgba(5,29,46,.86);border:1px solid rgba(88,222,242,.2);
+ color:#c7e9f3;font-size:10px;font-weight:700;white-space:nowrap;opacity:0;
+ transition:opacity .16s ease,transform .16s ease;pointer-events:none;
 }
-.avan-signin .avan-orbit-node:hover .avan-orbit-label,.avan-signin .avan-orbit-node:focus-visible .avan-orbit-label,.avan-signin .avan-orbit-node.is-selected .avan-orbit-label{opacity:1;translate:0 0}
+.avan-signin .avan-orbit-node:hover .avan-orbit-label,
+.avan-signin .avan-orbit-node:focus-visible .avan-orbit-label,
+.avan-signin .avan-orbit-node.is-selected .avan-orbit-label{
+ opacity:1;transform:translateX(-50%) translateY(0);
+}
 .avan-signin .avan-scene-tooltip{
- position:fixed;z-index:3;max-width:330px;padding:14px 16px;border-radius:16px;
- background:linear-gradient(155deg,rgba(6,34,54,.94),rgba(4,24,42,.97));
- border:1px solid rgba(105,225,247,.48);box-shadow:0 18px 46px rgba(0,10,24,.34),0 0 28px rgba(27,203,235,.09);
- color:#eafaff;opacity:0;transform:translateY(6px) scale(.98);transition:opacity .16s ease,transform .16s ease;
- pointer-events:none;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+ position:fixed;z-index:5;width:min(350px,calc(100vw - 28px));padding:15px 17px;
+ border-radius:16px;border:1px solid rgba(104,233,249,.5);
+ background:linear-gradient(155deg,rgba(6,34,55,.95),rgba(4,24,42,.98));
+ box-shadow:0 22px 60px rgba(0,10,23,.43),0 0 30px rgba(29,204,235,.1);
+ color:#effcff;opacity:0;transform:translateY(7px) scale(.98);pointer-events:none;
+ transition:opacity .15s ease,transform .15s ease;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
 }
 .avan-signin .avan-scene-tooltip.is-visible{opacity:1;transform:translateY(0) scale(1)}
-.avan-signin .avan-scene-tooltip strong{display:block;font-size:13px;margin-bottom:5px;color:#fff}
-.avan-signin .avan-scene-tooltip p{margin:0;color:#a6c9d9;font-size:11px;line-height:1.9}
-.avan-signin .avan-scene-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
-.avan-signin .avan-scene-tags span{padding:4px 7px;border:1px solid rgba(77,218,239,.2);border-radius:999px;background:rgba(12,64,87,.55);color:#64e6dd;font:700 9px/1.2 Tahoma,sans-serif;direction:ltr}
+.avan-signin .avan-scene-tooltip strong{display:block;font-size:14px;margin-bottom:5px;color:#fff}
+.avan-signin .avan-scene-tooltip p{margin:0;color:#abcbd9;font-size:11px;line-height:1.95}
+.avan-signin .avan-scene-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.avan-signin .avan-scene-tags span{
+ padding:4px 8px;border-radius:999px;border:1px solid rgba(75,220,238,.2);
+ background:rgba(10,59,81,.55);color:#72eadf;font:700 9px/1.2 Tahoma,sans-serif;direction:ltr;
+}
+/* The login rectangle visual design is unchanged; only grab/drag behavior is added. */
 .avan-signin .signin-panel.login-reveal-card{touch-action:none}
 .avan-signin .signin-panel.login-reveal-card:not(.is-login-dragging){cursor:grab}
 .avan-signin .signin-panel.login-reveal-card.is-login-dragging{cursor:grabbing!important;user-select:none}
 .avan-signin .signin-panel.login-reveal-card input,
+.avan-signin .signin-panel.login-reveal-card textarea,
+.avan-signin .signin-panel.login-reveal-card select,
 .avan-signin .signin-panel.login-reveal-card button,
+.avan-signin .signin-panel.login-reveal-card a,
 .avan-signin .signin-panel.login-reveal-card label{cursor:auto}
+@keyframes avanGlobeWobble{
+ 0%{transform:rotate(-1.3deg) scale(1)}
+ 50%{transform:rotate(1.1deg) scale(1.012)}
+ 100%{transform:rotate(-.4deg) scale(1.004)}
+}
+@keyframes avanGlobeHalo{
+ 0%,100%{opacity:.55;transform:scale(.98)}
+ 50%{opacity:.95;transform:scale(1.03)}
+}
 @media(max-width:819px){
  body.avan-signin{background-position:38% center!important;overflow:auto}
  .avan-signin .avan-live-scene{display:none}
  .avan-signin .signin-panel.login-reveal-card{translate:0 0!important;touch-action:auto}
 }
 @media(prefers-reduced-motion:reduce){
- .avan-signin .avan-globe-fx{opacity:.45}
+ .avan-signin .avan-globe-image,.avan-signin .avan-globe-halo{animation:none!important}
  .avan-signin .avan-orbit-node{transition:none}
 }
+
