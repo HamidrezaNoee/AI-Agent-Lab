@@ -20,7 +20,7 @@
   function scheduleCollapse(){
    window.clearTimeout(collapseTimer);
    collapseTimer=window.setTimeout(()=>{
-    if(!pointerInside)setExpanded(false);
+    if(!pointerInside&&panel.dataset.dragging!=="1")setExpanded(false);
    },90);
   }
 
@@ -35,7 +35,7 @@
   panel.addEventListener("pointerleave",event=>{
    if(event.pointerType==="mouse"||event.pointerType==="pen"){
     pointerInside=false;
-    scheduleCollapse();
+    if(panel.dataset.dragging!=="1")scheduleCollapse();
    }
   });
 
