@@ -410,6 +410,69 @@ def settings(session=Depends(_ready)):
     return setup.masked_settings()
 
 
+class AppearanceElement(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    id:str=Field(min_length=1,max_length=40)
+    enabled:bool=True
+    title:str=Field(min_length=1,max_length=80)
+    subtitle:str=Field(default="",max_length=140)
+    description:str=Field(default="",max_length=600)
+    tags:list[str]=Field(default_factory=list,max_length=8)
+    svg:str=Field(min_length=1,max_length=5000)
+    accent:str=Field(default="#63ECFF",min_length=7,max_length=7)
+    radius:float=1.2
+    ellipse:float=0.7
+    angle:float=0.0
+    speed:float=0.00015
+
+
+class AppearanceConfig(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    version:int=3
+    background_image:str=Field(default="",max_length=8_000_000)
+    background_position:str=Field(default="center",max_length=20)
+    background_brightness:float=1.1
+    background_dim:float=0.05
+    globe_scale:float=1.18
+    globe_brightness:float=1.24
+    globe_saturation:float=1.18
+    globe_glow:float=1.15
+    node_size:int=68
+    hover_scale:float=1.22
+    hover_mode:str=Field(default="card",max_length=20)
+    pause_on_hover:bool=True
+    show_orbits:bool=True
+    show_idle_cards:bool=True
+    orbit_speed:float=1.0
+    elements:list[AppearanceElement]=Field(default_factory=list,max_length=12)
+
+
+@router.get("/api/appearance/public")
+def appearance_public(request:Request):
+    _local(request)
+    from .login_appearance import current
+    return current()
+
+
+@router.get("/api/appearance")
+def appearance_get(session=Depends(_ready)):
+    from .login_appearance import current
+    return current()
+
+
+@router.post("/api/appearance/save")
+def appearance_save(body:AppearanceConfig,session=Depends(_ready)):
+    from .login_appearance import save,AppearanceError
+    try:return save(body.model_dump())
+    except AppearanceError as exc:raise HTTPException(422,str(exc))
+
+
+@router.post("/api/appearance/reset")
+def appearance_reset(session=Depends(_ready)):
+    from .login_appearance import reset
+    return reset()
+
+
 @router.get("/api/bpms/connections")
 def bpms_connections(session=Depends(_ready)):
     from .bpms_registry import sources
