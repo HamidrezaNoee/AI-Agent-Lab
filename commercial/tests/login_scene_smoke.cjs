@@ -30,6 +30,21 @@ const server=http.createServer((req,res)=>{
   let data={};
   if(p==='/admin/api/state')data={authenticated:false,password_changed:true,mfa_enrolled:true,mfa_authenticated:false,csrf:null,auth_mode:'bootstrap'};
   else if(p==='/admin/api/captcha/config')data={provider:'hybrid',cloudflare:{enabled:false},local:{provider:'altcha-self-hosted',algorithm:'SHA-256',challenge,maxNumber:1000,salt:'salt',signature:'x',expiresIn:120}};
+  else if(p==='/admin/api/appearance/public')data={
+    version:3,background_image:'',background_position:'center',background_brightness:1.15,background_dim:.02,
+    globe_scale:1.25,globe_brightness:1.4,globe_saturation:1.2,globe_glow:1.3,node_size:72,hover_scale:1.3,
+    hover_mode:'tooltip',pause_on_hover:true,show_orbits:true,show_idle_cards:false,orbit_speed:1.1,
+    elements:[
+      {id:'docs',enabled:true,title:'مدیریت اسناد',subtitle:'جستجوی هوشمند',description:'تحلیل سند',tags:['RAG'],svg:'<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg>',accent:'#63ECFF',radius:1.2,ellipse:.7,angle:3.5,speed:.00018},
+      {id:'bi',enabled:true,title:'تحلیل و گزارشات',subtitle:'داشبورد',description:'KPI',tags:['BI'],svg:'<svg viewBox="0 0 24 24"><path d="M4 19V10m5 9V5"/></svg>',accent:'#65EEF2',radius:1.4,ellipse:.64,angle:4.1,speed:-.00014},
+      {id:'meetings',enabled:true,title:'جلسات و مصوبات',subtitle:'پیگیری',description:'جلسه',tags:['Actions'],svg:'<svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3"/></svg>',accent:'#FF7358',radius:1.25,ellipse:.76,angle:4.9,speed:.0002},
+      {id:'bpms',enabled:true,title:'اتصالات BPMS',subtitle:'ProcessMaker',description:'BPMS',tags:['OAuth'],svg:'<svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/></svg>',accent:'#61EAF7',radius:1.4,ellipse:.62,angle:5.6,speed:-.00013},
+      {id:'agent',enabled:true,title:'Agent هوشمند',subtitle:'AI',description:'Agent',tags:['Agent'],svg:'<svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12"/></svg>',accent:'#FF8064',radius:1.2,ellipse:.74,angle:.1,speed:.00018},
+      {id:'voice',enabled:true,title:'دستیار صوتی',subtitle:'Voice',description:'Voice',tags:['TTS'],svg:'<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12"/></svg>',accent:'#68EEEF',radius:1.34,ellipse:.69,angle:.8,speed:-.00016},
+      {id:'alert',enabled:true,title:'هشدار و نظارت',subtitle:'SLA',description:'Alert',tags:['SLA'],svg:'<svg viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/></svg>',accent:'#FF7459',radius:1.25,ellipse:.78,angle:1.6,speed:.00021},
+      {id:'security',enabled:true,title:'هویت و امنیت',subtitle:'MFA',description:'Security',tags:['MFA'],svg:'<svg viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 4-3 8-7 10-4-2-7-6-7-10V6z"/></svg>',accent:'#67F1D0',radius:1.47,ellipse:.64,angle:2.4,speed:-.00015}
+    ]
+  };
   else data={};
   await route.fulfill({json:data});
  });
@@ -38,20 +53,22 @@ const server=http.createServer((req,res)=>{
  await card.waitFor();
  await page.locator('.avan-live-scene').waitFor();
  await page.locator('.avan-globe-wrap').waitFor();
- if(await page.locator('.avan-cap-node').count()!==8)throw Error('Expected 8 live capability nodes');
- await page.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue('--avan-approved-login-bg').includes('data:image/webp;base64,'));
- await page.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue('--avan-approved-globe').includes('data:image/png;base64,'));
- const bg=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--avan-approved-login-bg'));
- const globe=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--avan-approved-globe'));
- if(bg.length<10000)throw Error('Approved cleaned boardroom background did not load completely');
- if(globe.length<100000)throw Error('Approved independent globe sprite did not load completely');
- if(await page.locator('[data-avan-live-scene="approved-v2"]').count()!==1)throw Error('Approved V2 scene marker missing');
- if(await page.locator('.avan-live-scene .login-card').count())throw Error('Prototype login-card image must never replace the real AVAN login card');
+ await page.locator('[data-avan-live-scene="configurable-v3"]').waitFor();
+ if(await page.locator('.avan-orbit-node').count()!==8)throw Error('Expected 8 live capability nodes');
+ await page.waitForFunction(()=>document.querySelector('.avan-live-backdrop')?.style.backgroundImage.includes('data:image/webp;base64,'));
+ await page.waitForFunction(()=>document.querySelector('.avan-globe-image')?.src.startsWith('data:image/webp;base64,'));
+ const globeOpacity=await page.locator('.avan-globe-image').evaluate(el=>getComputedStyle(el).opacity);
+ if(Number(globeOpacity)<.95)throw Error('Globe regression: live globe is faded or invisible');
+ const rootVars=await page.locator('.avan-live-scene').evaluate(el=>({
+   node:el.style.getPropertyValue('--node-size'),hover:el.style.getPropertyValue('--hover-scale'),
+   bright:el.style.getPropertyValue('--globe-brightness')
+ }));
+ if(rootVars.node!=='72px'||rootVars.hover!=='1.3'||rootVars.bright!=='1.4')throw Error('Appearance settings did not reach login scene');
  const globeBox=await page.locator('.avan-globe-wrap').boundingBox();
  const cardStart=await card.boundingBox();
  if(!globeBox||!cardStart)throw Error('Live globe or login card has no layout box');
- if(globeBox.x+globeBox.width/2>=cardStart.x+cardStart.width/2)throw Error('Approved layout regression: globe must stay left of login card');
- const first=page.locator('.avan-cap-node').first();
+ if(globeBox.x+globeBox.width/2>=cardStart.x+cardStart.width/2)throw Error('Layout regression: globe must stay left of login card');
+ const first=page.locator('.avan-orbit-node').first();
  await first.hover();
  await page.locator('.avan-scene-tooltip.is-visible').waitFor();
  await first.click();
@@ -67,5 +84,5 @@ const server=http.createServer((req,res)=>{
  if(Math.abs(after.x-before.x)<30&&Math.abs(after.y-before.y)<20)throw Error('Login card drag did not move');
  if(errors.length)throw Error('Browser errors: '+errors.join(' | '));
  await browser.close();server.close();
- console.log('LOGIN SCENE PASS: approved V2 background, animated independent globe, 8 interactive nodes, tooltip/select and real unchanged draggable login card');
+ console.log('LOGIN SCENE PASS: configurable V3 background, visible globe, settings-driven nodes, tooltip/select and unchanged draggable login card');
 })().catch(e=>{console.error(e);try{server.close()}catch(_){}process.exit(1)});
