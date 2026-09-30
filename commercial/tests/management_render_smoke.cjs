@@ -44,6 +44,13 @@ const server=http.createServer((req,res)=>{
       publisher_public_key_installed:true,password_state:{changed:true,totp:true}
     };
     else if(p==='/admin/api/agent-db/connections')data={active_id:null,connections:[]};
+    else if(p==='/admin/api/appearance')data={
+      version:3,background_image:'',background_position:'center',background_brightness:1.1,background_dim:.05,
+      globe_scale:1.18,globe_brightness:1.24,globe_saturation:1.18,globe_glow:1.15,node_size:68,hover_scale:1.22,
+      hover_mode:'card',pause_on_hover:true,show_orbits:true,show_idle_cards:true,orbit_speed:1,
+      elements:[{id:'docs',enabled:true,title:'مدیریت اسناد',subtitle:'جستجوی هوشمند',description:'اسناد',tags:['RAG'],
+        svg:'<svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/></svg>',accent:'#63ECFF',radius:1.2,ellipse:.7,angle:1,speed:.00015}]
+    };
     else if(p==='/admin/api/bpms/catalog'){
       if(failBpms)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'خطای آزمایشی کاتالوگ BPMS'})});
       data={connections:[{
@@ -82,6 +89,7 @@ const server=http.createServer((req,res)=>{
     ['بانک Agent','agentdb'],
     ['هوش مصنوعی','ai'],
     ['سازمان و دسترسی','organization'],
+    ['تنظیمات ظاهری','appearance'],
     ['لایسنس','license']
   ];
   for(const [label,code] of tabs){
