@@ -4,52 +4,6 @@ const state={csrf:null,user:null,settings:null,stage:"login",page:"connections",
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n}
 function append(parent,...items){for(const item of items.flat())if(item!==null&&item!==undefined)parent.append(item);return parent}
-const helpContent={
- connections:{steps:[
-  "این صفحه فقط Dashboard وضعیت است و هیچ Secret، Token، Password یا تنظیم اتصال در آن ویرایش نمی‌شود.",
-  "ProcessMaker فقط یک مالک تنظیم دارد: صفحه «ProcessMaker» با دو زیرصفحه «داده‌ها و MySQL» و «OAuth و API».",
-  "برای تغییر هر سرویس روی «مدیریت» همان کارت بزنید. این ساختار از ثبت چند نسخه متناقض از یک تنظیم جلوگیری می‌کند."
- ]},
- agentdb:{steps:[
-  "برای SQL Server داخلی اطلاعاتی وارد نکنید: docker compose بانک AVANAgent و حساب AVAN_AgentApp را راه‌اندازی می‌کند؛ در فهرست «SQL Server داخلی Docker» را بررسی و فعال کنید.",
-  "برای SQL Server خارجی، نشانی و پورت را از SQL Server Configuration Manager → SQL Server Network Configuration → TCP/IP → IPAll بگیرید. از داخل کانتینر، SQL Server روی همان ویندوز معمولاً host.docker.internal,1433 است.",
-  "ساخت بانک خارجی فقط یک‌بار با حساب مدیر SQL و تأیید AVANAgent انجام می‌شود. پس از ساخت، اتصال را با رمز حساب محدود AVAN_AgentApp ثبت کنید؛ رمز مدیر ذخیره نمی‌شود.",
-  "با «بررسی» دسترسی واقعی را بسنجید. ویرایش اتصال فعال پس از اعتبارسنجی اعمال می‌شود. قطع اتصال فعال دستیار و گزارش‌های ذخیره‌شدهٔ Agent را موقتاً از دسترس خارج می‌کند."
- ],fields:{name:"یک عنوان دلخواه برای تشخیص این بانک در فهرست، مثلاً SQL سازمان. نام سرور یا رمز را در عنوان ننویسید.",server:"آدرس قابل دسترس از کانتینر آوان با قالب server,port؛ نام یا IP و پورت ثابت را از مدیر SQL Server یا SQL Server Configuration Manager → TCP/IP → IPAll دریافت کنید.",password:"رمز SQL Login محدود AVAN_AgentApp در بانک AVANAgent را از مدیر بانک بگیرید. برای اتصال Docker داخلی این بخش لازم نیست؛ اگر نشانی سرور عوض نشود، رمز خالی در ویرایش رمز قبلی را نگه می‌دارد.",trust:"اگر گواهی TLS سرور در کانتینر مورد اعتماد است no بگذارید. yes فقط برای گواهی داخلی خودامضا پس از تأیید مدیر زیرساخت؛ اتصال SQL همچنان رمزگذاری می‌شود.",install_user:"نام حساب مدیر SQL با اختیار ساخت AVANAgent را از DBA بگیرید؛ فقط هنگام نصب خارجی استفاده می‌شود و ذخیره نمی‌شود.",install_password:"رمز همان حساب مدیر SQL؛ در فایل تنظیمات آوان ذخیره نمی‌شود.",confirmation:"برای جلوگیری از ساخت ناخواسته، دقیقاً AVANAgent بنویسید."}},
- bpms:{steps:[
-  "هر BPMS غیر از ProcessMaker به یک مبدل HTTPS مستقل نیاز دارد که GET /avan/v1/identity و GET /avan/v1/bi/processes را مطابق راهنمای قرارداد آوان ارائه کند. اتصال مستقیم به پایگاه داده آن موتور اضافه نمی‌شود.",
-  "نشانی، نام و توکن حساب فقط‌خواندنی را از تیم همان BPMS/آداپتر بگیرید. شناسه tenant پاسخ identity باید با «اطلاعات سازمان» برابر باشد.",
-  "ابتدا بررسی، سپس ذخیره کنید. از فهرست، هر منبع را مستقل ویرایش، فعال/غیرفعال یا حذف کنید. هنگام ویرایش، کادر توکن را خالی بگذارید تا توکن قبلی حفظ شود.",
-  "غیرفعال‌کردن بلافاصله گزارش آن منبع را می‌بندد؛ فعال‌سازی دوباره اتصال و شناسه سازمان را بررسی می‌کند. حذف فقط تنظیمات منبع در آوان را پاک می‌کند."
- ],fields:{name:"نام قابل‌فهم موتور، مثل «فرایند خرید شرکت الف»؛ این مقدار عنوان نمایشی است.",base_url:"آدرس ریشهٔ HTTPS مبدل را از تیم BPMS بگیرید؛ با پورت استاندارد 443 یا 8443، بدون /avan/v1/identity، پارامتر، نام کاربری یا رمز در URL.",bearer_token:"توکن اختصاصی حساب integration فقط‌خواندنی را تیم آداپتر می‌سازد. در ویرایش با همان آدرس می‌توانید آن را خالی بگذارید؛ تغییر نشانی آداپتر نیازمند توکن جدید است."}},
- mysql:{steps:[
-  "در phpMyAdmin مربوط به ProcessMaker، زبانهٔ SQL را باز کنید و جداگانه SELECT DATABASE(); و SHOW VARIABLES LIKE 'port'; و SHOW VARIABLES LIKE 'have_ssl'; را اجرا کنید. این دستورها داخل PowerShell اجرا نمی‌شوند.",
-  "کاربر SELECT روی جدول‌های لازم ProcessMaker را از مدیر MySQL بگیرید. نشانی را از دید کانتینر وارد کنید: برای MySQL روی همان ویندوز معمولاً host.docker.internal، نه 127.0.0.1 داخل کانتینر.",
-  "اگر have_ssl برابر DISABLED است TLS را no بگذارید. تاریخ‌ها را با منطقه زمانی IANA مانند Asia/Tehran تفسیر کنید؛ مقدار Windows مانند Iran Standard Time را اینجا نگذارید.",
-  "ابتدا بررسی اتصال، سپس ذخیره. بررسی افزون بر دسترسی خواندنی، وجود هر دو فرایند جلسه و اقدام مصوب را می‌سنجد."
- ],fields:{host:"نامی که کانتینر آوان از آن به MySQL می‌رسد؛ برای MySQL روی همان ویندوز host.docker.internal. آدرس phpMyAdmin و پورت وب، نشانی MySQL نیستند.",port:"در phpMyAdmin → SQL اجرا کنید: SHOW VARIABLES LIKE 'port'; غالباً 3306 است.",database:"در phpMyAdmin بانک Workspace را از ستون سمت چپ یا SELECT DATABASE(); ببینید؛ در نصب فعلی شما bitnami_pm گزارش شده است.",username:"یک کاربر دارای SELECT فقط روی جدول‌های موردنیاز ProcessMaker؛ نام و GRANTهای دقیق را از مدیر MySQL بگیرید، نه رمز root.",password:"رمز همان حساب فقط‌خواندنی MySQL. برای تغییر تنظیمات باید آن را دوباره وارد کنید؛ رمز ذخیره‌شده در مرورگر نمایش داده نمی‌شود.",tls:"در phpMyAdmin → SQL دستور SHOW VARIABLES LIKE 'have_ssl'; را اجرا کنید؛ اگر DISABLED است no، اگر TLS و گواهی درست نصب شده است yes.",ca_pem:"در صورت فعال بودن TLS، متن گواهی CA صادرکنندهٔ گواهی سرور MySQL را از مدیر زیرساخت بگیرید؛ وقتی TLS خاموش است خالی بماند.",timezone:"منطقه زمانی IANA محل ثبت تاریخ ProcessMaker، برای ایران Asia/Tehran. عبارت Iran Standard Time مخصوص Windows و برای این فیلد نامعتبر است."}},
- company:{steps:["نام رسمی سازمان را مطابق نام درج‌شده روی لایسنس بنویسید. پس از نخستین ذخیره، آوان Tenant ID ثابت می‌سازد.","Tenant ID نمایش‌داده‌شده در همین صفحه را برای حساب‌های Keycloak، آداپترهای BPMS و صدور لایسنس به تیم مربوط تحویل دهید. شناسه را حدس نزنید."],fields:{company_name:"نام حقوقی سازمان را از مدارک ثبتی یا قرارداد خرید و دقیقاً مطابق نام مشتری در لایسنس بگیرید."}},
- identity:{steps:["Keycloak همراه نصب Docker آوان راه‌اندازی می‌شود؛ Issuer و Client Secret داخل برنامه نصب و مدیریت می‌شوند و نیازی به گرفتن آن‌ها از ProcessMaker نیست.","در راه‌اندازی اولیه، پس از ثبت سازمان حساب سازمانی GodAdmin را اینجا بسازید یا با حساب موجود یک‌بار ورود کنید؛ سپس شناسهٔ امضاشدهٔ همان حساب را با کد تازهٔ Authenticator تأیید کنید.","پس از اتصال GodAdmin، ورود و خروج به فضای کار و تنظیمات با همان حساب سازمانی انجام می‌شود."],fields:{username:"نام کاربری اختصاصی برای حساب سازمانی GodAdmin در Keycloak؛ با نام ورود ProcessMaker یکی نیست.",email:"ایمیل قابل دسترس مدیر سامانه را از دفترچه تماس سازمان بگیرید؛ برای ساخت حساب هویت سازمانی لازم است.",name:"نام نمایشی مدیر سامانه در سرویس هویت سازمانی.",password:"رمز موقت قوی دست‌کم ۱۶ کاراکتری برای حساب تازه؛ پس از اولین ورود باید تغییر داده شود.",otp:"کد شش‌رقمی تازه از برنامه Authenticator متصل به حساب GodAdmin اولیه؛ کد منقضی‌شده را تکرار نکنید."}},
- processmaker:{steps:[
-  "در ProcessMaker 3.x فقط یک‌بار OAuth2 Application آوان را بسازید یا Client ID و Client Secret برنامه موجود را بردارید. در نصب فعلی مسیر مرورگر معمولاً http://127.0.0.1:84/sysworkflow/en/neoclassic/oauth2/applications است.",
-  "در همین فرم آوان Base URL، Workspace، Client ID، Client Secret، Username و Password حساب ProcessMaker را وارد کنید و «دریافت توکن، تست و ذخیره خودکار» را بزنید.",
-  "آوان خودش Password Grant را به /{workspace}/oauth2/token ارسال می‌کند، access_token و refresh_token را دریافت می‌کند، API کاربران را تست می‌کند و سپس اتصال را ذخیره می‌کند.",
-  "رمز ProcessMaker ذخیره نمی‌شود. Client Secret، Access Token و Refresh Token در مخزن تنظیمات رمزگذاری‌شده آوان نگهداری می‌شوند.",
-  "قبل از انقضای Access Token، آوان با Refresh Token توکن تازه می‌گیرد. اگر لازم بود می‌توانید «تمدید توکن الآن» را هم دستی بزنید. Refresh Token جدید جای قبلی ذخیره می‌شود.",
-  "ورود دستی Access Token فقط برای عیب‌یابی/سازگاری قدیمی باقی مانده و در آن حالت تمدید خودکار فعال نیست."
- ],fields:{
-  base_url:"آدرس از دید کانتینر آوان؛ برای ProcessMaker روی همین ویندوز معمولاً http://host.docker.internal:84.",
-  workspace:"از URL رابط ProcessMaker مانند /sysworkflow/en/... مقدار workflow را بردارید.",
-  oauth_client_id:"Client ID را از OAuth2 Applications در خود ProcessMaker بگیرید.",
-  oauth_client_secret:"Client Secret همان OAuth2 Application. پس از اولین اتصال رمزگذاری‌شده ذخیره می‌شود و برای اتصال مجدد با همان Client ID می‌تواند خالی بماند.",
-  pm_username:"نام کاربری حساب ProcessMaker که مجوز مشاهده کاربران/API را دارد. فقط هنگام دریافت اولیه توکن استفاده می‌شود و ذخیره نمی‌شود.",
-  pm_password:"رمز همان حساب ProcessMaker. فقط برای درخواست Token استفاده می‌شود و در آوان ذخیره نمی‌شود.",
-  bearer_token:"حالت پیشرفته/دستی: فقط access_token را وارد کنید؛ در این حالت Refresh خودکار فعال نیست."
- }},
- ai:{steps:["کلید API را از حساب رسمی ارائه‌دهندهٔ مدل که برای آوان فعال شده است دریافت کنید و آن را در چت، URL یا فایل عمومی قرار ندهید.","مدلی را وارد کنید که حساب API به آن دسترسی دارد. ابتدا ذخیره، سپس «بررسی اتصال ذخیره‌شده» را اجرا کنید؛ بررسی دسترسی مدل، تولید پاسخ واقعی را آزمایش نمی‌کند.","گزینهٔ صوت فقط وقتی نیاز است فعال شود؛ تبدیل صوت و تولید گفتار هر کدام مصرف API دارند."],fields:{model:"شناسهٔ مدل مجاز برای حساب API را از پنل ارائه‌دهنده یا قرارداد سرویس سازمان بگیرید؛ مقدار پیش‌فرض برنامه را تنها در صورت دسترسی حساب نگه دارید.",api_key:"کلید محرمانهٔ حساب API آوان از پنل ارائه‌دهنده؛ هنگام ویرایش خالی بماند تا کلید قبلی حفظ شود.",transcription_model:"شناسهٔ مدل صوت به متن را از فهرست مجاز این نسخه انتخاب کنید؛ مقدار پیش‌فرض قابل استفاده است اگر حساب دسترسی دارد.",speech_model:"مدل تبدیل متن به گفتار را از گزینه‌های مجاز همین فرم انتخاب کنید.",voice:"نام صدای پشتیبانی‌شده برای تولید گفتار؛ یکی از گزینه‌های نوشته‌شده در عنوان همین فیلد."}},
- license:{steps:["شناسه نصب را از بالای همین صفحه و Tenant ID را از صفحهٔ «اطلاعات سازمان» بردارید و برای صادرکنندهٔ مجوز ارسال کنید.","فقط کلید عمومی PEM تأییدشدهٔ ناشر را ثبت کنید؛ کلید خصوصی نباید وارد آوان شود. توکن لایسنس امضاشده را از ناشر بگیرید.","برای نصب آزمایشی محلی وضعیت مجوز را پایین همین صفحه ببینید؛ فعال‌سازی مجوز فروش باید برای همین نصب، سازمان، ظرفیت کاربران و تاریخ صادر شده باشد."],fields:{pem:"متن کامل کلید عمومی ECDSA P-256 با سطرهای BEGIN/END PUBLIC KEY را از ناشر معتبر نسخه دریافت کنید؛ کلید خصوصی هرگز لازم نیست.",tenant_id:"شناسه UUID تولیدشده در صفحه «اطلاعات سازمان»؛ همان شناسه ثبت‌شده در متن لایسنس.",token:"رشتهٔ کامل لایسنس امضاشدهٔ تحویلی از ناشر را بدون تغییر اینجا قرار دهید."}},
- users:{steps:["فرد ابتدا با حساب سازمانی خود از صفحهٔ ورود آوان وارد شود تا درخواست «در انتظار» شکل بگیرد؛ سپس درخواست‌ها را در همین صفحه به‌روزرسانی کنید.","برای اتصال کاربر، ایمیل تأییدشدهٔ حساب سازمانی باید با ایمیل یک کاربر فعال ProcessMaker برابر باشد. فهرست PM از بخش اتصال ProcessMaker خوانده می‌شود.","شناسه مسئول مستقیم را از همان فهرست کاربران PM بررسی کنید؛ پس از تصویب، وضعیت فعال و ظرفیت لایسنس را از فهرست کاربران کنترل کنید."],fields:{company_name:"نام رسمی سازمان مطابق «اطلاعات سازمان» و لایسنس فعال.",pm_uid:"کاربر فعال ProcessMaker با ایمیل برابر؛ از فهرست قابل انتخاب همین فرم بردارید، نه از نام نمایشی.",role:"نقش سازمانی را براساس مجوز واقعی فرد انتخاب کنید؛ نقش مدیر سیستم نیازمند نقش امضاشدهٔ SysAdmin است.",department_name:"نام واحد تأییدشده در ساختار سازمان یا پرونده پرسنلی؛ در صورت نامشخص بودن خالی بگذارید.",manager_pm_uid:"شناسه PM مدیر مستقیم از فهرست کاربران ProcessMaker؛ در صورت نبود مدیر مستقیم خالی بگذارید."}}
-};
 function helpLamp(title,lines,compact=false){
  if(!lines?.length)return null;
  const detail=node("details",compact?"help-lamp compact":"help-lamp");
@@ -57,31 +11,6 @@ function helpLamp(title,lines,compact=false){
  summary.setAttribute("aria-label","راهنمای "+title);append(detail,summary);
  const list=node("ol");for(const line of lines)append(list,node("li","",line));append(detail,list);
  return detail;
-}
-function settingsGuide(page){
- const content=helpContent[page];
- if(!content)return null;
- const section=node("section","settings-guide");
- const head=node("div","settings-guide-head");
- append(head,node("span","settings-guide-icon","💡"),node("div","",
-  "راهنمای کانفیگ و محل دریافت اطلاعات"));
- append(section,head);
- if(content.steps?.length){
-  const ol=node("ol","settings-guide-steps");
-  for(const step of content.steps)append(ol,node("li","",step));
-  append(section,ol);
- }
- const fields=content.fields||{};
- const entries=Object.entries(fields);
- if(entries.length){
-  const tableWrap=node("div","settings-guide-fields"),table=node("table"),body=node("tbody");
-  for(const [name,description] of entries){
-   const row=node("tr"),key=node("td","settings-guide-key",name),value=node("td","",description);
-   append(row,key,value);append(body,row);
-  }
-  append(table,body);append(tableWrap,table);append(section,tableWrap);
- }
- return section;
 }
 function copyTextButton(label,getValue){
  const b=btn(label,async()=>{
@@ -705,26 +634,22 @@ async function renderConnections(m,settings){
  append(m,p);
 
  const [dbResult,bpmsResult,identityResult]=await Promise.allSettled([
-  api("agent-db/connections"),api("bpms/connections"),api("identity/status")
+  api("agent-db/connections"),api("bpms/catalog"),api("identity/status")
  ]);
  if(state.page!=="connections")return;
 
  const db=dbResult.status==="fulfilled"?dbResult.value:{active_id:null,connections:[]};
- const bpms=bpmsResult.status==="fulfilled"?bpmsResult.value:{sources:[]};
+ const bpms=bpmsResult.status==="fulfilled"?bpmsResult.value:{connections:[]};
  const identity=identityResult.status==="fulfilled"?identityResult.value:null;
- const pmMysqlConfigured=!!settings.mysql?.host;
- const pmMysqlActive=pmMysqlConfigured&&settings.mysql.enabled!==false;
- const pmApiConfigured=!!settings.processmaker?.base_url;
- const pmManaged=!!settings.processmaker?.token_managed;
- const pmReady=pmMysqlActive&&pmApiConfigured;
  const activeDb=db.connections.find(x=>x.id===db.active_id);
+ const bpmsConnections=bpms.connections||[];
+ const bpmsActive=bpmsConnections.filter(x=>x.connection_type==="processmaker"?x.active:x.enabled).length;
 
  const stats=node("div","connection-stats");
  const summary=[
-  ["ProcessMaker",pmReady?"آماده":(pmMysqlConfigured||pmApiConfigured?"ناقص":"ثبت‌نشده")],
+  ["اتصالات BPMS",bpmsConnections.length?bpmsActive+" فعال از "+bpmsConnections.length:"ثبت‌نشده"],
   ["بانک Agent",activeDb?"فعال":"قطع"],
   ["هوش مصنوعی",settings.ai?.enabled?"فعال":"غیرفعال"],
-  ["BPMSهای دیگر",bpms.sources.filter(x=>x.enabled).length+" فعال"],
   ["هویت",identity?.connected?"فعال":"نیازمند بررسی"]
  ];
  for(const [label,value] of summary){
@@ -744,13 +669,11 @@ async function renderConnections(m,settings){
   append(list,connectionItem(title,description,{active,label},actions));
  };
 
- const pmParts=[
-  "MySQL: "+(pmMysqlConfigured?(pmMysqlActive?"فعال":"غیرفعال"):"ثبت‌نشده"),
-  "API: "+(pmApiConfigured?(pmManaged?"OAuth خودکار":"توکن دستی"):"ثبت‌نشده")
- ];
- statusRow("ProcessMaker",pmParts.join(" · "),pmReady,
-   pmReady?"آماده":(pmMysqlConfigured||pmApiConfigured?"نیازمند تکمیل":"ثبت‌نشده"),
-   "bpms",()=>showSettings("bpms"));
+ const bpmsDescription=bpmsConnections.length
+  ?bpmsConnections.map(x=>(x.engine==="processmaker"?"ProcessMaker":(x.engine||"BPMS"))+" · "+x.name).slice(0,4).join(" | ")
+  :"هیچ اتصال BPMS ثبت نشده است.";
+ statusRow("اتصالات BPMS",bpmsDescription,bpmsActive>0,
+   bpmsConnections.length?(bpmsActive+" فعال"):"ثبت‌نشده","bpms",()=>showSettings("bpms"));
 
  statusRow("بانک اختصاصی Agent",
    activeDb?(activeDb.name+" · "+activeDb.server):(db.connections.length+" پروفایل ثبت‌شده · بدون اتصال فعال"),
@@ -759,10 +682,6 @@ async function renderConnections(m,settings){
  statusRow("هوش مصنوعی",
    settings.ai?.model?settings.ai.model+" · "+(settings.ai.enabled?"فعال":"غیرفعال"):"کلید و مدل هنوز تنظیم نشده‌اند.",
    !!settings.ai?.enabled,settings.ai?.enabled?"فعال":(settings.ai?.api_key?"غیرفعال":"ثبت‌نشده"),"ai");
-
- statusRow("اتصالات BPMS دیگر",
-   bpms.sources.length?bpms.sources.length+" منبع ثبت‌شده · "+bpms.sources.filter(x=>x.enabled).length+" فعال":"هیچ منبع خارجی ثبت نشده است.",
-   bpms.sources.some(x=>x.enabled),bpms.sources.length?bpms.sources.filter(x=>x.enabled).length+" فعال":"ثبت‌نشده","bpms");
 
  statusRow("هویت و دسترسی سازمانی",
    identity?.connected?("Keycloak · Realm "+identity.realm):"هویت سازمانی هنوز آماده یا قابل بررسی نیست.",
@@ -773,217 +692,6 @@ async function renderConnections(m,settings){
  append(noteBox,node("strong","","قاعده مدیریت تنظیمات"),
   node("p","hint","هر Secret و اتصال فقط در یک صفحه ویرایش می‌شود. این Dashboard فقط وضعیت را نشان می‌دهد تا تنظیم تکراری یا متناقض ایجاد نشود."));
  append(p,noteBox);
-}
-function renderMysql(m,config){
- const p=panel("داده‌های ProcessMaker", "اتصال فقط‌خواندنی به MySQL فرایندها؛ اطلاعات جلسه در خود ProcessMaker نگهداری می‌شود.");
- const f=node("form","grid");
- append(f,field("نشانی MySQL","host",config.host||"host.docker.internal"),
-  field("پورت","port",String(config.port||3306)),field("بانک Workspace","database",config.database||"wf_workflow"),
-  field("کاربر فقط‌خواندنی","username",config.username||"avan_reader"),
-  field("رمز اتصال","password","",{secret:true}),field("اتصال TLS: yes یا no","tls",config.tls===false?"no":"yes"),field("گواهی CA داخلی MySQL (PEM، اختیاری)","ca_pem",config.ca_pem||"",{required:false}),field("منطقه زمانی ثبت تاریخ در ProcessMaker","timezone",config.timezone||"Asia/Tehran"));
- const out=node("div","full"),actions=node("div","actions full");
- async function execute(action){
-  busy(f,true);out.replaceChildren();
-  try{await api("mysql/"+action,{host:formValue(f,"host"),port:Number(formValue(f,"port")),
-    database:formValue(f,"database"),username:formValue(f,"username"),password:formValue(f,"password"),tls:formValue(f,"tls").toLowerCase()==="yes",ca_pem:formValue(f,"ca_pem"),timezone:formValue(f,"timezone")});
-    append(out,info(action==="save"?"تنظیمات اتصال ذخیره شد.":"اتصال و وجود هر دو فرایند تأیید شد."));
-    if(action==="save")f.querySelector('[name="password"]').value="";
-  }catch(e){showError(out,e)}finally{busy(f,false)}
- }
- append(actions,btn("بررسی اتصال",()=>execute("check"),"secondary"),btn("ذخیره اتصال",()=>execute("save")));
- append(f,actions,out);append(p,f);append(m,p);
-}
-async function renderIdentity(m){
- const p=panel("هویت سازمانی آوان",
-  "Keycloak و تنظیمات OIDC جزو زیرساخت داخلی آوان هستند و نیازی به واردکردن Issuer، JWKS یا Client Secret توسط کاربر ندارند.");
- const result=node("div");
- append(p,info("Secretهای داخلی هنگام نصب امن Docker ساخته می‌شوند و هیچ‌وقت در این پنل یا فایل .env به کاربر نمایش داده نمی‌شوند."),result);
- try{
-   const status=await api("identity/status");
-   append(result,info(status.connected?
-      "سرویس هویت داخلی آوان فعال است · Realm: "+status.realm:
-      "سرویس هویت داخلی هنوز آماده نیست.",!status.connected));
- }catch(err){showError(result,err)}
- if(state.authMode==="bootstrap"){
-   const company=await api("company");
-   const bind=panel("تکمیل ورود واحد GodAdmin",
-     "پس از ثبت سازمان، با حساب سازمانی موردنظر یک‌بار وارد شوید. این حساب تا تأیید شما هیچ دسترسی ندارد؛ سپس آن را در اینجا با کد تازهٔ Authenticator به GodAdmin متصل کنید.");
-   if(!company.tenant_id)append(bind,info("ابتدا در بخش اطلاعات سازمان نام سازمان را ثبت کنید.",true));
-   else{
-     append(bind,info("شناسه سازمانی که باید برای حساب Keycloak ثبت شده باشد: "+company.tenant_id));
-     const create=node("form","grid"),created=node("div","full");
-     append(create,field("نام کاربری جدید GodAdmin","username"),
-       field("ایمیل حساب سازمانی","email"),field("نام مدیر سامانه","name"),
-       field("رمز موقت حساب جدید (حداقل ۱۶ کاراکتر)","password","",{secret:true}),
-       field("کد تازه Authenticator حساب اولیه","otp"));
-     const createButton=node("button","","ساخت حساب سازمانی GodAdmin");
-     createButton.type="submit";append(create,createButton,created);
-     create.addEventListener("submit",async e=>{
-       e.preventDefault();busy(create,true);
-       try{const account=await api("identity/create-godadmin-account",{
-         username:formValue(create,"username"),email:formValue(create,"email"),
-         name:formValue(create,"name"),password:formValue(create,"password"),
-         otp:formValue(create,"otp")});
-         create.elements.namedItem("password").value="";
-         created.replaceChildren(info(account.next));
-       }catch(err){showError(created,err)}finally{busy(create,false)}
-     });
-     append(bind,info("اگر هنوز حساب سازمانی ندارید، آن را اینجا بسازید. پس از اولین ورود باید رمز موقت و تأیید دومرحله‌ای حساب جدید را تکمیل کنید."),create);
-     const start=node("a","visit","ورود حساب سازمانی در پنجرهٔ جدید ←");
-     start.href="/auth/login";start.target="_blank";start.rel="noopener noreferrer";
-     append(bind,start,btn("به‌روزرسانی حساب‌های واردشده",()=>showSettings("identity"),"secondary"));
-     const pending=(await api("users/pending")).pending||[];
-     for(const account of pending.filter(u=>u.tenant_id===company.tenant_id)){
-       const f=node("form"),out=node("div");
-       const otp=field("کد جدید Authenticator حساب اولیه GodAdmin","otp","",{secret:false});
-       append(f,node("p","",account.name+" · "+(account.email_verified?account.email||"":"ایمیل تأیید نشده")+" · "+account.subject),otp);
-       const button=node("button","","تأیید این حساب به‌عنوان GodAdmin");button.type="submit";
-       append(f,button,out);append(bind,f);
-       f.addEventListener("submit",async e=>{
-         e.preventDefault();if(!confirm("حساب «"+account.name+"» مدیر کل این نصب شود؟"))return;
-         busy(f,true);
-         try{await api("identity/bind-godadmin",{tenant_id:account.tenant_id,
-           subject:account.subject,otp:formValue(f,"otp")});
-           window.location.assign("/auth/login");
-         }catch(err){showError(out,err)}finally{busy(f,false)}
-       });
-     }
-     if(!pending.length)append(bind,info("پس از ورود حساب سازمانی، این صفحه را به‌روزرسانی کنید."));
-   }
-   append(m,bind);
- }
- append(m,p);
-}
-
-function renderPm(m,config){
- const p=panel("اتصال ProcessMaker",
-   "آوان می‌تواند OAuth2 را خودش انجام دهد، توکن را تست و ذخیره کند و بعداً با Refresh Token به‌صورت خودکار تمدید کند.");
-
- const managed=!!config.token_managed;
- const status=panel("وضعیت OAuth ProcessMaker",
-   managed?"مدیریت خودکار توکن فعال است.":"مدیریت خودکار توکن هنوز فعال نشده است.");
- status.classList.add("pm-oauth-status");
- if(managed){
-   const expires=Number(config.access_token_expires_at||0);
-   const expiryText=expires?new Date(expires*1000).toLocaleString("fa-IR"):"نامشخص";
-   append(status,info("OAuth مدیریت‌شده فعال · Client ID: "+(config.oauth_client_id||"ثبت‌شده")+
-     " · انقضای Access Token: "+expiryText));
- }else{
-   append(status,info("برای حذف نیاز به ساخت دستی Token، فرم اتصال خودکار زیر را یک‌بار تکمیل کنید.",true));
- }
- append(p,status);
-
- const f=node("form","grid pm-oauth-form"),out=node("div","full");
- append(f,
-   field("نشانی اصلی ProcessMaker","base_url",config.base_url||"http://host.docker.internal:84"),
-   field("Workspace","workspace",config.workspace||"workflow"),
-   field("Client ID برنامه OAuth","oauth_client_id",config.oauth_client_id||""),
-   field(managed?"Client Secret؛ برای استفاده از مقدار ذخیره‌شده خالی بگذارید":"Client Secret برنامه OAuth",
-     "oauth_client_secret","",{secret:true,required:!managed}),
-   field("نام کاربری ProcessMaker","pm_username",""),
-   field("رمز ProcessMaker؛ ذخیره نمی‌شود","pm_password","",{secret:true})
- );
-
- const browserBase=()=>{
-   const raw=formValue(f,"base_url")||"http://host.docker.internal:84";
-   return raw.replace("host.docker.internal","127.0.0.1").replace(/\/+$/,"");
- };
- const workspace=()=>formValue(f,"workspace")||"workflow";
- const appsUrl=()=>browserBase()+"/sys"+encodeURIComponent(workspace())+"/en/neoclassic/oauth2/applications";
- const tokenUrl=()=>browserBase()+"/"+encodeURIComponent(workspace())+"/oauth2/token";
-
- const helper=panel("اطلاعاتی که از ProcessMaker لازم داری",
-   "فقط Client ID و Client Secret را از OAuth2 Applications بگیر؛ ساخت و تمدید Token را خود آوان انجام می‌دهد.");
- helper.classList.add("token-helper");
- const apps=node("div","token-helper-row"),endpoint=node("div","token-helper-row");
- function dynamicRow(parent,title,getValue,openable=false){
-   const value=node("div","token-helper-value");
-   const refresh=()=>{value.textContent=getValue()};refresh();
-   const actions=node("div","actions");
-   append(actions,copyTextButton("کپی",getValue));
-   if(openable){
-     const open=btn("باز کردن",()=>window.open(getValue(),"_blank","noopener,noreferrer"),"secondary");
-     append(actions,open);
-   }
-   append(parent,node("strong","",title),value,actions);
-   f.addEventListener("input",refresh);
- }
- dynamicRow(apps,"OAuth2 Applications",appsUrl,true);
- dynamicRow(endpoint,"Token Endpoint",tokenUrl,false);
- append(helper,apps,endpoint,
-   info("Username و Password فقط در حافظه همین فرم هستند و پس از دریافت Token پاک می‌شوند. Password در تنظیمات آوان ذخیره نمی‌شود."));
-
- const actions=node("div","actions full");
- const connect=btn(managed?"دریافت توکن جدید و به‌روزرسانی اتصال":"دریافت توکن، تست و ذخیره خودکار",async()=>{
-   out.replaceChildren();busy(f,true);
-   try{
-     const result=await api("processmaker/oauth-connect",{
-       base_url:formValue(f,"base_url"),
-       workspace:formValue(f,"workspace"),
-       client_id:formValue(f,"oauth_client_id"),
-       client_secret:formValue(f,"oauth_client_secret"),
-       username:formValue(f,"pm_username"),
-       password:formValue(f,"pm_password")
-     });
-     f.elements.namedItem("oauth_client_secret").value="";
-     f.elements.namedItem("pm_password").value="";
-     f.elements.namedItem("pm_username").value="";
-     out.replaceChildren(info("توکن با موفقیت ساخته شد، API کاربران تست شد و Access/Refresh Token به‌صورت رمزگذاری‌شده ذخیره شدند. رمز ProcessMaker ذخیره نشد."));
-     setTimeout(()=>showSettings("processmaker"),700);
-   }catch(err){
-     const password=f.elements.namedItem("pm_password");if(password)password.value="";
-     showError(out,err);
-   }finally{busy(f,false)}
- });
- append(actions,connect);
-
- if(managed){
-   const refresh=btn("تمدید توکن الآن",async()=>{
-     out.replaceChildren();refresh.disabled=true;
-     try{
-       const result=await api("processmaker/oauth-refresh",{});
-       const expiry=result.expires_at?new Date(result.expires_at*1000).toLocaleString("fa-IR"):"نامشخص";
-       out.replaceChildren(info("Access Token تمدید و Refresh Token جدید ذخیره شد · انقضا: "+expiry));
-       setTimeout(()=>showSettings("processmaker"),700);
-     }catch(err){showError(out,err)}finally{refresh.disabled=false}
-   },"secondary");
-   const check=btn("بررسی اتصال ذخیره‌شده",async()=>{
-     out.replaceChildren();check.disabled=true;
-     try{
-       const result=await api("processmaker/check-saved",{});
-       const expiry=result.expires_at?new Date(result.expires_at*1000).toLocaleString("fa-IR"):"نامشخص";
-       out.replaceChildren(info("اتصال معتبر است"+(result.token_managed?" و تمدید خودکار فعال است":"")+" · انقضا: "+expiry));
-     }catch(err){showError(out,err)}finally{check.disabled=false}
-   },"secondary");
-   append(actions,refresh,check);
- }
- append(f,actions,out);
- append(p,helper,f);
-
- const manual=node("details","pm-manual-token");
- const summary=node("summary","","تنظیم دستی Access Token (حالت پیشرفته/قدیمی)");
- append(manual,summary);
- const manualForm=node("form","grid"),manualOut=node("div","full");
- append(manualForm,
-   field("نشانی اصلی ProcessMaker","base_url",config.base_url||"http://host.docker.internal:84"),
-   field("Workspace","workspace",config.workspace||"workflow"),
-   field("Access Token دستی","bearer_token","",{secret:true}),
-   btn("بررسی و ذخیره توکن دستی",async()=>{
-     manualOut.replaceChildren();busy(manualForm,true);
-     try{
-       const body={
-         base_url:formValue(manualForm,"base_url"),
-         workspace:formValue(manualForm,"workspace"),
-         bearer_token:formValue(manualForm,"bearer_token")
-       };
-       await api("processmaker/save",body);
-       manualForm.elements.namedItem("bearer_token").value="";
-       manualOut.replaceChildren(info("توکن دستی ذخیره شد. توجه: این حالت Refresh خودکار ندارد."));
-       setTimeout(()=>showSettings("processmaker"),700);
-     }catch(err){showError(manualOut,err)}finally{busy(manualForm,false)}
-   },"secondary"),manualOut);
- append(manual,manualForm);append(p,manual);
- append(m,p);
 }
 async function renderLicense(m,settings){
  const p=panel("شناسه نصب و مجوز نرم‌افزار",
@@ -1084,7 +792,6 @@ async function renderUsers(m){
      opt.value=user.pm_uid;append(select,opt);
    }
    append(pmLabel,select);append(form,pmLabel);
-   append(form,helpLamp("انتخاب کاربر ProcessMaker",[helpContent.users.fields.pm_uid],true));
    const roleLabel=node("label","","نقش سازمانی");
    const roleSelect=node("select");roleSelect.name="role";
    for(const [value,label] of [["Expert","کارشناس"],["Manager","مدیر"],["SysAdmin","مدیر سیستم"]]){
@@ -1092,7 +799,6 @@ async function renderUsers(m){
      const opt=node("option","",label);opt.value=value;append(roleSelect,opt);
    }
    append(roleLabel,roleSelect);
-   append(form,helpLamp("نقش سازمانی",[helpContent.users.fields.role],true));
    append(form,roleLabel,
      field("نام واحد سازمانی تأییدشده","department_name","",{required:false}),
      field("شناسه PM مدیر مستقیم (در صورت وجود)","manager_pm_uid","",
@@ -1123,9 +829,10 @@ async function renderBPMS(m){
  const data=await api("bpms/catalog");
  const section=panel("اتصالات BPMS",
   "ProcessMaker و سایر موتورهای BPMS از همین فهرست مدیریت می‌شوند. نوع اتصال را انتخاب کنید؛ فرم بر اساس موتور انتخاب‌شده تغییر می‌کند.");
- const head=node("div","section-head"),headActions=node("div","actions");
- append(head,node("div","",),node("h3","","اتصال‌های ثبت‌شده"),
+ const head=node("div","section-head"),headActions=node("div","actions"),headText=node("div");
+ append(headText,node("h3","","اتصال‌های ثبت‌شده"),
    node("span","connection-count",(data.connections||[]).length+" اتصال"));
+ append(head,headText);
  const editor=node("div","editor-slot");
  const help=helpButton("bpms","راهنمای اتصال BPMS");
  const add=btn("+ اتصال جدید",()=>openEditor(null));
