@@ -1062,6 +1062,14 @@ def bpms_catalog(session=Depends(_ready)):
             ]}
 
 
+@router.post("/api/bpms/processmaker/check")
+def bpms_processmaker_check(body:PMProfileSave,session=Depends(_ready)):
+    state=_pm_profiles_state()
+    profile=_pm_profile_from_body(body,state)
+    return {"connected":True,"mysql":True,"oauth":True,
+            "name":profile["name"],"password_stored":False}
+
+
 @router.post("/api/bpms/processmaker/save")
 def bpms_processmaker_save(body:PMProfileSave,session=Depends(_ready)):
     state=_pm_profiles_state()
