@@ -37,9 +37,18 @@ const server=http.createServer((req,res)=>{
  const card=page.locator('.login-reveal-card');
  await card.waitFor();
  await page.locator('.avan-live-scene').waitFor();
+ await page.locator('.avan-globe-wrap').waitFor();
  if(await page.locator('.avan-orbit-node').count()!==8)throw Error('Expected 8 live capability nodes');
+ await page.waitForFunction(()=>getComputedStyle(document.documentElement).getPropertyValue('--avan-live-login-bg').includes('data:image/webp;base64,'));
+ await page.waitForFunction(()=>document.querySelector('.avan-globe-image')?.src.startsWith('data:image/webp;base64,'));
  const bg=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--avan-live-login-bg'));
- if(!bg.includes('data:image/webp;base64,'))throw Error('New embedded boardroom background is missing');
+ if(bg.length<10000)throw Error('Approved cleaned boardroom background did not load completely');
+ const globeSrc=await page.locator('.avan-globe-image').getAttribute('src');
+ if(!globeSrc||globeSrc.length<5000)throw Error('Approved independent globe sprite did not load completely');
+ const globeBox=await page.locator('.avan-globe-wrap').boundingBox();
+ const cardStart=await card.boundingBox();
+ if(!globeBox||!cardStart)throw Error('Live globe or login card has no layout box');
+ if(globeBox.x+globeBox.width/2>=cardStart.x+cardStart.width/2)throw Error('Approved layout regression: globe must stay left of login card');
  const first=page.locator('.avan-orbit-node').first();
  await first.hover();
  await page.locator('.avan-scene-tooltip.is-visible').waitFor();
@@ -56,5 +65,5 @@ const server=http.createServer((req,res)=>{
  if(Math.abs(after.x-before.x)<30&&Math.abs(after.y-before.y)<20)throw Error('Login card drag did not move');
  if(errors.length)throw Error('Browser errors: '+errors.join(' | '));
  await browser.close();server.close();
- console.log('LOGIN SCENE PASS: new background, globe FX, 8 interactive nodes, tooltip/select and draggable login card');
+ console.log('LOGIN SCENE PASS: approved cleaned background, independent left globe, 8 interactive nodes, tooltip/select and unchanged draggable login card');
 })().catch(e=>{console.error(e);try{server.close()}catch(_){}process.exit(1)});
