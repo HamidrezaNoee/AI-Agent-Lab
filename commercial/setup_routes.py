@@ -424,26 +424,63 @@ class AppearanceElement(BaseModel):
     ellipse:float=0.7
     angle:float=0.0
     speed:float=0.00015
+    size:int=0
+    hover_scale:float=0.0
+    glow:float=1.0
+    opacity:float=1.0
+    card_side:str=Field(default="auto",max_length=10)
+    label_mode:str=Field(default="inherit",max_length=12)
 
 
 class AppearanceConfig(BaseModel):
     model_config=ConfigDict(extra="forbid")
-    version:int=3
+    version:int=4
     background_image:str=Field(default="",max_length=8_000_000)
-    background_position:str=Field(default="center",max_length=20)
-    background_brightness:float=1.1
-    background_dim:float=0.05
-    globe_scale:float=1.18
-    globe_brightness:float=1.24
-    globe_saturation:float=1.18
-    globe_glow:float=1.15
-    node_size:int=68
-    hover_scale:float=1.22
+    background_fit:str=Field(default="cover",max_length=20)
+    background_position_x:float=50
+    background_position_y:float=50
+    background_brightness:float=1.12
+    background_contrast:float=1.08
+    background_saturation:float=1.08
+    background_blur:float=0.0
+    background_dim:float=0.03
+    overlay_color:str=Field(default="#031522",min_length=7,max_length=7)
+    overlay_opacity:float=0.05
+    background_parallax:float=6.0
+    globe_image:str=Field(default="",max_length=8_000_000)
+    globe_visible:bool=True
+    globe_x:float=29.0
+    globe_y:float=44.0
+    globe_scale:float=1.22
+    globe_opacity:float=1.0
+    globe_brightness:float=1.32
+    globe_contrast:float=1.10
+    globe_saturation:float=1.22
+    globe_hue:float=0.0
+    globe_glow:float=1.30
+    globe_wobble:float=1.0
+    globe_rotation_speed:float=1.0
+    globe_point_density:float=1.0
+    globe_point_size:float=1.0
+    globe_point_opacity:float=1.0
+    node_size:int=70
+    node_opacity:float=1.0
+    node_border_width:float=1.0
+    node_glow:float=1.0
+    hover_scale:float=1.24
+    hover_duration:int=180
     hover_mode:str=Field(default="card",max_length=20)
     pause_on_hover:bool=True
     show_orbits:bool=True
     show_idle_cards:bool=True
     orbit_speed:float=1.0
+    orbit_line_width:float=1.15
+    orbit_opacity:float=0.78
+    orbit_glow:float=1.0
+    orbit_primary:str=Field(default="#50EAF7",min_length=7,max_length=7)
+    orbit_secondary:str=Field(default="#FF7053",min_length=7,max_length=7)
+    card_width:int=176
+    card_opacity:float=0.94
     elements:list[AppearanceElement]=Field(default_factory=list,max_length=12)
 
 
