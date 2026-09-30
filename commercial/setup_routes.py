@@ -163,6 +163,19 @@ def admin_login_scene_js(request:Request):
     return FileResponse(WEB/"login-scene.js",media_type="text/javascript; charset=utf-8")
 
 
+_LOGIN_SCENE_DATA={
+    "bg-0.b64","bg-1.b64","bg-2.b64","bg-3.b64","bg-4.b64",
+    "globe-0.b64","globe-1.b64",
+}
+
+@router.get("/assets/scene-data/{name}")
+def admin_login_scene_data(name:str,request:Request):
+    _local(request)
+    if name not in _LOGIN_SCENE_DATA:
+        raise HTTPException(404,"Login scene asset not found")
+    return FileResponse(WEB/"scene-data"/name,media_type="text/plain; charset=utf-8")
+
+
 @router.get("/help/")
 def admin_help(request:Request):
     _local(request)
