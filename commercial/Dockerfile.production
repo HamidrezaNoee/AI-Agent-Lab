@@ -5,6 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=12 \
     AVAN_STATE_DIR=/var/lib/avan
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl gnupg unixodbc tzdata \
@@ -18,7 +21,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* /tmp/ms-prod.deb
 WORKDIR /app
 COPY commercial/requirements-production.txt /app/requirements.txt
-RUN python -m pip install --no-cache-dir -r /app/requirements.txt \
+RUN python -m pip install --no-cache-dir --retries 12 --timeout 120 -r /app/requirements.txt \
  && groupadd --gid 10001 avan \
  && useradd --uid 10001 --gid 10001 --system --create-home avan \
  && mkdir -p /var/lib/avan /var/lib/avan-ui \
