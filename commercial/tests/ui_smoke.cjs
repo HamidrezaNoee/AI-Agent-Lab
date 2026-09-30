@@ -88,7 +88,7 @@ const server=http.createServer((req,res)=>{
  await adminFrame.getByLabel('نوع BPMS',{exact:true}).waitFor();
  if(await adminFrame.getByLabel('نوع BPMS',{exact:true}).inputValue()!=='processmaker')throw Error('New BPMS wizard should default to ProcessMaker');
  await adminFrame.getByRole('button',{name:'انصراف',exact:true}).click();
- if(await adminFrame.getByRole('button',{name:/💡/}).count()<1)throw Error('New-tab help lamp missing');
+ if(await adminFrame.locator('a.help-launch[target="_blank"]').count()<1)throw Error('New-tab help lamp missing');
  await adminFrame.getByRole('button',{name:'هوش مصنوعی',exact:true}).click();
  await adminFrame.locator('input[name=api_key]').fill('private-test-value');
  await adminFrame.getByRole('button',{name:'ذخیره تنظیمات',exact:true}).click();
