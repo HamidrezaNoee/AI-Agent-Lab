@@ -1,6 +1,6 @@
 "use strict";
 if(new URLSearchParams(window.location.search).get("embedded")==="1"){document.body.classList.add("admin-embedded");}
-const state={csrf:null,user:null,settings:null,stage:"login",page:"connections",authMode:"bootstrap",pmSub:"mysql",orgSub:"company"};
+const state={csrf:null,user:null,settings:null,stage:"login",page:"connections",authMode:"bootstrap",orgSub:"company"};
 const $=id=>document.getElementById(id);
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n}
 function append(parent,...items){for(const item of items.flat())if(item!==null&&item!==undefined)parent.append(item);return parent}
@@ -29,8 +29,10 @@ function selectField(title,name,items,value="",options={}){
  select.disabled=!!options.disabled;append(label,select);append(wrap,label);return wrap;
 }
 function helpButton(topic,label="راهنمای این بخش"){
- const b=btn("💡 "+label,()=>window.open("/admin/help/?topic="+encodeURIComponent(topic),"_blank","noopener,noreferrer"),"help-launch");
- b.setAttribute("aria-label","باز کردن راهنمای "+label+" در تب جدید");return b;
+ const a=node("a","help-launch","💡 "+label);
+ a.href="/admin/help/?topic="+encodeURIComponent(topic);
+ a.target="_blank";a.rel="noopener noreferrer";
+ a.setAttribute("aria-label","باز کردن راهنمای "+label+" در تب جدید");return a;
 }
 function helpTopicFor(page){
  if(page==="organization")return "organization-"+state.orgSub;
@@ -930,7 +932,6 @@ async function renderBPMS(m){
        busy(base,true);out.replaceChildren();
        try{
         const body=payload();
-        await api("bpms/processmaker/check",body);
         await api("bpms/processmaker/save",body);
         const pw=base.elements.namedItem("oauth_password");if(pw)pw.value="";
         const mpw=base.elements.namedItem("mysql_password");if(mpw)mpw.value="";
