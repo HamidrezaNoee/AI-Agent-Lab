@@ -89,6 +89,7 @@ jobs:
         run: |
           node --check commercial/web/production/app.js
           node --check commercial/web/admin/app.js
+          node --check commercial/web/admin/help.js
           node --check infra/keycloak/themes/avan/login/resources/js/otp-motion.js
           node --check infra/keycloak/themes/avan/login/resources/js/captcha-ui.js
           node --check infra/keycloak/themes/avan/login/resources/js/login-reveal.js
