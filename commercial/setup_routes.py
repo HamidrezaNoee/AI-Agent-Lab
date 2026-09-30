@@ -1000,6 +1000,20 @@ def _pm_profile_test(profile:dict,state:dict)->dict:
             "expires_at":api.get("access_token_expires_at")}
 
 
+def _pm_refresh_config(api:dict)->dict:
+    client_id=str(api.get("oauth_client_id") or "")
+    client_secret=str(api.get("oauth_client_secret") or "")
+    refresh=str(api.get("refresh_token") or "")
+    if not client_id or not client_secret or not refresh:
+        raise HTTPException(409,"اطلاعات Refresh Token این اتصال کامل نیست.")
+    tokens=_pm_oauth_token(api["base_url"],api["workspace"],{
+        "grant_type":"refresh_token","client_id":client_id,
+        "client_secret":client_secret,"refresh_token":refresh,
+    })
+    return _pm_managed_config(api["base_url"],api["workspace"],
+                              client_id,client_secret,tokens,refresh)
+
+
 def _pm_profile_from_body(body:PMProfileSave,state:dict)->dict:
     previous=next((p for p in state["profiles"] if p["id"]==body.id),None) if body.id else None
     identifier=body.id or secrets.token_hex(12)
@@ -1055,8 +1069,20 @@ def _pm_profile_from_body(body:PMProfileSave,state:dict)->dict:
         api=dict(previous_api)
         if client_secret:
             api["oauth_client_secret"]=client_secret
+        if api.get("token_managed"):
+            try:expires=float(api.get("access_token_expires_at") or 0)
+            except (TypeError,ValueError):expires=0
+            if expires<=time.time()+90:
+                api=_pm_refresh_config(api)
 
-    _pm_directory_check(api["base_url"],api["workspace"],api.get("bearer_token",""))
+    try:
+        _pm_directory_check(api["base_url"],api["workspace"],api.get("bearer_token",""))
+    except HTTPException as exc:
+        if exc.status_code==401 and api.get("token_managed"):
+            api=_pm_refresh_config(api)
+            _pm_directory_check(api["base_url"],api["workspace"],api["bearer_token"])
+        else:
+            raise
     return {"id":identifier,"name":body.name.strip(),
             "engine":"processmaker","mysql":mysql,"api":api}
 
