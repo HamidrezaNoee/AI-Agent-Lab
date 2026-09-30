@@ -95,13 +95,26 @@ function copyTextButton(label,getValue){
 function field(title,name,value="",options={}){
  const wrap=node("div","form-field"),label=node("label","",title),input=node(options.multiline?"textarea":"input");
  input.name=name;if(!options.multiline)input.type=options.secret?"password":options.type||"text";
- if(options.multiline)input.value=value||"";else input.value=value||"";
- input.required=options.required!==false;input.autocomplete="off";
+ input.value=value||"";input.required=options.required!==false;input.autocomplete="off";
  if(options.placeholder)input.placeholder=options.placeholder;
- append(label,input);append(wrap,label);
- const hint=options.help||helpContent[state.page]?.fields?.[name];
- if(hint)append(wrap,helpLamp(title,[hint],true));
- return wrap;
+ append(label,input);append(wrap,label);return wrap;
+}
+function selectField(title,name,items,value="",options={}){
+ const wrap=node("div","form-field"),label=node("label","",title),select=node("select");
+ select.name=name;select.required=options.required!==false;
+ for(const item of items){
+  const option=node("option","",item.label);option.value=item.value;
+  if(item.value===value)option.selected=true;select.append(option);
+ }
+ select.disabled=!!options.disabled;append(label,select);append(wrap,label);return wrap;
+}
+function helpButton(topic,label="راهنمای این بخش"){
+ const b=btn("💡 "+label,()=>window.open("/admin/help/?topic="+encodeURIComponent(topic),"_blank","noopener,noreferrer"),"help-launch");
+ b.setAttribute("aria-label","باز کردن راهنمای "+label+" در تب جدید");return b;
+}
+function helpTopicFor(page){
+ if(page==="organization")return "organization-"+state.orgSub;
+ return page;
 }
 function formValue(form,name){return form.elements.namedItem(name)?.value.trim()||""}
 function btn(label,callback,cls=""){const b=node("button",cls,label);b.type="button";b.addEventListener("click",callback);return b}
@@ -596,9 +609,8 @@ function showTotpEnroll(){
 
 const menu=[
  ["connections","وضعیت سامانه"],
- ["processmaker","ProcessMaker"],
- ["agentdb","بانک Agent"],
  ["bpms","اتصالات BPMS"],
+ ["agentdb","بانک Agent"],
  ["ai","هوش مصنوعی"],
  ["organization","سازمان و دسترسی"],
  ["license","لایسنس"]
@@ -615,49 +627,40 @@ function settingsSubnav(items,active,onChange){
  return nav;
 }
 
-async function renderProcessMakerHub(m,settings){
- const items=[["mysql","داده‌ها و MySQL"],["oauth","OAuth و API"]];
- append(m,settingsSubnav(items,state.pmSub,code=>{state.pmSub=code;showSettings("processmaker")}));
- const guide=settingsGuide(state.pmSub==="mysql"?"mysql":"processmaker");
- if(guide)append(m,guide);
- if(state.pmSub==="mysql")renderMysql(m,settings.mysql||{});
- else renderPm(m,settings.processmaker||{});
-}
-
 async function renderOrganizationHub(m){
  const items=[["company","اطلاعات سازمان"],["identity","هویت و ورود"],["users","کاربران و دسترسی"]];
  append(m,settingsSubnav(items,state.orgSub,code=>{state.orgSub=code;showSettings("organization")}));
- const guide=settingsGuide(state.orgSub);
- if(guide)append(m,guide);
  if(state.orgSub==="company")await renderCompany(m);
  else if(state.orgSub==="identity")await renderIdentity(m);
  else await renderUsers(m);
 }
 async function showSettings(page=state.page){
- // Backward-compatible aliases from older UI links; they now land in one owner page.
- if(page==="mysql"){state.pmSub="mysql";page="processmaker"}
+ if(page==="mysql"||page==="processmaker")page="bpms";
  else if(page==="users"||page==="company"||page==="identity"){state.orgSub=page;page="organization"}
- else if(page==="processmaker"&&state.pmSub!=="mysql"&&state.pmSub!=="oauth")state.pmSub="oauth";
 
  const settings=await api("settings");state.settings=settings;state.page=page;
  const m=main();
- const hero=node("div","admin-hero");append(hero,node("span","eyebrow","AVAN · CONTROL CENTER"),
-  node("h1","","مدیریت سامانه"),node("p","intro","هر تنظیم فقط در یک بخش مدیریت می‌شود؛ «وضعیت سامانه» صرفاً نمای سلامت و مسیر دسترسی به تنظیمات است."));append(m,hero);
- const tabs=node("nav","tabs");
- tabs.setAttribute("aria-label","بخش‌های تنظیمات");
- for(const [code,title] of menu){const item=btn(title,()=>{state.bpmsEdit=null;showSettings(code)},state.page===code?"active":"");
-   if(code===page)item.setAttribute("aria-current","page");append(tabs,item)}
+ const hero=node("div","admin-hero"),heroTop=node("div","admin-hero-top");
+ const heroText=node("div");
+ append(heroText,node("span","eyebrow","AVAN · CONTROL CENTER"),
+  node("h1","","مدیریت سامانه"),
+  node("p","intro","هر تنظیم یک مالک دارد؛ راهنماها از فرم جدا شده‌اند و با آیکن لامپ در تب جدید باز می‌شوند."));
+ append(heroTop,heroText,helpButton(helpTopicFor(page)));
+ append(hero,heroTop);append(m,hero);
+
+ const tabs=node("nav","tabs");tabs.setAttribute("aria-label","بخش‌های تنظیمات");
+ for(const [code,title] of menu){
+  const item=btn(title,()=>{state.bpmsEdit=null;showSettings(code)},state.page===code?"active":"");
+  if(code===page)item.setAttribute("aria-current","page");append(tabs,item)
+ }
  append(m,tabs);
 
- if(page==="connections"){
-  const guide=settingsGuide("connections");if(guide)append(m,guide);
-  await renderConnections(m,settings);
- }else if(page==="processmaker")await renderProcessMakerHub(m,settings);
- else if(page==="agentdb"){const guide=settingsGuide("agentdb");if(guide)append(m,guide);await renderAgentDatabase(m)}
- else if(page==="bpms"){const guide=settingsGuide("bpms");if(guide)append(m,guide);await renderBPMS(m)}
- else if(page==="ai"){const guide=settingsGuide("ai");if(guide)append(m,guide);renderAI(m,settings.ai||{})}
+ if(page==="connections")await renderConnections(m,settings);
+ else if(page==="bpms")await renderBPMS(m);
+ else if(page==="agentdb")await renderAgentDatabase(m);
+ else if(page==="ai")renderAI(m,settings.ai||{});
  else if(page==="organization")await renderOrganizationHub(m);
- else if(page==="license"){const guide=settingsGuide("license");if(guide)append(m,guide);await renderLicense(m,settings)}
+ else if(page==="license")await renderLicense(m,settings);
  else await renderConnections(m,settings);
 }
 
@@ -747,7 +750,7 @@ async function renderConnections(m,settings){
  ];
  statusRow("ProcessMaker",pmParts.join(" · "),pmReady,
    pmReady?"آماده":(pmMysqlConfigured||pmApiConfigured?"نیازمند تکمیل":"ثبت‌نشده"),
-   "processmaker",()=>showSettings("processmaker"));
+   "bpms",()=>showSettings("bpms"));
 
  statusRow("بانک اختصاصی Agent",
    activeDb?(activeDb.name+" · "+activeDb.server):(db.connections.length+" پروفایل ثبت‌شده · بدون اتصال فعال"),
@@ -1117,48 +1120,196 @@ async function renderUsers(m){
  }
 }
 async function renderBPMS(m){
- const data=await api("bpms/connections");
- const section=panel("منابع فرایندی آوان",
-  "ProcessMaker داخلی اتصال خواندنی جداگانه دارد. برای موتورهای دیگر، آداپتر HTTPS سازگار با AVAN REST v1 اضافه کنید؛ داده‌های آن‌ها در بانک Agent کپی نمی‌شوند.");
- append(section,info(data.processmaker_native_configured?
-   "ProcessMaker داخلی تنظیم شده است. دسترسی داده‌های آن از مجوز خود کاربران ProcessMaker تبعیت می‌کند.":
-   "ProcessMaker داخلی هنوز تنظیم نشده است. GodAdmin برای استفاده از دیگر BPMSها به آن نیاز ندارد."));
- const heading=node("div","section-head");append(heading,node("h3","","اتصال‌های ثبت‌شده"),
-  node("span","connection-count",data.sources.length+" از ۱۲ منبع"));append(section,heading);
- for(const source of data.sources)append(section,bpmsConnectionRow(source,"bpms"));
- if(!data.sources.length)append(section,info("فعلاً BPMS دیگری ثبت نشده است. برای شروع، یک آداپتر AVAN REST v1 معرفی کنید."));
+ const data=await api("bpms/catalog");
+ const section=panel("اتصالات BPMS",
+  "ProcessMaker و سایر موتورهای BPMS از همین فهرست مدیریت می‌شوند. نوع اتصال را انتخاب کنید؛ فرم بر اساس موتور انتخاب‌شده تغییر می‌کند.");
+ const head=node("div","section-head"),headActions=node("div","actions");
+ append(head,node("div","",),node("h3","","اتصال‌های ثبت‌شده"),
+   node("span","connection-count",(data.connections||[]).length+" اتصال"));
  const editor=node("div","editor-slot");
- const open=(source)=>{
-  editor.replaceChildren();state.bpmsEdit=source?.id||"new";
-  const p=panel(source?"ویرایش «"+source.name+"»":"افزودن BPMS جدید",
-    "توکن و آدرس را از مسئول آداپتر همان BPMS بگیرید. با آدرس یکسان، توکن خالی یعنی حفظ توکن قبلی؛ برای تغییر آدرس، توکن تازه لازم است.");
-  p.classList.add("connection-editor");
-  const f=node("form","grid"),out=node("div","full"),actions=node("div","actions full");
-  append(f,field("نام منبع","name",source?.name||""),
-   field("آدرس HTTPS مبدل AVAN v1","base_url",source?.base_url||"",{placeholder:"https://bpms.example.com"}),
-   field("توکن حساب فقط‌خواندنی","bearer_token","",{secret:true,required:!source}));
-  const enabled=node("input");enabled.type="checkbox";enabled.checked=source?source.enabled:true;
-  const toggle=node("label","checkbox-line full");append(toggle,enabled,node("span",""," پس از ذخیره فعال باشد"));append(f,toggle);
-  append(f,helpLamp("فعال‌سازی منبع BPMS",[
-   "اتصال فعال برای گزارش‌های همین منبع خوانده می‌شود. غیرفعال‌کردن آن را در فهرست نگه می‌دارد اما گزارش و دستیار دیگر آن را انتخاب نمی‌کنند."
-  ],true));
-  const body=()=>({id:source?.id||null,name:formValue(f,"name"),kind:"avan-rest-v1",
-   base_url:formValue(f,"base_url"),bearer_token:formValue(f,"bearer_token"),enabled:enabled.checked});
-  const check=btn("بررسی اتصال",async()=>{busy(f,true);out.replaceChildren();
-   try{const result=await api("bpms/connections/check",body());out.replaceChildren(info("اتصال تأیید شد · شناسه سازمان: "+result.tenant_id))}
-   catch(err){showError(out,err)}finally{busy(f,false)}},"secondary");
-  const save=btn(source?"ثبت تغییرات":"ذخیره اتصال جدید",async()=>{busy(f,true);out.replaceChildren();
-   try{await api("bpms/connections/save",body());f.elements.namedItem("bearer_token").value="";
-    state.bpmsEdit=null;await showSettings("bpms")}
-   catch(err){showError(out,err)}finally{busy(f,false)}});
-  append(actions,check,save,btn("انصراف",()=>{state.bpmsEdit=null;editor.replaceChildren()},"secondary"));
-  append(f,actions,out);append(p,f);append(editor,p);
-  p.scrollIntoView({behavior:"smooth",block:"nearest"});
- };
- const add=btn("+ افزودن اتصال BPMS",()=>open(null));
- add.disabled=data.sources.length>=12;append(section,add,editor);append(m,section);
- if(state.bpmsEdit){const existing=data.sources.find(s=>s.id===state.bpmsEdit);
-  if(existing||state.bpmsEdit==="new")open(existing||null);else state.bpmsEdit=null}
+ const help=helpButton("bpms","راهنمای اتصال BPMS");
+ const add=btn("+ اتصال جدید",()=>openEditor(null));
+ append(headActions,help,add);append(head,headActions);append(section,head);
+
+ const list=node("div","connection-list bpms-unified-list");append(section,list);
+ const typeLabel=id=>(data.types||[]).find(x=>x.id===id)?.label||id;
+
+ async function reload(){await showSettings("bpms")}
+
+ function connectionRow(c){
+  const actions=node("div","connection-actions"),out=node("div","full connection-feedback");
+  const isPm=c.connection_type==="processmaker";
+  const detail=isPm
+   ?[
+      "ProcessMaker",
+      c.mysql?.host?(c.mysql.host+":"+(c.mysql.port||3306)+" / "+(c.mysql.database||"")):"MySQL ناقص",
+      c.oauth?.workspace?("Workspace "+c.oauth.workspace):"OAuth ناقص",
+      c.oauth?.token_managed?"OAuth خودکار":"OAuth نیازمند بررسی"
+    ].join(" · ")
+   :[typeLabel(c.engine||"other"),c.base_url||"",c.has_token?"توکن ثبت‌شده":"بدون توکن"].filter(Boolean).join(" · ");
+
+  const test=btn("تست",async()=>{
+    test.disabled=true;out.replaceChildren();
+    try{
+      await api("bpms/catalog/test",{connection_type:c.connection_type,id:c.id});
+      out.replaceChildren(info("اتصال «"+c.name+"» با موفقیت تست شد."));
+    }catch(err){showError(out,err)}finally{test.disabled=false}
+  },"secondary");
+  const edit=btn("ویرایش",()=>openEditor(c),"secondary");
+  const copy=btn("کپی تنظیمات",async()=>{
+    const proposed=(c.name||"اتصال")+" - کپی";
+    const name=window.prompt("نام اتصال کپی‌شده:",proposed);
+    if(name===null)return;
+    copy.disabled=true;out.replaceChildren();
+    try{
+      await api("bpms/catalog/copy",{connection_type:c.connection_type,id:c.id,name:name.trim()||proposed});
+      await reload();
+    }catch(err){showError(out,err)}finally{copy.disabled=false}
+  },"secondary");
+  const remove=btn("حذف",async()=>{
+    if(!confirm("اتصال «"+c.name+"» حذف شود؟ این عمل تنظیمات ذخیره‌شده همین اتصال را پاک می‌کند."))return;
+    remove.disabled=true;out.replaceChildren();
+    try{await api("bpms/catalog/delete",{connection_type:c.connection_type,id:c.id});await reload()}
+    catch(err){showError(out,err)}finally{remove.disabled=false}
+  },"secondary danger");
+  append(actions,test,edit,copy);
+
+  if(isPm&&!c.active){
+    append(actions,btn("فعال‌سازی",async()=>{
+      try{await api("bpms/processmaker/activate",{connection_type:"processmaker",id:c.id});await reload()}
+      catch(err){showError(out,err)}
+    }));
+  }
+  if(!isPm){
+    append(actions,btn(c.enabled?"غیرفعال‌سازی":"فعال‌سازی",async()=>{
+      try{await api("bpms/connections/enabled",{source_id:c.id,enabled:!c.enabled});await reload()}
+      catch(err){showError(out,err)}
+    },c.enabled?"secondary":""));
+  }
+  append(actions,remove);
+  const active=isPm?!!c.active:!!c.enabled;
+  const label=isPm?(c.active?"فعال":"ذخیره‌شده"):(c.enabled?"فعال":"غیرفعال");
+  const row=connectionItem(c.name,detail,{active,label},actions);append(row,out);return row;
+ }
+
+ for(const c of data.connections||[])append(list,connectionRow(c));
+ if(!(data.connections||[]).length)append(list,info("هنوز اتصال BPMS ثبت نشده است. روی «اتصال جدید» بزنید."));
+
+ function openEditor(connection){
+  editor.replaceChildren();state.bpmsEdit=connection?.id||"new";
+  const isEdit=!!connection;
+  const initialType=connection?(connection.connection_type==="processmaker"?"processmaker":(connection.engine||"other")):"processmaker";
+  const box=panel(isEdit?"ویرایش اتصال «"+connection.name+"»":"اتصال BPMS جدید",
+    "نوع BPMS را انتخاب کنید. اطلاعات لازم بر اساس موتور انتخاب‌شده نمایش داده می‌شود و ذخیره فقط پس از تست موفق انجام می‌شود.");
+  box.classList.add("connection-editor","bpms-wizard");
+  const toolbar=node("div","wizard-toolbar");
+  append(toolbar,helpButton(initialType==="processmaker"?"bpms-processmaker":"bpms-adapter","راهنمای این اتصال"));
+  append(box,toolbar);
+
+  const base=node("form","grid"),dynamic=node("div","wizard-dynamic full"),out=node("div","full");
+  const typeItems=(data.types||[]).map(x=>({value:x.id,label:x.label}));
+  const nameField=field("نام دلخواه اتصال","name",connection?.name||"");
+  const typeField=selectField("نوع BPMS","bpms_type",typeItems,initialType,{disabled:isEdit});
+  append(base,nameField,typeField,dynamic,out);append(box,base);append(editor,box);
+
+  const typeSelect=typeField.querySelector("select");
+
+  function renderDynamic(){
+    dynamic.replaceChildren();out.replaceChildren();
+    const selected=isEdit?initialType:typeSelect.value;
+    const localHelp=dynamic.querySelector?.(".help-launch");
+    if(selected==="processmaker"){
+      const mysql=connection?.connection_type==="processmaker"?(connection.mysql||{}):{};
+      const oauth=connection?.connection_type==="processmaker"?(connection.oauth||{}):{};
+      const f=node("div","grid wizard-fields");
+      append(f,
+       node("h3","full wizard-section-title","۱. اتصال داده ProcessMaker / MySQL"),
+       field("Host MySQL","mysql_host",mysql.host||"host.docker.internal"),
+       field("Port MySQL","mysql_port",String(mysql.port||3306),{type:"number"}),
+       field("Database","mysql_database",mysql.database||"bitnami_pm"),
+       field("Read-only Username","mysql_username",mysql.username||"avan_reader"),
+       field(isEdit?"رمز MySQL؛ برای حفظ قبلی خالی بگذارید":"رمز MySQL","mysql_password","",{secret:true,required:!isEdit}),
+       field("Timezone","mysql_timezone",mysql.timezone||"Asia/Tehran"),
+       field("CA PEM؛ در صورت TLS","mysql_ca_pem","",{multiline:true,required:false}),
+       node("h3","full wizard-section-title","۲. OAuth / API ProcessMaker"),
+       field("Base URL API","oauth_base_url",oauth.base_url||"http://host.docker.internal:84"),
+       field("Workspace","oauth_workspace",oauth.workspace||"workflow"),
+       field("Client ID","oauth_client_id",oauth.client_id||""),
+       field(isEdit?"Client Secret؛ برای حفظ قبلی خالی بگذارید":"Client Secret","oauth_client_secret","",{secret:true,required:!isEdit}),
+       field(isEdit?"Username؛ فقط برای ساخت Token جدید":"Username ProcessMaker","oauth_username","",{required:!isEdit}),
+       field(isEdit?"Password؛ فقط برای ساخت Token جدید و ذخیره نمی‌شود":"Password ProcessMaker؛ ذخیره نمی‌شود","oauth_password","",{secret:true,required:!isEdit})
+      );
+      const tls=node("input");tls.type="checkbox";tls.name="mysql_tls";tls.checked=!!mysql.tls;
+      const tlsLabel=node("label","checkbox-line full");append(tlsLabel,tls,node("span",""," استفاده از TLS برای MySQL"));append(f,tlsLabel);
+      const activate=node("input");activate.type="checkbox";activate.name="activate";activate.checked=isEdit?!!connection.active:true;
+      const activateLabel=node("label","checkbox-line full");append(activateLabel,activate,node("span",""," پس از ذخیره، اتصال فعال ProcessMaker باشد"));append(f,activateLabel);
+
+      const payload=()=>({
+       id:isEdit?connection.id:null,name:formValue(base,"name"),
+       mysql_host:formValue(base,"mysql_host"),mysql_port:Number(formValue(base,"mysql_port")||3306),
+       mysql_database:formValue(base,"mysql_database"),mysql_username:formValue(base,"mysql_username"),
+       mysql_password:formValue(base,"mysql_password"),mysql_tls:tls.checked,
+       mysql_ca_pem:formValue(base,"mysql_ca_pem"),mysql_timezone:formValue(base,"mysql_timezone"),
+       oauth_base_url:formValue(base,"oauth_base_url"),oauth_workspace:formValue(base,"oauth_workspace"),
+       oauth_client_id:formValue(base,"oauth_client_id"),oauth_client_secret:formValue(base,"oauth_client_secret"),
+       oauth_username:formValue(base,"oauth_username"),oauth_password:formValue(base,"oauth_password"),
+       activate:activate.checked
+      });
+      const actions=node("div","actions full");
+      const save=btn(isEdit?"تست و ذخیره تغییرات":"تست و افزودن",async()=>{
+       busy(base,true);out.replaceChildren();
+       try{
+        const body=payload();
+        await api("bpms/processmaker/check",body);
+        await api("bpms/processmaker/save",body);
+        const pw=base.elements.namedItem("oauth_password");if(pw)pw.value="";
+        const mpw=base.elements.namedItem("mysql_password");if(mpw)mpw.value="";
+        await reload();
+       }catch(err){
+        const pw=base.elements.namedItem("oauth_password");if(pw)pw.value="";
+        showError(out,err)
+       }finally{busy(base,false)}
+      });
+      append(actions,save,btn("انصراف",()=>{state.bpmsEdit=null;editor.replaceChildren()},"secondary"));
+      append(f,actions);append(dynamic,f);
+    }else{
+      const source=connection?.connection_type==="adapter"?connection:null;
+      const f=node("div","grid wizard-fields");
+      append(f,
+       node("h3","full wizard-section-title","اتصال از طریق AVAN REST v1"),
+       field("Base URL آداپتر HTTPS","base_url",source?.base_url||"",{placeholder:"https://bpms.example.com"}),
+       field(isEdit?"Bearer Token؛ برای حفظ قبلی خالی بگذارید":"Bearer Token فقط‌خواندنی","bearer_token","",{secret:true,required:!isEdit})
+      );
+      const enabled=node("input");enabled.type="checkbox";enabled.name="enabled";enabled.checked=source?!!source.enabled:true;
+      const enabledLabel=node("label","checkbox-line full");append(enabledLabel,enabled,node("span",""," پس از ذخیره فعال باشد"));append(f,enabledLabel);
+      const payload=()=>({id:source?.id||null,name:formValue(base,"name"),kind:"avan-rest-v1",
+        engine:selected,base_url:formValue(base,"base_url"),bearer_token:formValue(base,"bearer_token"),
+        enabled:enabled.checked});
+      const actions=node("div","actions full");
+      const save=btn(isEdit?"تست و ذخیره تغییرات":"تست و افزودن",async()=>{
+       busy(base,true);out.replaceChildren();
+       try{
+        const body=payload();await api("bpms/connections/check",body);
+        await api("bpms/connections/save",body);
+        const token=base.elements.namedItem("bearer_token");if(token)token.value="";
+        await reload();
+       }catch(err){showError(out,err)}finally{busy(base,false)}
+      });
+      append(actions,save,btn("انصراف",()=>{state.bpmsEdit=null;editor.replaceChildren()},"secondary"));
+      append(f,actions);append(dynamic,f);
+    }
+  }
+  typeSelect.addEventListener("change",renderDynamic);renderDynamic();
+  box.scrollIntoView({behavior:"smooth",block:"nearest"});
+ }
+
+ append(section,editor);append(m,section);
+ if(state.bpmsEdit){
+   const existing=(data.connections||[]).find(x=>x.id===state.bpmsEdit);
+   if(existing)openEditor(existing);
+   else if(state.bpmsEdit==="new")openEditor(null);
+   else state.bpmsEdit=null;
+ }
 }
 
 async function renderCompany(m){
