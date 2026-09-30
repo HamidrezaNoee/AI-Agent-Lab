@@ -577,13 +577,28 @@ async function showSettings(page=state.page){
  }
  append(m,tabs);
 
- if(page==="connections")await renderConnections(m,settings);
- else if(page==="bpms")await renderBPMS(m);
- else if(page==="agentdb")await renderAgentDatabase(m);
- else if(page==="ai")renderAI(m,settings.ai||{});
- else if(page==="organization")await renderOrganizationHub(m);
- else if(page==="license")await renderLicense(m,settings);
- else await renderConnections(m,settings);
+ const contentHost=node("div","settings-page-content");
+ contentHost.dataset.settingsPage=page;
+ append(m,contentHost);
+ try{
+  if(page==="connections")await renderConnections(contentHost,settings);
+  else if(page==="bpms")await renderBPMS(contentHost);
+  else if(page==="agentdb")await renderAgentDatabase(contentHost);
+  else if(page==="ai")renderAI(contentHost,settings.ai||{});
+  else if(page==="organization")await renderOrganizationHub(contentHost);
+  else if(page==="license")await renderLicense(contentHost,settings);
+  else await renderConnections(contentHost,settings);
+  if(!contentHost.children.length)throw Error("محتوای این بخش ساخته نشد.");
+ }catch(err){
+  contentHost.replaceChildren();
+  const failure=panel("این بخش بارگذاری نشد",
+    "فضای مدیریت سامانه فعال است، اما دریافت یا پردازش داده‌های این بخش ناموفق بود. صفحه سفید نمایش داده نمی‌شود.");
+  failure.classList.add("settings-render-error");
+  append(failure,info(err?.message||String(err)||"خطای نامشخص",true),
+    btn("تلاش دوباره",()=>showSettings(page),"secondary"));
+  append(contentHost,failure);
+  console.error("AVAN_SETTINGS_RENDER_ERROR",page,err);
+ }
 }
 
 function connectionItem(name,description,status,actions){
@@ -791,9 +806,21 @@ async function renderUsers(m){
  }
 }
 async function renderBPMS(m){
- const data=await api("bpms/catalog");
  const section=panel("اتصالات BPMS",
   "ProcessMaker و سایر موتورهای BPMS از همین فهرست مدیریت می‌شوند. نوع اتصال را انتخاب کنید؛ فرم بر اساس موتور انتخاب‌شده تغییر می‌کند.");
+ append(m,section);
+ const loading=info("در حال دریافت فهرست اتصالات BPMS…");
+ append(section,loading);
+ let data;
+ try{
+  data=await api("bpms/catalog");
+  loading.remove();
+ }catch(err){
+  loading.remove();
+  append(section,info("فهرست اتصالات BPMS قابل دریافت نیست: "+(err?.message||String(err)),true),
+    btn("تلاش دوباره",()=>showSettings("bpms"),"secondary"));
+  return;
+ }
  const head=node("div","section-head"),headActions=node("div","actions"),headText=node("div");
  append(headText,node("h3","","اتصال‌های ثبت‌شده"),
    node("span","connection-count",(data.connections||[]).length+" اتصال"));
@@ -974,7 +1001,7 @@ async function renderBPMS(m){
   box.scrollIntoView({behavior:"smooth",block:"nearest"});
  }
 
- append(section,editor);append(m,section);
+ append(section,editor);
  if(state.bpmsEdit){
    const existing=(data.connections||[]).find(x=>x.id===state.bpmsEdit);
    if(existing)openEditor(existing);
