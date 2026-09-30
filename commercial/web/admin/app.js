@@ -12,15 +12,6 @@ function helpLamp(title,lines,compact=false){
  const list=node("ol");for(const line of lines)append(list,node("li","",line));append(detail,list);
  return detail;
 }
-function copyTextButton(label,getValue){
- const b=btn(label,async()=>{
-  const value=String(typeof getValue==="function"?getValue():getValue||"");
-  if(!value)return;
-  try{await navigator.clipboard.writeText(value);b.textContent="کپی شد ✓";setTimeout(()=>b.textContent=label,1400)}
-  catch(_){window.prompt("این مقدار را Copy کنید:",value)}
- },"secondary");
- return b;
-}
 function field(title,name,value="",options={}){
  const wrap=node("div","form-field"),label=node("label","",title),input=node(options.multiline?"textarea":"input");
  input.name=name;if(!options.multiline)input.type=options.secret?"password":options.type||"text";
@@ -600,34 +591,6 @@ function connectionItem(name,description,status,actions){
  append(header,text,node("span","connection-pill "+(status.active?"is-active":"is-off"),status.label));
  append(row,header,actions);return row;
 }
-function bpmsConnectionRow(source,returnPage){
- const actions=node("div","connection-actions"),out=node("div","full connection-feedback");
- const edit=btn("ویرایش",()=>{state.bpmsEdit=source.id;showSettings("bpms")},"secondary");
- const check=btn("بررسی",async()=>{
-  check.disabled=true;out.replaceChildren();
-  try{const result=await api("bpms/connections/check",{id:source.id,name:source.name,
-     base_url:source.base_url,kind:source.kind,bearer_token:"",enabled:source.enabled});
-   out.replaceChildren(info("اتصال معتبر است · شناسه سازمان: "+result.tenant_id))}
-  catch(err){showError(out,err)}finally{check.disabled=false}
- },"secondary");
- const toggle=btn(source.enabled?"غیرفعال‌سازی":"فعال‌سازی",async()=>{
-  if(source.enabled&&!confirm("دسترسی گزارش‌های «"+source.name+"» تا فعال‌سازی دوباره متوقف شود؟"))return;
-  toggle.disabled=true;out.replaceChildren();
-  try{await api("bpms/connections/enabled",{source_id:source.id,enabled:!source.enabled});
-   await showSettings(returnPage)}catch(err){showError(out,err)}finally{toggle.disabled=false}
- },source.enabled?"secondary":"");
- const remove=btn("حذف",async()=>{
-  if(!confirm("اتصال «"+source.name+"» و توکن ذخیره‌شدهٔ آن در آوان حذف شوند؟"))return;
-  remove.disabled=true;out.replaceChildren();
-  try{await api("bpms/connections/delete",{source_id:source.id});await showSettings(returnPage)}
-  catch(err){showError(out,err)}finally{remove.disabled=false}
- },"secondary danger");
- append(actions,check,edit,toggle,remove);
- const row=connectionItem(source.name,source.base_url+" · آداپتر AVAN REST v1 · "+
-    (source.has_token?"توکن ثبت‌شده":"بدون توکن"),
-    {active:source.enabled,label:source.enabled?"فعال":"غیرفعال"},actions);
- append(row,out);return row;
-}
 async function renderConnections(m,settings){
  const p=panel("وضعیت سامانه",
   "این صفحه فقط نمای سلامت و وضعیت پیکربندی است. هیچ اتصال یا Secret از اینجا ویرایش نمی‌شود؛ برای تغییر هر مورد وارد بخش مالک همان تنظیم شوید.");
@@ -910,7 +873,7 @@ async function renderBPMS(m){
     "نوع BPMS را انتخاب کنید. اطلاعات لازم بر اساس موتور انتخاب‌شده نمایش داده می‌شود و ذخیره فقط پس از تست موفق انجام می‌شود.");
   box.classList.add("connection-editor","bpms-wizard");
   const toolbar=node("div","wizard-toolbar");
-  append(toolbar,helpButton(initialType==="processmaker"?"bpms-processmaker":"bpms-adapter","راهنمای این اتصال"));
+  append(toolbar,helpButton("bpms","راهنمای این اتصال"));
   append(box,toolbar);
 
   const base=node("form","grid"),dynamic=node("div","wizard-dynamic full"),out=node("div","full");
