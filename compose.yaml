@@ -185,6 +185,8 @@ services:
     pids_limit: 192
     mem_limit: 768m
     depends_on:
+      ui-config-init:
+        condition: service_completed_successfully
       antibot:
         condition: service_started
       keycloak:
