@@ -82,7 +82,7 @@ jobs:
         run: python -m pip install -r commercial/requirements-production.txt pytest
       - name: Check source and authenticated installation lifecycle
         run: |
-          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py infra/antibot/server.py
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/login_appearance.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py infra/antibot/server.py
           python -m pytest commercial/tests -q
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
@@ -132,6 +132,9 @@ jobs:
           c=Path("compose.yaml").read_text()
           dockerfile=Path("commercial/Dockerfile.production").read_text()
           assert "avan-state:" in c
+          assert "avan-ui:" in c and "ui-config-init:" in c
+          assert "AVAN_UI_STATE_DIR: /var/lib/avan-ui" in c
+          assert "avan-ui:/opt/keycloak/themes/avan/login/resources/generated:ro" in c
           assert "avan-agent-sql:" in c
           assert "antibot:" in c and "infra/antibot/Dockerfile" in c
           assert "avan_antibot_hmac_key" in c
@@ -143,6 +146,7 @@ jobs:
           assert "commercial.production_app:app" in dockerfile
           assert "commercial/datasets" not in dockerfile
           assert "setup_console.py" in dockerfile and "setup_routes.py" in dockerfile
+          assert "login_appearance.py" in dockerfile
           print("Operational GodAdmin installation requires no editable .env file.")
           PY
 
