@@ -794,7 +794,19 @@ async function renderAppearance(m){
     desc=mkInput("توضیح کامل",item.description,"description",{multiline:true}),
     svg=mkInput("SVG آیکن",item.svg,"svg",{multiline:true});
    desc.wrap.classList.add("full");svg.wrap.classList.add("full");
-   append(controls,title.wrap,subtitle.wrap,tags.wrap,accent.wrap,desc.wrap,svg.wrap);append(card,controls);elementsHost.append(card);
+   const svgFileWrap=node("label","form-field full"),svgFileTitle=node("span","","یا فایل SVG را انتخاب کنید"),svgFile=node("input");
+   svgFile.type="file";svgFile.accept=".svg,image/svg+xml";
+   svgFile.addEventListener("change",async()=>{
+    const file=svgFile.files?.[0];if(!file)return;
+    if(file.size>30*1024){svgFile.value="";out.replaceChildren(info("فایل SVG باید کمتر از ۳۰KB باشد.",true));return}
+    try{
+     const raw=await file.text();
+     if(!/<svg(?:\\s|>)/i.test(raw))throw Error("فایل انتخاب‌شده SVG معتبر نیست.");
+     svg.input.value=raw;out.replaceChildren(info("SVG وارد شد؛ پس از ذخیره در Backend پاک‌سازی امنیتی می‌شود."));
+    }catch(err){svgFile.value="";showError(out,err)}
+   });
+   append(svgFileWrap,svgFileTitle,svgFile);
+   append(controls,title.wrap,subtitle.wrap,tags.wrap,accent.wrap,desc.wrap,svg.wrap,svgFileWrap);append(card,controls);elementsHost.append(card);
   });
  }
  drawElements();
