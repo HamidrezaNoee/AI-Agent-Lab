@@ -340,7 +340,7 @@ function showLogin(){
  };
  const scheduleCollapse=()=>{
   clearTimeout(collapseTimer);
-  collapseTimer=setTimeout(()=>{if(!pointerInside&&!busyLogin)setExpanded(false)},90);
+  collapseTimer=setTimeout(()=>{if(!pointerInside&&!busyLogin&&p.dataset.dragging!=="1")setExpanded(false)},90);
  };
  p.addEventListener("pointerenter",event=>{
   if(event.pointerType==="mouse"||event.pointerType==="pen"){
@@ -349,7 +349,7 @@ function showLogin(){
  });
  p.addEventListener("pointerleave",event=>{
   if(event.pointerType==="mouse"||event.pointerType==="pen"){
-   pointerInside=false;scheduleCollapse();
+   pointerInside=false;if(p.dataset.dragging!=="1")scheduleCollapse();
   }
  });
  p.addEventListener("focusin",()=>{clearTimeout(collapseTimer);setExpanded(true)});
