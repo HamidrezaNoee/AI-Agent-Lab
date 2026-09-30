@@ -2,6 +2,7 @@
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | ورود</title>
 <link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
+<script defer src="${url.resourcesPath?html}/js/login-scene.js"></script>
 <script defer src="${url.resourcesPath?html}/js/login-reveal.js"></script>
 <#if antibotChallenge?? || turnstileSiteKey??>
 <script defer src="${url.resourcesPath?html}/js/captcha-ui.js"></script>
