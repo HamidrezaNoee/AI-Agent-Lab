@@ -801,7 +801,7 @@ async function renderAppearance(m){
     if(file.size>30*1024){svgFile.value="";out.replaceChildren(info("فایل SVG باید کمتر از ۳۰KB باشد.",true));return}
     try{
      const raw=await file.text();
-     if(!/<svg(?:\\s|>)/i.test(raw))throw Error("فایل انتخاب‌شده SVG معتبر نیست.");
+     if(!/<svg(?:\s|>)/i.test(raw))throw Error("فایل انتخاب‌شده SVG معتبر نیست.");
      svg.input.value=raw;out.replaceChildren(info("SVG وارد شد؛ پس از ذخیره در Backend پاک‌سازی امنیتی می‌شود."));
     }catch(err){svgFile.value="";showError(out,err)}
    });
