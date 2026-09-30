@@ -46,7 +46,6 @@ services:
       - avan_sql_sa_password
     volumes:
       - avan-state:/var/lib/avan
-      - avan-ui:/var/lib/avan-ui
     read_only: true
     tmpfs:
       - /tmp:rw,nosuid,noexec,size=16m
@@ -124,7 +123,6 @@ services:
       KC_METRICS_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
       AVAN_ANTIBOT_URL: http://antibot:8090
-      AVAN_UI_STATE_DIR: /var/lib/avan-ui
     secrets:
       - keycloak_db_password
       - avan_bff_client_secret
@@ -165,6 +163,7 @@ services:
       AVAN_PROVISIONER_CLIENT_SECRET_PATH: /run/secrets/avan_provisioner_client_secret
       AVAN_DATA_TIMEZONE: Asia/Tehran
       AVAN_ANTIBOT_URL: http://antibot:8090
+      AVAN_UI_STATE_DIR: /var/lib/avan-ui
     secrets:
       - avan_bff_client_secret
       - avan_provisioner_client_secret
@@ -172,6 +171,7 @@ services:
       - avan_turnstile_secret_key
     volumes:
       - avan-state:/var/lib/avan
+      - avan-ui:/var/lib/avan-ui
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "auth.localhost:host-gateway"
