@@ -109,6 +109,25 @@ const topics={
    ["License","فعال‌سازی نهایی باید ظرفیت لایسنس را رعایت کند."]
   ],fields:[]
  },
+ appearance:{
+  title:"تنظیمات ظاهری",lead:"ظاهر Scene صفحه ورود بدون تغییر طراحی کارت Login از این بخش مدیریت می‌شود.",
+  flow:["انتخاب پس‌زمینه","تنظیم کره","تنظیم Hover و مدار","ویرایش المان‌ها","ذخیره و همگام‌سازی با Login سازمانی"],
+  steps:[
+   ["پس‌زمینه","PNG، JPG یا WebP را انتخاب کن؛ Browser آن را قبل از ذخیره به WebP و حداکثر ۱۹۲۰×۱۰۸۰ تبدیل می‌کند."],
+   ["کره زنده","اندازه، روشنایی، اشباع رنگ و Glow کره را تنظیم کن؛ کره و شبکه Canvas مستقل از تصویر پس‌زمینه هستند."],
+   ["Hover","حالت کارت، Tooltip، فقط عنوان، فقط Glow یا بدون Hover را انتخاب و ضریب بزرگ‌شدن را مشخص کن."],
+   ["المان‌ها","برای هر Node می‌توان SVG، عنوان، متن کوتاه، توضیح، Tag و رنگ Glow را تغییر داد یا المان جدید ساخت."],
+   ["SVG امن","SVG در Backend پاک‌سازی می‌شود؛ Script، event handler، href و تگ‌های غیرمجاز ذخیره نمی‌شوند."],
+   ["همگام‌سازی","تنظیمات عمومی Appearance روی Volume جداگانه نوشته می‌شوند تا Login Keycloak هم همان ظاهر را بخواند."]
+  ],
+  fields:[
+   ["Background","تصویر Raster؛ حداکثر ۵MB بعد از بهینه‌سازی."],
+   ["Hover scale","ضریب بزرگ‌شدن Node هنگام Hover."],
+   ["Hover mode","card / tooltip / label / glow / none."],
+   ["SVG","فقط svg/g/path/circle/rect/line/polyline/polygon/ellipse و attributeهای امن."],
+   ["Tags","حداکثر ۸ Tag برای هر المان."]
+  ]
+ },
  license:{
   title:"لایسنس",lead:"مجوز فروش آوان به Installation ID و Tenant ID مشخص وابسته است.",
   flow:["Installation ID","Tenant ID","دریافت License امضاشده","اعتبارسنجی Public Key","فعال‌سازی"],
