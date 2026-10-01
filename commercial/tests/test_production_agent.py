@@ -16,7 +16,7 @@ from commercial.security import Principal
 from uuid import UUID
 
 NOW=datetime(2026,9,22,9,tzinfo=timezone.utc)
-SCOPE={'tenant_id':'11111111-1111-1111-1111-111111111111','pm_uid':'p1','role':'Expert','company':'org','license':{'modules':[1,2,3,4]}}
+SCOPE={'tenant_id':'11111111-1111-1111-1111-111111111111','source_id':'a'*24,'external_user_id':'p1','role':'Expert','company':'org','visible_uids':{'p1'},'license':{'modules':[1,2,3,4]}}
 
 def records():
     def action(identifier,owner,closed=False,progress=30,due='2026-09-01T00:00:00+00:00'):
