@@ -639,6 +639,20 @@ def _source_store_response(source_id, action, principal):
                             detail="داده‌های BPMS انتخاب‌شده قابل بازیابی نیستند.")
 
 
+def _source_capabilities(source:dict,modules)->list[str]:
+    """Return only user-facing capabilities implemented for this BPMS source.
+
+    AVAN roles remain independent.  A capability appears only when the source
+    type supports a user-scoped route and the organization license enables the
+    corresponding AVAN module.
+    """
+    available=["overview"]
+    if source.get("engine")=="processmaker":
+        if 1 in modules:available.append("meetings")
+        if 3 in modules:available.append("bi")
+    return available
+
+
 @app.get("/api/me")
 def current_user(request:Request):
     from .setup_console import get_setting,is_godadmin,godadmin_identity
@@ -722,6 +736,7 @@ def current_user(request:Request):
             "external_user_id":binding.get("external_user_id"),
             "external_username":binding.get("external_username"),
             "external_display_name":binding.get("external_display_name"),
+            "capabilities":_source_capabilities(source,license_data["modules"]),
         })
 
     active_pm=active_processmaker_source_id()
