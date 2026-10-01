@@ -562,11 +562,19 @@ async function reportsPage(){
  }catch(e){result.replaceChildren(note(e.message,true))}}
  add(panel,filters,link("نمایش گزارش",()=>load(),"button primary"),link("دریافت CSV",async()=>{try{const r=await request("/api/reports/actions/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query()),binary:true});const url=URL.createObjectURL(await r.blob()),a=el("a");a.href=url;a.download="meeting-actions.csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}));add(m,panel,result);await load();
 }
-async function biPage(){
- const m=root();heading(m,"BI همه فرایندها","نمای مشترک پرونده‌ها، حجم کار، تأخیر و زمان چرخه در ProcessMaker");
+async function biPage(sourceId=null){
+ const source=sourceId?(app.user?.bpms_sources||[]).find(x=>x.source_id===sourceId):null;
+ const scoped=!!sourceId;
+ const m=root();
+ heading(m,scoped?("BI · "+(source?.source_name||"ProcessMaker")):"BI همه فرایندها",
+  scoped?"گزارش فقط از ProcessMaker انتخاب‌شده و Binding همین حساب خوانده می‌شود.":"نمای مشترک پرونده‌ها، حجم کار، تأخیر و زمان چرخه در ProcessMaker");
  if(!app.user.modules.includes(3)){add(m,note("ماژول BI در لایسنس فعال نیست."));return}
- const analysis=card("تحلیل مدیریتی همه فرایندها","سؤال درباره تأخیر مراحل، زمان چرخه و حجم کار مسئولان بپرسید.");const question=inputField("پرسش BI","کدام فرایندها بیشترین وظایف تأخیردار را دارند؟","textarea"),answer=el("div");question.input.maxLength=2000;
- const ask=link("تحلیل فرایندها",async()=>{ask.disabled=true;answer.replaceChildren(note("در حال تحلیل..."));try{const r=await request("/api/bi/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:question.input.value})});answer.replaceChildren();renderAnalysis(answer,r)}catch(e){answer.replaceChildren(note(e.message,true))}finally{ask.disabled=false}},"button primary");add(analysis,question.wrap,ask,answer);add(m,analysis);
+ if(scoped&&(!source||source.engine!=="processmaker")){add(m,note("BI مستقیم این منبع هنوز قرارداد User-Scoped ندارد.",true));return}
+ const biBase=scoped?("/api/sources/"+encodeURIComponent(sourceId)+"/bi"):"/api/bi";
+ if(!scoped){
+  const analysis=card("تحلیل مدیریتی همه فرایندها","سؤال درباره تأخیر مراحل، زمان چرخه و حجم کار مسئولان بپرسید.");const question=inputField("پرسش BI","کدام فرایندها بیشترین وظایف تأخیردار را دارند؟","textarea"),answer=el("div");question.input.maxLength=2000;
+  const ask=link("تحلیل فرایندها",async()=>{ask.disabled=true;answer.replaceChildren(note("در حال تحلیل..."));try{const r=await request("/api/bi/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:question.input.value})});answer.replaceChildren();renderAnalysis(answer,r)}catch(e){answer.replaceChildren(note(e.message,true))}finally{ask.disabled=false}},"button primary");add(analysis,question.wrap,ask,answer);add(m,analysis);
+ }
  const panel=card("دامنه گزارش","فقط پرونده‌هایی که در دامنه مجاز شما هستند محاسبه می‌شوند."),controls=el("div","report-filters"),out=el("div");
  const process=el("select"),period=el("select");process.setAttribute("aria-label","فرایند BI");period.setAttribute("aria-label","بازه BI");
  const all=el("option","","همه فرایندها");all.value="";add(process,all);
@@ -576,7 +584,7 @@ async function biPage(){
  let offset=0,known=new Set();const query=()=>({process_uid:process.value||null,period:period.value,start:from.input.value||null,end:to.input.value||null,offset,limit:30});
  function table(headers,rows){const t=el("table"),h=el("tr");headers.forEach(x=>add(h,el("th","",x)));add(t,h);for(const values of rows){const r=el("tr");values.forEach(x=>add(r,el("td","",x==null?"—":x)));add(t,r)}return add(el("div","table-scroll"),t)}
  function bars(title,rows){const p=card(title),max=Math.max(1,...rows.map(x=>x[1]));for(const [label,value] of rows){const r=el("div","bi-bar-row"),meter=el("meter");meter.min=0;meter.max=max;meter.value=value;meter.setAttribute("aria-label",label);add(r,el("span","",label),meter,el("strong","",fmt(value)));add(p,r)}return p}
- async function load(reset=true){if(reset)offset=0;out.replaceChildren(note("در حال خواندن اطلاعات گردش کار..."));try{const r=await request("/api/bi/processes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query())});if(!out.isConnected)return;out.replaceChildren();
+ async function load(reset=true){if(reset)offset=0;out.replaceChildren(note("در حال خواندن اطلاعات گردش کار..."));try{const r=await request(biBase+"/processes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query())});if(!out.isConnected)return;out.replaceChildren();
   for(const p of r.processes){if(known.has(p.process_uid))continue;known.add(p.process_uid);const o=el("option","",p.title);o.value=p.process_uid;add(process,o)}
   const metrics=el("div","stats");for(const [key,label] of [["cases","کل پرونده"],["open_cases","پرونده باز"],["completed_cases","تکمیل‌شده"],["open_tasks","وظیفه باز"],["overdue_tasks","وظیفه تأخیردار"],["median_cycle_hours","میانه چرخه (ساعت)"]])add(metrics,add(el("div","stat"),el("span","",label),el("strong","",r.metrics[key]==null?"نامشخص":fmt(r.metrics[key]))));add(out,metrics);
   if(!r.coverage_complete)add(out,note("بیش از ۲۰هزار پرونده در دامنه وجود دارد؛ دوره را محدود کنید. آمار حاضر فقط زیرمجموعه بازیابی‌شده است.",true));
@@ -587,5 +595,5 @@ async function biPage(){
   const details=card("پرونده‌های دامنه گزارش");add(details,table(["شماره","فرایند","وضعیت","ایجاد","پایان"],r.rows.map(x=>[fmt(x.case_number),x.process_title,statusName(x.status),dateText(x.created_at),dateText(x.finished_at)])));if(offset)add(details,link("صفحه قبل",()=>{offset=Math.max(0,offset-30);load(false)}));if(r.has_more)add(details,link("صفحه بعد",()=>{offset+=30;load(false)}));add(out,details);
   r.notes.forEach(n=>add(out,note(n)));
  }catch(e){out.replaceChildren(note(e.message,true))}}
- add(panel,controls,link("نمایش BI",()=>load(),"button primary"),link("دریافت CSV فرایندها",async()=>{try{const r=await request("/api/bi/processes/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query()),binary:true});const url=URL.createObjectURL(await r.blob()),a=el("a");a.href=url;a.download="processmaker-bi.csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}));add(m,panel,out);await load();
+ add(panel,controls,link("نمایش BI",()=>load(),"button primary"),link("دریافت CSV فرایندها",async()=>{try{const r=await request(biBase+"/processes/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query()),binary:true});const url=URL.createObjectURL(await r.blob()),a=el("a");a.href=url;a.download=scoped?"processmaker-source-bi.csv":"processmaker-bi.csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}));add(m,panel,out);await load();
 }
