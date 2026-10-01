@@ -588,6 +588,31 @@ def _store_response(action, principal):
                             detail="داده‌های سازمانی قابل بازیابی نیستند؛ تنظیمات سرور بررسی شود.")
 
 
+def _source_store_response(source_id, action, principal):
+    """Execute a read only against the exact ProcessMaker source bound to the AVAN user."""
+    from .user_bpms_bindings import (
+        binding_for,processmaker_profile,BindingError
+    )
+    if not binding_for(principal.subject,source_id):
+        raise HTTPException(status_code=403,detail="این BPMS به حساب AVAN شما متصل نیست.")
+    try:
+        profile=processmaker_profile(source_id)
+        with open_production(config=profile["mysql"]) as con:
+            scope=verified_scope(con,principal,source_id=source_id)
+            return action(con,scope)
+    except BindingError:
+        raise HTTPException(status_code=404,detail="اتصال ProcessMaker پیدا نشد.")
+    except ProductionAccessDenied:
+        raise HTTPException(status_code=403,detail="مجوز مشاهده اطلاعات این BPMS وجود ندارد.")
+    except ProductionUnavailable:
+        raise HTTPException(status_code=503,detail="ارتباط با ProcessMaker انتخاب‌شده برقرار نیست.")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=503,
+                            detail="داده‌های BPMS انتخاب‌شده قابل بازیابی نیستند.")
+
+
 @app.get("/api/me")
 def current_user(request:Request):
     from .setup_console import get_setting,is_godadmin,godadmin_identity
@@ -707,6 +732,34 @@ def meetings(value=Depends(_authorized),
         return {"meetings":page["meetings"],"next_cursor":page["next_cursor"],
                 "has_more":page["has_more"]}
     return _store_response(read,principal)
+
+
+@app.get("/api/sources/{source_id}/meetings")
+def source_meetings(source_id:str,value=Depends(_authorized),
+                    cursor:int|None=Query(None,gt=0),
+                    limit:int=Query(30,ge=1,le=50)):
+    _,_,principal=value
+    def read(con,scope):
+        if 1 not in scope["license"]["modules"]:
+            raise ProductionAccessDenied("Meetings module not licensed")
+        page=authorized_meetings_page(con,scope,cursor=cursor,limit=limit)
+        return {"source_id":source_id,"source_name":scope.get("source_name"),
+                "meetings":page["meetings"],"next_cursor":page["next_cursor"],
+                "has_more":page["has_more"]}
+    return _source_store_response(source_id,read,principal)
+
+
+@app.get("/api/sources/{source_id}/meetings/{meeting_id}")
+def source_meeting_detail(source_id:str,meeting_id:int,value=Depends(_authorized)):
+    _,_,principal=value
+    def read(con,scope):
+        if 1 not in scope["license"]["modules"]:
+            raise ProductionAccessDenied("Meetings module not licensed")
+        rows,complete=authorized_meeting_snapshot(con,scope,meeting_id=meeting_id)
+        _normalise_dates(rows)
+        if not rows:raise HTTPException(404,detail="جلسه در این BPMS در دسترس نیست.")
+        return {"source_id":source_id,"coverage_complete":complete,**rows[0]}
+    return _source_store_response(source_id,read,principal)
 
 
 def _normalise_dates(records:list[dict])->None:
