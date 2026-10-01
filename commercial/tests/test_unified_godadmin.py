@@ -216,6 +216,10 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertEqual(me["bpms_sources"][0]["external_username"],"pm.operator")
 
     def test_approved_avan_user_can_login_without_any_bpms_binding(self):
+        initial=setup.INITIAL.read_text().strip()
+        setup.change_password(initial,"A-test-bootstrap-passphrase-123!")
+        secret=setup.totp_enrollment()
+        setup.confirm_totp(setup._totp(secret,int(time.time())))
         setup.bind_godadmin_identity(TENANT,"operator")
         organization={"tenant_id":TENANT,"company_name":"ایران رور","users":[{
             "subject":"employee","username":"amin.t","email":"employee@example.com",
