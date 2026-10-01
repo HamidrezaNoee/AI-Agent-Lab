@@ -2,7 +2,9 @@
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | تأیید هویت</title>
 <link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
+<link rel="stylesheet" href="${url.resourcesPath?html}/css/login-scene.css">
 <#if turnstileSiteKey??><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></#if>
+<script defer src="${url.resourcesPath?html}/js/login-scene.js" data-appearance-url="${url.resourcesPath?html}/generated/appearance.json" data-scene-root="${url.resourcesPath?html}/scene-data/"></script>
 <script defer src="${url.resourcesPath?html}/js/otp-motion.js"></script></head>
 <body class="avan-signin">
  <main class="signin-layout">
@@ -50,3 +52,4 @@
   <div class="signin-art" aria-hidden="true"></div>
  </main>
 </body></html>
+

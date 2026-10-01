@@ -28,11 +28,12 @@ const server=http.createServer((req,res)=>{
   page.setDefaultTimeout(8000);
   const pageErrors=[];
   page.on('pageerror',e=>pageErrors.push(e.message));
-  let failBpms=false;
+  let failBpms=false,savedAppearance=null;
 
   await page.route('**/admin/api/**',async route=>{
     const p=new URL(route.request().url()).pathname;
     let data={};
+    if(p==='/admin/api/appearance/save'){savedAppearance=route.request().postDataJSON();return route.fulfill({json:{identity_theme_synced:true}})}
     if(p==='/admin/api/state')data={
       authenticated:true,password_changed:true,mfa_enrolled:true,mfa_authenticated:true,
       csrf:'test',auth_mode:'oidc'
@@ -97,10 +98,21 @@ const server=http.createServer((req,res)=>{
     const host=page.locator('[data-settings-page="'+code+'"]');
     await host.waitFor();
     if(await host.locator('.panel').count()<1)throw Error('Blank management tab: '+label);
+    await page.waitForFunction(code=>{const el=document.querySelector('[data-settings-page="'+code+'"]');return el&&el.getBoundingClientRect().height>=40},code);
     const box=await host.boundingBox();
     if(!box||box.height<40)throw Error('Collapsed management tab: '+label);
     if(!(await host.innerText()).trim())throw Error('Empty management tab text: '+label);
   }
+
+  await page.getByRole('button',{name:'تنظیمات ظاهری',exact:true}).click();
+  await page.locator('[data-appearance-field="title"]').fill('عنوان ویرایش‌شده');
+  await page.getByRole('button',{name:'＋ افزودن Node',exact:true}).click();
+  if(await page.locator('[data-appearance-field="title"]').first().inputValue()!=='عنوان ویرایش‌شده')throw Error('Add lost edits');
+  await page.locator('[data-appearance-global="orbit_mode"]').selectOption('static');
+  while(await page.locator('.appearance-element').count())await page.locator('.appearance-element').first().getByRole('button',{name:'حذف',exact:true}).click();
+  await page.getByRole('button',{name:'ذخیره همه تنظیمات ظاهری',exact:true}).click();
+  await page.waitForTimeout(100);
+  if(!savedAppearance||savedAppearance.elements.length||savedAppearance.orbit_mode!=='static')throw Error('Empty elements or orbit mode not saved');
 
   // Exact regression from the reported screenshot: BPMS API failure must not leave white space.
   await page.getByRole('button',{name:'وضعیت سامانه',exact:true}).click();

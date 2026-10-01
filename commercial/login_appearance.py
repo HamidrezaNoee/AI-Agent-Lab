@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 import base64
 import json
+import math
 import os
 import re
 import xml.etree.ElementTree as ET
@@ -111,6 +112,7 @@ DEFAULT={
     "show_orbits":True,
     "show_idle_cards":True,
     "orbit_speed":1.0,
+    "orbit_mode":"drift",
     "orbit_line_width":1.15,
     "orbit_opacity":0.78,
     "orbit_glow":1.0,
@@ -137,6 +139,7 @@ class AppearanceError(ValueError):
 def _number(value,default,minimum,maximum):
     try:value=float(value)
     except (TypeError,ValueError):value=float(default)
+    if not math.isfinite(value):value=float(default)
     return max(minimum,min(maximum,value))
 
 def _integer(value,default,minimum,maximum):
@@ -168,7 +171,10 @@ def sanitize_svg(svg:str)->str:
         for key,value in elem.attrib.items():
             key=_local_tag(key)
             if key in _ALLOWED_SVG_ATTRS:
-                clean[key]=str(value)[:2000]
+                value=str(value)[:2000]
+                if re.search(r"url\s*\(|javascript:|data:|https?:|//",value,re.I):
+                    raise AppearanceError("ارجاع خارجی در SVG مجاز نیست.")
+                clean[key]=value
         elem.attrib.clear();elem.attrib.update(clean)
         elem.text=None;elem.tail=None
     view=root.attrib.get("viewBox","")
@@ -239,7 +245,6 @@ def normalize(raw:dict|None)->dict:
         if value["label_mode"] not in {"inherit","always","hover","hidden"}:value["label_mode"]="inherit"
         if value["id"] in seen:raise AppearanceError("شناسه المان‌های ظاهری باید یکتا باشد.")
         seen.add(value["id"]);normalized.append(value)
-    if not normalized:normalized=deepcopy(DEFAULT_ELEMENTS)
     mode=_text(raw.get("hover_mode"),DEFAULT["hover_mode"],20)
     if mode not in {"card","tooltip","label","glow","none"}:mode=DEFAULT["hover_mode"]
     fit=_text(raw.get("background_fit"),DEFAULT["background_fit"],20)
@@ -291,6 +296,7 @@ def normalize(raw:dict|None)->dict:
         "show_orbits":bool(raw.get("show_orbits",DEFAULT["show_orbits"])),
         "show_idle_cards":bool(raw.get("show_idle_cards",DEFAULT["show_idle_cards"])),
         "orbit_speed":_number(raw.get("orbit_speed"),DEFAULT["orbit_speed"],0.0,3.0),
+        "orbit_mode":raw.get("orbit_mode") if raw.get("orbit_mode") in {"orbit","drift","static"} else "drift",
         "orbit_line_width":_number(raw.get("orbit_line_width"),DEFAULT["orbit_line_width"],0.2,4.0),
         "orbit_opacity":_number(raw.get("orbit_opacity"),DEFAULT["orbit_opacity"],0.0,1.0),
         "orbit_glow":_number(raw.get("orbit_glow"),DEFAULT["orbit_glow"],0.0,2.5),
@@ -330,3 +336,4 @@ def reset()->dict:
     setup.put_setting("appearance",config)
     synced=sync_public(config)
     return {"reset":True,"identity_theme_synced":synced,"appearance":config}
+

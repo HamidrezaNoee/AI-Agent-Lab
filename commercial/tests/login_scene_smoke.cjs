@@ -51,6 +51,7 @@ const server=http.createServer((req,res)=>{
   else data={};
   await route.fulfill({json:data});
  });
+ if(process.env.AVAN_APPEARANCE_FIXTURE)await page.route('**/admin/api/appearance/public*',r=>r.fulfill({json:JSON.parse(fs.readFileSync(process.env.AVAN_APPEARANCE_FIXTURE,'utf8'))}));
  await page.goto(origin+'/admin/');
  const card=page.locator('.login-reveal-card');
  await card.waitFor();
@@ -58,8 +59,14 @@ const server=http.createServer((req,res)=>{
  await page.locator('.avan-globe-wrap').waitFor();
  await page.locator('[data-avan-live-scene="configurable-v4"]').waitFor();
  if(await page.locator('.avan-orbit-node').count()!==8)throw Error('Expected 8 live capability nodes');
- await page.waitForFunction(()=>document.querySelector('.avan-live-backdrop')?.style.backgroundImage.includes('data:image/webp;base64,'));
- await page.waitForFunction(()=>document.querySelector('.avan-globe-image')?.src.startsWith('data:image/webp;base64,'));
+ await page.waitForFunction(()=>document.querySelector('.avan-live-backdrop')?.style.backgroundImage.includes('boardroom-v5.webp'));
+ await page.waitForFunction(()=>document.querySelector('.avan-globe-image')?.src.endsWith('globe-v5.webp'));
+ if(process.env.AVAN_SCREENSHOT){
+  await page.waitForTimeout(800);
+  await page.screenshot({path:process.env.AVAN_SCREENSHOT});
+  console.log(await page.locator('.avan-globe-image').evaluate(el=>({width:el.naturalWidth,loaded:el.complete})));
+  await browser.close();server.close();return;
+ }
  const globeOpacity=await page.locator('.avan-globe-image').evaluate(el=>getComputedStyle(el).opacity);
  if(Number(globeOpacity)<.95)throw Error('Globe regression: live globe is faded or invisible');
  const rootVars=await page.locator('.avan-live-scene').evaluate(el=>({
@@ -76,7 +83,8 @@ const server=http.createServer((req,res)=>{
  if(!globeBox||!cardStart)throw Error('Live globe or login card has no layout box');
  if(globeBox.x+globeBox.width/2>=cardStart.x+cardStart.width/2)throw Error('Layout regression: globe must stay left of login card');
  const first=page.locator('.avan-orbit-node').first();
- await first.hover();
+ const hit=await first.boundingBox();
+ await page.mouse.move(hit.x+hit.width/2,hit.y+hit.height/2);
  await page.locator('.avan-scene-tooltip.is-visible').waitFor();
  await first.click();
  if(!await first.evaluate(el=>el.classList.contains('is-selected')))throw Error('Capability node selection failed');
@@ -90,6 +98,19 @@ const server=http.createServer((req,res)=>{
  const after=await card.boundingBox();
  if(Math.abs(after.x-before.x)<30&&Math.abs(after.y-before.y)<20)throw Error('Login card drag did not move');
  if(errors.length)throw Error('Browser errors: '+errors.join(' | '));
+ // Form stays visible when pointer leaves; keyboard and mobile remain usable.
+ await page.mouse.move(0,0);
+ if(!await page.locator('input[name="username"]').isVisible())throw Error('Login form collapsed');
+ if(await page.locator('input[name="username"]').inputValue()!=='')throw Error('Username prefilled');
+ await page.emulateMedia({reducedMotion:'reduce'});
+ await page.waitForTimeout(100);
+ await page.locator('.avan-live-scene.scene-paused').waitFor();
+ const position=await first.evaluate(el=>el.style.transform);
+ await page.waitForTimeout(100);
+ if(position!==await first.evaluate(el=>el.style.transform))throw Error('Reduced motion ignored');
+ await page.setViewportSize({width:390,height:844});
+ if(!await page.locator('input[name="username"]').isVisible())throw Error('Mobile form hidden');
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile horizontal overflow');
  await browser.close();server.close();
  console.log('LOGIN SCENE PASS: configurable V4 background, visible globe, settings-driven nodes, tooltip/select and unchanged draggable login card');
 })().catch(e=>{console.error(e);try{server.close()}catch(_){}process.exit(1)});

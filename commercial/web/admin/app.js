@@ -148,7 +148,7 @@ function buildCaptchaShell(host){
     <path class="shield-scan" d="M20.3 31.8 28 39.5 44.8 22.7"></path>
    </svg>
   </div>
-  <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال انتخاب بهترین مسیر امنیتی…</span></div>
+  <div class="avan-captcha-copy"><strong>بررسی امنیتی هوشمند</strong><span class="avan-captcha-status" aria-live="polite">در حال بررسی امنیتی…</span></div>
   <span class="avan-captcha-badge">HYBRID</span>
  </div>
  <div class="avan-captcha-progress" aria-hidden="true"><span></span></div>
@@ -167,7 +167,7 @@ function cloudflareAttempt(config,ui,setState){
  return new Promise(async(resolve,reject)=>{
   if(!config?.enabled||!config.site_key){reject(Error("Cloudflare disabled"));return}
   const timeoutMs=Math.max(1200,Math.min(5000,Number(config.timeout_ms)||2500));
-  setState("is-checking","در حال بررسی با Cloudflare Turnstile…");
+  setState("is-checking","در حال بررسی امنیتی…");
   ui.badge.textContent="CLOUDFLARE";ui.provider.textContent="CLOUDFLARE TURNSTILE · PRIMARY";
   let settled=false,widgetId=null;
   const fail=err=>{
@@ -211,7 +211,7 @@ async function mountLoginCaptcha(host,submit,out){
  const solveNew=async()=>{
   const current=++generation;token="";currentProvider="";submit.disabled=true;
   clearTimeout(expiryTimer);ui.slot.replaceChildren();
-  setState("is-checking","در حال دریافت تنظیمات امنیتی…");
+  setState("is-checking","در حال بررسی امنیتی…");
   const config=await api("captcha/config");
   if(config?.provider!=="hybrid")throw Error("پیکربندی Hybrid Anti-Bot معتبر نیست.");
 
@@ -222,27 +222,27 @@ async function mountLoginCaptcha(host,submit,out){
     token=antibotEnvelope("cloudflare-turnstile",cfToken);currentProvider="cloudflare-turnstile";
     submit.disabled=false;ui.badge.textContent="CLOUDFLARE";
     ui.provider.textContent="CLOUDFLARE TURNSTILE · VERIFIED";
-    setState("is-verified","اتصال امن با Cloudflare تأیید شد");
+    setState("is-verified","اعتبارسنجی امنیتی انجام شد");
     return;
    }catch(_err){
     if(current!==generation)return;
     ui.slot.replaceChildren();ui.badge.textContent="LOCAL";
     ui.provider.textContent="ALTCHA · SELF-HOSTED FALLBACK";
-    setState("is-checking","Cloudflare در دسترس نبود؛ بررسی محلی فعال شد…");
+    setState("is-checking","در حال تکمیل بررسی امنیتی…");
    }
   }else{
    ui.badge.textContent="LOCAL";ui.provider.textContent="ALTCHA · SELF-HOSTED";
-   setState("is-checking",forceLocal?"Fallback محلی برای این تلاش فعال شد…":"کلید Cloudflare تنظیم نشده؛ بررسی محلی فعال است…");
+   setState("is-checking",forceLocal?"در حال بررسی امنیتی…":"در حال بررسی امنیتی…");
   }
 
   if(!config.local)throw Error("Cloudflare و Anti-Bot داخلی هر دو در دسترس نیستند.");
   const number=await solveLocalAntibot(config.local,percent=>{
-   if(current===generation)setState("is-checking",`در حال بررسی محلی… ${percent}٪`);
+   if(current===generation)setState("is-checking",`در حال بررسی امنیتی… ${percent}٪`);
   });
   if(current!==generation)return;
   token=antibotEnvelope("altcha-self-hosted",antibotPayload(config.local,number));currentProvider="altcha-self-hosted";
   submit.disabled=false;
-  setState("is-verified","اتصال امن با Anti-Bot داخلی تأیید شد");
+  setState("is-verified","اعتبارسنجی امنیتی انجام شد");
   const ttl=Math.max(15,Number(config.local.expiresIn)||120);
   expiryTimer=setTimeout(()=>{
    if(current!==generation)return;
@@ -309,11 +309,11 @@ function loginRevealButton(){
 }
 function showLogin(){
  const m=main(),p=panel("ورود به آوان","");
- p.classList.add("login","login-reveal-card","is-collapsed");
+ p.classList.add("login","login-reveal-card","is-expanded");
  p.prepend(loginCardDecor(),loginBrand());
  const subtitle=node("p","login-reveal-subtitle","خوش آمدید؛ برای ادامه وارد حساب کاربری شوید.");
  const reveal=loginRevealButton(),f=node("form","login-expand-body");
- const username=field("نام کاربری","username","godadmin"),password=field("رمز عبور","password","",{secret:true});
+ const username=field("نام کاربری","username",""),password=field("رمز عبور","password","",{secret:true});
  append(f,username,password);
  const out=node("div"),captchaHost=node("div","turnstile-shell");
  const loginBtn=node("button","","ورود به آوان");loginBtn.type="submit";
@@ -321,45 +321,17 @@ function showLogin(){
  p.querySelector("h2")?.after(subtitle,reveal);
  append(p,f);append(m,p);
 
- let captcha=null,captchaReady=null,expanded=false,busyLogin=false,pointerInside=false,collapseTimer=null;
- const usernameInput=username.querySelector("input");
+ let captcha=null,captchaReady=null;
+ username.querySelector("input").autocomplete="username";
+ password.querySelector("input").autocomplete="current-password";
  const ensureCaptchaMounted=()=>{
-  if(captchaReady)return captchaReady;
-  captchaReady=mountLoginCaptcha(captchaHost,loginBtn,out).then(x=>captcha=x).catch(err=>{
+  if(!captchaReady)captchaReady=mountLoginCaptcha(captchaHost,loginBtn,out).then(x=>captcha=x).catch(err=>{
    showError(out,err);loginBtn.disabled=true;return null;
   });
   return captchaReady;
  };
- const setExpanded=(open)=>{
-  if(busyLogin&&!open)return;
-  expanded=!!open;
-  p.classList.toggle("is-collapsed",!expanded);
-  p.classList.toggle("is-expanded",expanded);
-  reveal.setAttribute("aria-expanded",String(expanded));
-  if(expanded)ensureCaptchaMounted();
- };
- const scheduleCollapse=()=>{
-  clearTimeout(collapseTimer);
-  collapseTimer=setTimeout(()=>{if(!pointerInside&&!busyLogin&&p.dataset.dragging!=="1")setExpanded(false)},90);
- };
- p.addEventListener("pointerenter",event=>{
-  if(event.pointerType==="mouse"||event.pointerType==="pen"){
-   pointerInside=true;clearTimeout(collapseTimer);setExpanded(true);
-  }
- });
- p.addEventListener("pointerleave",event=>{
-  if(event.pointerType==="mouse"||event.pointerType==="pen"){
-   pointerInside=false;if(p.dataset.dragging!=="1")scheduleCollapse();
-  }
- });
- p.addEventListener("focusin",()=>{clearTimeout(collapseTimer);setExpanded(true)});
- p.addEventListener("focusout",event=>{
-  if(!p.contains(event.relatedTarget)&&!pointerInside)scheduleCollapse();
- });
- reveal.addEventListener("click",()=>{
-  setExpanded(true);
-  requestAnimationFrame(()=>usernameInput?.focus());
- });
+ reveal.remove();
+ ensureCaptchaMounted();
 
  f.addEventListener("submit",async e=>{
   e.preventDefault();out.replaceChildren();
@@ -368,13 +340,13 @@ function showLogin(){
     if(!captcha)throw Error("سرویس ضدربات آماده نیست.");
     const captchaToken=captcha.token()||"";
     if(!captchaToken)throw Error("ابتدا اعتبارسنجی ضدربات را کامل کنید.");
-    busyLogin=true;busy(f,true);
+    busy(f,true);
     const result=await api("login",{username:formValue(f,"username"),
-      password:formValue(f,"password"),captcha_token:captchaToken});
+      password:f.elements.namedItem("password").value,captcha_token:captchaToken});
     if(result.mfa_required){showLoginOtp(result.challenge);return}
     state.csrf=result.csrf;window.location.assign("/")
   }catch(err){showError(out,err);captcha?.reset()}finally{
-   busyLogin=false;busy(f,false);
+   busy(f,false);
    if(captcha&&!captcha.token())loginBtn.disabled=true;
   }
  });
@@ -778,7 +750,7 @@ async function renderAppearance(m){
  const globePreview=node("div","appearance-globe-preview");
  if(globeImage)globePreview.style.backgroundImage='url("'+globeImage.replaceAll('"','%22')+'")';
  const globeVisible=check("نمایش کره", "globe_visible", config.globe_visible!==false);
- append(globe,globeVisible.label,imagePicker("تصویر سفارشی کره؛ در صورت خالی بودن Sprite آوان استفاده می‌شود",globeImage,v=>globeImage=v,globePreview,"بازگشت به کره پیش‌فرض"));
+ append(globe,globePreview,globeVisible.label,imagePicker("تصویر سفارشی کره؛ در صورت خالی بودن Sprite آوان استفاده می‌شود",globeImage,v=>globeImage=v,globePreview,"بازگشت به کره پیش‌فرض"));
  const globeControls=node("div","appearance-control-grid");
  const globeX=range("موقعیت افقی مرکز کره","globe_x",config.globe_x??29,8,60,.5,"%");
  const globeY=range("موقعیت عمودی مرکز کره","globe_y",config.globe_y??44,18,82,.5,"%");
@@ -816,6 +788,7 @@ async function renderAppearance(m){
   {value:"glow",label:"فقط Glow و بزرگ‌شدن"},
   {value:"none",label:"بدون واکنش Hover"}
  ],config.hover_mode||"card");
+ const orbitMode=select("نحوه حرکت عناصر","orbit_mode",[{value:"drift",label:"شناوری آرام در جایگاه‌ها"},{value:"orbit",label:"گردش کامل دور کره"},{value:"static",label:"ثابت"}],config.orbit_mode||"drift");
  const orbitSpeed=range("سرعت کلی حرکت Nodeها","orbit_speed",config.orbit_speed??1,0,3,.1,"×");
  const orbitWidth=range("ضخامت خطوط مدار","orbit_line_width",config.orbit_line_width??1.15,.2,4,.1,"px");
  const orbitOpacity=range("Opacity خطوط مدار","orbit_opacity",config.orbit_opacity??.78,0,1,.05);
@@ -825,7 +798,7 @@ async function renderAppearance(m){
  const cardWidth=range("عرض کارت توضیح","card_width",config.card_width??176,120,320,5,"px");
  const cardOpacity=range("Opacity کارت توضیح","card_opacity",config.card_opacity??.94,.35,1,.05);
  append(behaviorControls,nodeSize.row,nodeOpacity.row,nodeBorder.row,nodeGlow.row,hoverScale.row,hoverDuration.row,hover,
-  orbitSpeed.row,orbitWidth.row,orbitOpacity.row,orbitGlow.row,orbitPrimary,orbitSecondary,cardWidth.row,cardOpacity.row);
+  orbitMode,orbitSpeed.row,orbitWidth.row,orbitOpacity.row,orbitGlow.row,orbitPrimary,orbitSecondary,cardWidth.row,cardOpacity.row);
  const behaviorChecks=node("div","appearance-checks");
  const pause=check("توقف همان Node هنگام Hover","pause_on_hover",config.pause_on_hover!==false);
  const orbits=check("نمایش خطوط مدار","show_orbits",config.show_orbits!==false);
@@ -839,6 +812,7 @@ async function renderAppearance(m){
   node("p","hint","ترتیب، SVG، متن، Tag، اندازه، Hover، Glow، Opacity، شعاع/کشیدگی/زاویه/سرعت مدار و محل Card برای هر Node مستقل است."));
  const addBtn=btn("＋ افزودن Node",()=>{
   if(elements.length>=12){out.replaceChildren(info("حداکثر ۱۲ Node قابل تعریف است.",true));return}
+  captureElements();
   elements.push({id:"custom_"+Date.now(),enabled:true,title:"قابلیت جدید",subtitle:"توضیح کوتاه",description:"توضیح کامل قابلیت",tags:["AVAN"],accent:"#63ECFF",
     radius:1.25,ellipse:.7,angle:Math.random()*6.2,speed:.00015,size:0,hover_scale:0,glow:1,opacity:1,card_side:"auto",label_mode:"inherit",
     svg:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 8v8M8 12h8"/></svg>'});
@@ -857,21 +831,30 @@ async function renderAppearance(m){
   const wrap=node("label","form-field"),label=node("span","",labelText),sel=node("select");sel.dataset.appearanceField=fieldName;
   items.forEach(([v,t])=>{const o=node("option","",t);o.value=v;if(v===value)o.selected=true;sel.append(o)});append(wrap,label,sel);return {wrap,input:sel};
  };
+ function captureElements(){
+  for(const card of elementsHost.querySelectorAll(".appearance-element")){
+   const item=elements[Number(card.dataset.index)];if(!item)continue;
+   for(const input of card.querySelectorAll("[data-appearance-field]")){
+    const key=input.dataset.appearanceField;
+    item[key]=input.type==="checkbox"?input.checked:input.type==="number"?Number(input.value):key==="tags"?input.value.split(",").map(x=>x.trim()).filter(Boolean):input.value;
+   }
+  }
+ }
  function drawElements(){
   elementsHost.replaceChildren();
   elements.forEach((item,index)=>{
    const card=node("article","appearance-element");card.dataset.index=String(index);
    const h=node("div","appearance-element-head"),identity=node("div","appearance-element-identity"),sample=node("span","appearance-svg-sample");
-   sample.innerHTML=item.svg||"";
+   const svgPreview=node("img");svgPreview.alt="";svgPreview.src="data:image/svg+xml,"+encodeURIComponent(item.svg||"");sample.append(svgPreview);
    const enabled=node("input");enabled.type="checkbox";enabled.checked=item.enabled!==false;enabled.dataset.appearanceField="enabled";
    const enabledLabel=node("label");append(enabledLabel,enabled,node("strong","",item.title||("Node "+(index+1))));
    append(identity,node("span","appearance-order",String(index+1)),enabledLabel);
    const actions=node("div","actions");
    append(actions,
-    btn("↑",()=>{if(index>0){[elements[index-1],elements[index]]=[elements[index],elements[index-1]];drawElements()}},"secondary"),
-    btn("↓",()=>{if(index<elements.length-1){[elements[index+1],elements[index]]=[elements[index],elements[index+1]];drawElements()}},"secondary"),
-    btn("کپی",()=>{if(elements.length<12){const copy=structuredClone(elements[index]);copy.id="copy_"+Date.now();copy.title+=" · کپی";elements.splice(index+1,0,copy);drawElements()}},"secondary"),
-    btn("حذف",()=>{elements.splice(index,1);drawElements()},"secondary"));
+    btn("↑",()=>{if(index>0){captureElements();[elements[index-1],elements[index]]=[elements[index],elements[index-1]];drawElements()}},"secondary"),
+    btn("↓",()=>{if(index<elements.length-1){captureElements();[elements[index+1],elements[index]]=[elements[index],elements[index+1]];drawElements()}},"secondary"),
+    btn("کپی",()=>{if(elements.length<12){captureElements();const copy=structuredClone(elements[index]);copy.id="copy_"+Date.now();copy.title+=" · کپی";elements.splice(index+1,0,copy);drawElements()}},"secondary"),
+    btn("حذف",()=>{captureElements();elements.splice(index,1);drawElements()},"secondary"));
    append(h,identity,sample,actions);append(card,h);
    const controls=node("div","appearance-element-controls");
    const title=mkInput("عنوان",item.title,"title"),subtitle=mkInput("متن کوتاه",item.subtitle,"subtitle"),
@@ -895,7 +878,7 @@ async function renderAppearance(m){
    svgFile.addEventListener("change",async()=>{
     const file=svgFile.files?.[0];if(!file)return;
     if(file.size>30*1024){svgFile.value="";out.replaceChildren(info("فایل SVG باید کمتر از ۳۰KB باشد.",true));return}
-    try{const raw=await file.text();if(!/<svg(?:\s|>)/i.test(raw))throw Error("فایل SVG معتبر نیست.");svg.input.value=raw;out.replaceChildren(info("SVG وارد شد. پیش‌نمایش آیکن بعد از ذخیره و Sanitise شدن توسط Backend به‌روز می‌شود."))}
+    try{const raw=await file.text();if(!/<svg(?:\s|>)/i.test(raw))throw Error("فایل SVG معتبر نیست.");svg.input.value=raw;svg.input.dispatchEvent(new Event("input",{bubbles:true}));out.replaceChildren(info("SVG وارد شد. پیش‌نمایش آیکن بعد از ذخیره و Sanitise شدن توسط Backend به‌روز می‌شود."))}
     catch(err){svgFile.value="";showError(out,err)}
    });
    append(svgFileWrap,svgFileTitle,svgFile);
@@ -931,7 +914,7 @@ async function renderAppearance(m){
     globe_brightness:n("globe_brightness"),globe_contrast:n("globe_contrast"),globe_saturation:n("globe_saturation"),globe_hue:n("globe_hue"),globe_glow:n("globe_glow"),
     globe_wobble:n("globe_wobble"),globe_rotation_speed:n("globe_rotation_speed"),globe_point_density:n("globe_point_density"),globe_point_size:n("globe_point_size"),globe_point_opacity:n("globe_point_opacity"),
     node_size:n("node_size"),node_opacity:n("node_opacity"),node_border_width:n("node_border_width"),node_glow:n("node_glow"),hover_scale:n("hover_scale"),hover_duration:n("hover_duration"),
-    hover_mode:v("hover_mode"),pause_on_hover:b("pause_on_hover"),show_orbits:b("show_orbits"),show_idle_cards:b("show_idle_cards"),orbit_speed:n("orbit_speed"),
+    hover_mode:v("hover_mode"),pause_on_hover:b("pause_on_hover"),show_orbits:b("show_orbits"),show_idle_cards:b("show_idle_cards"),orbit_speed:n("orbit_speed"),orbit_mode:v("orbit_mode"),
     orbit_line_width:n("orbit_line_width"),orbit_opacity:n("orbit_opacity"),orbit_glow:n("orbit_glow"),orbit_primary:v("orbit_primary"),orbit_secondary:v("orbit_secondary"),
     card_width:n("card_width"),card_opacity:n("card_opacity"),elements:savedElements};
    out.replaceChildren();
@@ -1389,3 +1372,4 @@ function showConnectionEditor(parent,current){
    catch(err){showError(out,err)}finally{busy(f,false)}
   }),btn("انصراف",()=>box.remove(),"secondary"),out);append(box,f);parent.append(box);
 }
+

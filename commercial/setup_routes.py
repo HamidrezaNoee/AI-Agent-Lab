@@ -163,17 +163,20 @@ def admin_login_scene_js(request:Request):
     return FileResponse(WEB/"login-scene.js",media_type="text/javascript; charset=utf-8")
 
 
-_LOGIN_SCENE_DATA={
-    "bg-0.b64","bg-1.b64","bg-2.b64","bg-3.b64","bg-4.b64",
-    "globe-0.b64","globe-1.b64",
-}
+@router.get("/assets/login-scene.css")
+def admin_login_scene_css(request:Request):
+    _local(request)
+    return FileResponse(WEB/"login-scene.css",media_type="text/css; charset=utf-8")
+
+_LOGIN_SCENE_DATA={"boardroom-v5.webp","globe-v5.webp"}
 
 @router.get("/assets/scene-data/{name}")
 def admin_login_scene_data(name:str,request:Request):
     _local(request)
     if name not in _LOGIN_SCENE_DATA:
         raise HTTPException(404,"Login scene asset not found")
-    return FileResponse(WEB/"scene-data"/name,media_type="text/plain; charset=utf-8")
+    return FileResponse(WEB/"scene-data"/name,media_type="image/webp",
+                        headers={"Cache-Control":"public, max-age=86400"})
 
 
 @router.get("/help/")
@@ -474,6 +477,7 @@ class AppearanceConfig(BaseModel):
     show_orbits:bool=True
     show_idle_cards:bool=True
     orbit_speed:float=1.0
+    orbit_mode:str=Field(default="drift",max_length=10)
     orbit_line_width:float=1.15
     orbit_opacity:float=0.78
     orbit_glow:float=1.0
@@ -1643,3 +1647,4 @@ def user_enabled(body:UserEnabled,session=Depends(_ready)):
             user['pm_active']=True
         user['enabled']=body.enabled
     return {'saved':True,'enabled':body.enabled}
+

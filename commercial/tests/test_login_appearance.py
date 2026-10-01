@@ -70,3 +70,27 @@ def test_per_node_v4_overrides_are_bounded():
     assert item["opacity"] == 0.25
     assert item["card_side"] == "auto"
     assert item["label_mode"] == "inherit"
+
+
+def test_empty_elements_stay_empty():
+    assert appearance.normalize({'elements': []})['elements'] == []
+
+
+def test_external_svg_paint_is_rejected():
+    with pytest.raises(appearance.AppearanceError):
+        appearance.sanitize_svg('<svg><path fill="url(https://example.com/track)" d="M0 0"/></svg>')
+
+
+def test_nonfinite_settings_fall_back_to_default():
+    assert appearance.normalize({'orbit_speed': float('nan')})['orbit_speed'] == appearance.DEFAULT['orbit_speed']
+    assert appearance.normalize({'globe_scale': float('inf')})['globe_scale'] == appearance.DEFAULT['globe_scale']
+
+
+def test_orbit_mode_and_public_roundtrip(tmp_path,monkeypatch):
+    monkeypatch.setattr(appearance, 'PUBLIC_ROOT', tmp_path)
+    monkeypatch.setattr(appearance, 'PUBLIC_FILE', tmp_path/'appearance.json')
+    config=appearance.normalize({'orbit_mode':'static','elements':[]})
+    assert appearance.sync_public(config)
+    import json
+    assert json.loads((tmp_path/'appearance.json').read_text()) == config
+    assert appearance.normalize({'orbit_mode':'bad'})['orbit_mode'] == 'drift'
