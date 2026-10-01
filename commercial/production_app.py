@@ -637,6 +637,17 @@ def current_user(request:Request):
     try:
         license_data=entitlement(tenant_id=data["tenant_id"],company_name=data["company_name"])
     except ProductionLicenseDenied:
+        if godadmin:
+            return {"name":stored.get("name") or stored.get("username") or "GodAdmin",
+                    "username":stored.get("username"),
+                    "company":data.get("company_name") or "آوان",
+                    "role":"GodAdmin","department":"مدیریت سامانه",
+                    "csrf":session["csrf"],"subject":principal.subject,
+                    "modules":[1,3],"is_godadmin":True,"bootstrap_mode":False,
+                    "platform_access":True,"workspace_navigation":False,
+                    "workspace_access":False,"workspace_degraded":True,
+                    "bpms_sources":[],"source_navigation":False,
+                    "license_expires_at":None,"license_mode":"platform"}
         raise HTTPException(status_code=403,detail="لایسنس AVAN برای این سازمان معتبر نیست.")
 
     from .user_bpms_bindings import (
