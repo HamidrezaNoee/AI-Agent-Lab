@@ -580,39 +580,25 @@ def heartbeat(value=Depends(_csrf)):
 
 
 def _store_response(action, principal):
-    # A platform-only GodAdmin is not implicitly an organizational BPMS user.
-    # Reject before opening any ProcessMaker connection when no explicit
-    # source binding exists.
-    from .setup_console import is_godadmin
-    if is_godadmin(principal):
-        from .user_bpms_bindings import active_processmaker_source_id,binding_for
-        from .agent_storage import AgentStorageUnavailable
-        source_id=active_processmaker_source_id()
-        bound=False
-        if source_id:
-            try:
-                bound=bool(binding_for(principal.subject,source_id))
-            except AgentStorageUnavailable:
-                bound=False
-        if not bound:
-            raise HTTPException(status_code=403,
-                                detail="ProcessMaker به حساب AVAN این GodAdmin متصل نیست.")
-    try:
-        with open_production() as con:
-            scope=verified_scope(con,principal)
-            return action(con,scope)
-    except ProductionAccessDenied:
-        raise HTTPException(status_code=403,detail="مجوز مشاهده این اطلاعات وجود ندارد.")
-    except ProductionUnavailable:
-        raise HTTPException(status_code=503,detail="ارتباط امن با اطلاعات سازمان برقرار نیست.")
-    except HTTPException:
-        raise
-    except Exception:
-        # DB schema drift, driver exceptions or locale configuration errors
-        # must never echo SQL / identity / secrets back to the browser.
-        raise HTTPException(status_code=503,
-                            detail="داده‌های سازمانی قابل بازیابی نیستند؛ تنظیمات سرور بررسی شود.")
+    """Compatibility path for unscoped ProcessMaker endpoints.
 
+    AVAN never chooses a global/active BPMS for a user. These legacy endpoints
+    are available only when the signed AVAN account has exactly one active
+    ProcessMaker binding. Multi-BPMS users must use /api/sources/{source_id}/...
+    so the external identity is always explicit.
+    """
+    from .user_bpms_bindings import default_processmaker_source_id
+    from .agent_storage import AgentStorageUnavailable
+    try:
+        source_id=default_processmaker_source_id(principal.subject)
+    except AgentStorageUnavailable:
+        source_id=None
+    if not source_id:
+        raise HTTPException(
+            status_code=409,
+            detail="برای این حساب ProcessMaker یکتای پیش‌فرض وجود ندارد؛ BPMS موردنظر را انتخاب کنید."
+        )
+    return _source_store_response(source_id,action,principal)
 
 def _source_store_response(source_id, action, principal):
     """Execute a read only against the exact ProcessMaker source bound to the AVAN user."""
@@ -724,9 +710,7 @@ def current_user(request:Request):
         raise HTTPException(status_code=403,detail="لایسنس AVAN برای این سازمان معتبر نیست.")
 
     effective_modules=native_access.effective_modules(stored,license_data["modules"])
-    from .user_bpms_bindings import (
-        list_bindings,source_catalog,active_processmaker_source_id
-    )
+    from .user_bpms_bindings import list_bindings,source_catalog
     catalog={x["id"]:x for x in source_catalog()}
     active_bindings=[]
     for binding in list_bindings(principal.subject):
@@ -742,8 +726,10 @@ def current_user(request:Request):
             "capabilities":_source_capabilities(source,effective_modules),
         })
 
-    active_pm=active_processmaker_source_id()
-    pm_bound=any(b["source_id"]==active_pm for b in active_bindings) if active_pm else False
+    processmaker_bindings=[b for b in active_bindings if b.get("engine")=="processmaker"]
+    # Old generic workspace routes remain only for the unambiguous one-PM case.
+    # With multiple BPMS bindings, navigation is entirely source-specific.
+    legacy_workspace=len(processmaker_bindings)==1
 
     return {"name":stored.get("name") or stored.get("username") or principal.subject,
             "username":stored.get("username"),
@@ -755,9 +741,9 @@ def current_user(request:Request):
             "license_mode":license_data.get("mode","licensed"),
             "is_godadmin":godadmin,"bootstrap_mode":False,
             "platform_access":godadmin,
-            "workspace_navigation":pm_bound,
-            "workspace_access":pm_bound,
-            "workspace_degraded":not pm_bound,
+            "workspace_navigation":legacy_workspace,
+            "workspace_access":bool(active_bindings),
+            "workspace_degraded":not bool(active_bindings),
             "bpms_sources":active_bindings,
             "source_navigation":bool(active_bindings)}
 
