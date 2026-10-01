@@ -232,30 +232,22 @@ def approve_employee(
 
 
 def refresh_employee_statuses() -> dict:
-    """Conservative, full-snapshot PM reconciliation initiated by GodAdmin.
-
-    Refresh verification time for currently approved ACTIVE accounts. Any PM
-    user removed/deactivated since the last COMPLETE read-only snapshot is
-    disabled in AVAN immediately. Never auto-reactivate a disabled account.
-    A failed/incomplete PM API call cannot alter any database user.
-    """
-    directory = {u.pm_uid: u for u in _directory()}
-    refreshed = 0
-    disabled = 0
-    with native_access.edit() as data:
-        for user in data["users"]:
-            active = directory.get(user["pm_uid"])
-            if active is not None and active.status == "ACTIVE":
-                if user["enabled"]:
-                    user["pm_active"] = True
-                    refreshed += 1
-            elif user["enabled"] or user["pm_active"]:
-                user["enabled"] = False
-                user["pm_active"] = False
-                disabled += 1
-    setup.audit("PM_STATUS_RECONCILED")
+    """Compatibility endpoint: refresh PM bindings, never AVAN account status."""
+    from .user_bpms_bindings import (
+        active_processmaker_source_id, refresh_source, BindingError
+    )
+    source_id=active_processmaker_source_id()
+    if not source_id:
+        raise ProvisioningDenied("No active ProcessMaker source")
+    try:
+        result=refresh_source(source_id)
+    except BindingError as exc:
+        raise ProvisioningDenied(str(exc)) from exc
+    setup.audit("PM_BINDINGS_RECONCILED")
     return {
-        "refreshed_active_users": refreshed,
-        "disabled_unverified_users": disabled,
-        "source": "complete_read_only_processmaker_directory",
+        "refreshed_active_users":result["active_bindings"],
+        "disabled_unverified_users":0,
+        "stale_bindings":result["stale_bindings"],
+        "directory_users":result["directory_users"],
+        "source":"per_source_bpms_binding_directory",
     }
