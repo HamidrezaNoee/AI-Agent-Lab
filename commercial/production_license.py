@@ -35,7 +35,8 @@ def _evaluation_entitlement(tenant_id, company_name, active_users):
             'license_id': 'LOCAL-EVALUATION', 'mode': 'local_evaluation'}
 
 
-def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
+def entitlement(*, tenant_id: str, company_name: str) -> dict:
+    """Verify AVAN entitlement without requiring any BPMS connection."""
     if local_evaluation_enabled():
         from .native_access import seats
         return _evaluation_entitlement(tenant_id, company_name, seats(tenant_id))
@@ -67,7 +68,13 @@ def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
         "active_users":used,
         "expires_at":payload["expires_at"],
         "license_id":payload["license_id"],
+        "mode":"licensed",
     }
+
+
+def signed_entitlement(con, *, tenant_id: str, company_name: str) -> dict:
+    # Backward-compatible call site; entitlement is AVAN-native and BPMS-independent.
+    return entitlement(tenant_id=tenant_id,company_name=company_name)
 
 
 
