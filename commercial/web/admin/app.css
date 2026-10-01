@@ -624,3 +624,34 @@ body.avan-admin .help-launch:hover{background:rgba(220,157,37,.15);border-color:
  .organization-card-head{flex-direction:column}
  .organization-badges{justify-content:flex-start}
 }
+
+
+/* Identity and login management. */
+.identity-status-grid{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:10px;margin:14px 0 18px}
+.identity-status-card{display:grid;gap:6px;padding:13px 14px;border:1px solid var(--line,var(--border));border-radius:12px;background:var(--surface-soft,#f7fafc)}
+.identity-status-card span{font-size:11px;color:var(--muted,#6b7f91)}
+.identity-status-card strong{font-size:13px;color:var(--ink,#183751);overflow-wrap:anywhere}
+.identity-status-card.is-ok{border-color:rgba(33,194,163,.45)}
+.identity-status-card.is-bad{border-color:rgba(224,93,93,.45)}
+.identity-kv{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line,var(--border))}
+.identity-kv:last-child{border-bottom:0}
+.identity-kv>span{font-size:11px;color:var(--muted,#6b7f91)}
+.identity-kv code,.identity-kv strong{overflow-wrap:anywhere;color:var(--ink,#183751)}
+.identity-bound-summary{display:grid;gap:2px;margin:8px 0 12px}
+.identity-candidate{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,.9fr);gap:16px;align-items:start;padding:13px 0;border-bottom:1px solid var(--line,var(--border))}
+.identity-candidate:last-child{border-bottom:0}
+.identity-candidate>div:first-child{display:grid;gap:5px}
+.identity-bind-action{display:grid;grid-template-columns:minmax(150px,1fr) auto;gap:8px;align-items:end}
+.identity-bind-action>div:last-child{grid-column:1/-1}
+.identity-rule-flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+.identity-rule-flow span{padding:7px 10px;border:1px solid var(--line,var(--border));border-radius:999px;background:var(--surface-soft,#f7fafc);font-size:11px;font-weight:800;color:var(--ink,#183751)}
+.identity-rule-flow b{color:var(--accent,var(--teal))}
+@media(max-width:900px){
+ .identity-status-grid{grid-template-columns:repeat(2,minmax(130px,1fr))}
+ .identity-candidate{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+ .identity-status-grid{grid-template-columns:1fr}
+ .identity-kv{grid-template-columns:1fr;gap:4px}
+ .identity-bind-action{grid-template-columns:1fr}
+}
