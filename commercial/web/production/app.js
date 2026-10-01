@@ -51,7 +51,7 @@ function statusName(value){return {TO_DO:"در جریان",COMPLETED:"تکمیل
 function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم",GodAdmin:"مدیر کل سامانه"}[role]||role}
 function setupUser(user){
  app.user=user;app.csrf=user.csrf;$("nav").hidden=false;
- const workspaceNavigation=user.workspace_navigation!==undefined?!!user.workspace_navigation:!!user.workspace_access;
+ const workspaceNavigation=(user.bpms_sources||[]).length>0;
  $("pm-nav").hidden=!workspaceNavigation;
  $("platform-nav").hidden=!(user.is_godadmin&&user.platform_access!==false);
  $("admin-nav").hidden=!user.is_godadmin;
@@ -168,20 +168,35 @@ async function fetchMeetings(cursor=null){
  return request(url);
 }
 async function overview(){
- const page=await fetchMeetings();if(app.page!=="overview")return;
- const m=root();heading(m,"فضای کاری "+app.user.name,
-  "اطلاعات ثبت‌شده در فرایند جلسات، متناسب با نقش و ارتباط سازمانی شما نمایش داده می‌شود.");
- if(page.has_more)add(m,note("فهرست کامل جلسات بیش از ۳۰ مورد است؛ برای بررسی همه جلسات از صفحه جلسات و مصوبات استفاده کنید."));
+ const m=root();if(app.page!=="overview")return;
+ const sources=app.user?.bpms_sources||[];
+ heading(m,"فضای کاری "+app.user.name,
+  "حساب و نقش شما در AVAN مستقل از BPMSهاست. برای داده و ابزار عملیاتی، BPMS متصل را انتخاب کنید.");
  const stats=el("div","stats");
- for(const [label,value] of [["جلسات بارگذاری‌شده",page.meetings.length],
-   ["سطح دسترسی",titleCase(app.user.role)],["واحد سازمانی",app.user.department||"ثبت نشده"]]){
-  add(stats,add(el("div","stat"),el("span","",label),el("strong","",value)));
- }
+ for(const [label,value] of [
+  ["BPMSهای متصل",fmt(sources.length)],
+  ["سطح دسترسی AVAN",titleCase(app.user.role)],
+  ["واحد سازمانی",app.user.department||"ثبت نشده"]
+ ])add(stats,add(el("div","stat"),el("span","",label),el("strong","",value)));
  add(m,stats);
- const panel=card("جلسات اخیر","جلسات قابل مشاهده براساس هویت فعلی");
- for(const meeting of page.meetings.slice(0,8))add(panel,meetingRow(meeting));
- if(!page.meetings.length)add(panel,el("p","muted","جلسه‌ای در دامنه مجاز این حساب یافت نشد."));
- add(m,panel,link("پرسش تخصصی درباره جلسات",()=>select("assistant"),"button primary"));
+ const panel=card("BPMSهای در دسترس","هر اتصال با کاربر متناظر همان BPMS و قابلیت‌های مجاز خودش نمایش داده می‌شود.");
+ if(!sources.length){
+  add(panel,note("هنوز BPMS فعالی به این حساب AVAN متصل نشده است."));
+ }else{
+  for(const source of sources){
+   const row=el("div","meeting-row"),details=el("div");
+   const capabilities=(source.capabilities||[]).filter(x=>x!=="overview").length;
+   add(details,el("strong","",source.source_name),
+    el("small","",(source.engine||"BPMS")+" · کاربر: "+
+     (source.external_display_name||source.external_username||source.external_user_id||"—")+
+     " · "+fmt(capabilities)+" قابلیت عملیاتی"));
+   add(row,details,link("ورود به این BPMS",()=>{
+    app.selectedSourceId=source.source_id;select("source-overview")
+   },"button primary"));
+   add(panel,row);
+  }
+ }
+ add(m,panel);
 }
 function meetingRow(meeting){
  const row=el("div","meeting-row"),details=el("div");
@@ -270,7 +285,7 @@ async function askQuestion(question,sourceId=null){
 async function init(){
  try{
   const user=await request("/api/me");setupUser(user);
-  const workspaceNavigation=user.workspace_navigation!==undefined?!!user.workspace_navigation:!!user.workspace_access;
+  const workspaceNavigation=(user.bpms_sources||[]).length>0;
   if(user.bootstrap_mode){select("system-management");return}
   if(workspaceNavigation){select("overview");return}
   if((user.bpms_sources||[]).length){
