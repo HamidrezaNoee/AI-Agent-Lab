@@ -170,3 +170,38 @@ binding to the corresponding ProcessMaker source, not treated as the AVAN identi
 
 The AVAN account form and BPMS-binding form must remain visually and logically
 separate.
+
+
+## Implementation status — 2026-10-01
+
+Implemented on `feature/pm-native-agent-store-20260922`:
+
+- AVAN account creation/approval is independent from BPMS user creation.
+- `UserBpmsBinding` storage, suggestion, manual override, refresh/stale handling,
+  unbind and legacy migration are implemented.
+- "سازمان و دسترسی" exposes a separate binding editor per AVAN user and per BPMS.
+- ProcessMaker and AVAN REST v1 directory adapters provide read-only external users.
+- Runtime ProcessMaker authorization is explicit-binding-only. Legacy `pm_uid` and
+  `manager_pm_uid` fields are not accepted as authorization evidence.
+- Legacy single-ProcessMaker user-sync admin endpoints return HTTP 410.
+- `/api/me` exposes only active bindings and server-derived capabilities.
+- Navigation is grouped per bound BPMS. The AVAN home is BPMS-neutral; operational
+  menus live under the corresponding BPMS source.
+- ProcessMaker per-source routes currently cover meetings, assistant/conversations,
+  secretary drafts, reports/CSV, BI, voice and monitoring according to licensed
+  modules.
+- Agent conversation scope stamps include `source_id` and `external_user_id`.
+- Drafts, alerts, monitor baselines and conversation indexes are isolated by BPMS
+  source as well as tenant/user.
+- Monitoring uses one rotating delegated AVAN credential with independent
+  per-source subscriptions, avoiding competing refresh-token rotation.
+- Generic external BPMS adapters remain conservative: a directory binding grants
+  only source overview until a user-scoped operational contract exists for that
+  capability.
+
+### Compatibility boundary
+
+Legacy `pm_uid` may still be read by the one-time migration function solely to
+create an explicit binding for the former ProcessMaker source. It must not be used
+by authorization, menu visibility, Agent scope, reports or monitoring after
+migration.
