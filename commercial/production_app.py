@@ -741,9 +741,6 @@ def current_user(request:Request):
 
     active_pm=active_processmaker_source_id()
     pm_bound=any(b["source_id"]==active_pm for b in active_bindings) if active_pm else False
-    # Backward compatibility until every pre-ADR installation has migrated.
-    if not pm_bound and active_pm and stored.get("pm_uid"):
-        pm_bound=True
 
     return {"name":stored.get("name") or stored.get("username") or principal.subject,
             "username":stored.get("username"),
