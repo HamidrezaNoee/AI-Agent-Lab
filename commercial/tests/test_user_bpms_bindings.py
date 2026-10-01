@@ -1,0 +1,117 @@
+"""Regression tests for ADR-001: AVAN identity is independent from BPMS identity."""
+from contextlib import contextmanager
+from unittest.mock import patch
+
+import pytest
+
+from commercial import bpms_registry, production_onboarding, user_bpms_bindings
+
+
+TENANT="168418b2-8fa6-4414-a37f-83c9a26da332"
+SOURCE="a"*24
+
+
+def test_username_match_is_suggestion_not_binding():
+    avan={"subject":"sub-1","username":"amin.t","email":"amin@example.org",
+          "name":"Amin Test","enabled":True}
+    directory=[
+        {"external_user_id":"1","username":"amin.t","display_name":"Amin Test",
+         "email":"other@example.org","status":"ACTIVE","active":True,"unit":""},
+        {"external_user_id":"2","username":"ali.j","display_name":"Ali J",
+         "email":"amin@example.org","status":"ACTIVE","active":True,"unit":""},
+    ]
+    with patch.object(user_bpms_bindings,"_avan_user",return_value=({"tenant_id":TENANT},avan)),\
+         patch.object(user_bpms_bindings,"_source",return_value={
+             "id":SOURCE,"name":"PM 1","engine":"processmaker",
+             "connection_type":"processmaker","enabled":True,"active":True}),\
+         patch.object(user_bpms_bindings,"directory_users",return_value=directory):
+        result=user_bpms_bindings.suggestions("sub-1",SOURCE)
+    assert result["suggestions"][0]["external_user_id"]=="1"
+    assert result["suggestions"][0]["reason"]=="username_exact"
+    # Suggestion has no persistence side effect.
+    assert "binding" not in result
+
+
+class FakeTx:
+    def __init__(self,state):
+        self.store={"bpms_user_bindings":state}
+        self.audits=[]
+    def get(self,key,default,lock=False):
+        return self.store.get(key,default)
+    def put(self,key,value):
+        self.store[key]=value
+    def audit(self,*args):
+        self.audits.append(args)
+
+
+def test_admin_can_bind_avan_username_to_different_bpms_username():
+    tx=FakeTx({"version":1,"bindings":[]})
+    @contextmanager
+    def transaction():
+        yield tx
+    avan={"subject":"sub-1","username":"amin.t","email":"amin@example.org",
+          "name":"Amin Test","enabled":True}
+    external={"external_user_id":"pm-ali","username":"ali.j","display_name":"Ali J",
+              "email":"ali@example.org","status":"ACTIVE","active":True,"unit":"Sales"}
+    source={"id":SOURCE,"name":"PM 1","engine":"processmaker",
+            "connection_type":"processmaker","enabled":True,"active":True}
+    with patch.object(user_bpms_bindings,"_avan_user",
+                      return_value=({"tenant_id":TENANT},avan)),\
+         patch.object(user_bpms_bindings,"_source",return_value=source),\
+         patch.object(user_bpms_bindings,"directory_users",return_value=[external]),\
+         patch.object(user_bpms_bindings.agent_storage,"transaction",transaction),\
+         patch.object(user_bpms_bindings.setup,"audit"):
+        saved=user_bpms_bindings.bind(
+            subject="sub-1",source_id=SOURCE,external_user_id="pm-ali",
+            match_method="manual")
+    assert saved["external_username"]=="ali.j"
+    assert saved["avan_subject"]=="sub-1"
+    assert saved["match_method"]=="manual"
+    assert tx.store["bpms_user_bindings"]["bindings"][0]["external_user_id"]=="pm-ali"
+
+
+def test_adapter_directory_contract_is_tenant_scoped():
+    source={"id":SOURCE,"name":"External","kind":"avan-rest-v1","engine":"camunda",
+            "base_url":"https://bpms.example.org","bearer_token":"0123456789-secret",
+            "enabled":True}
+    payload={"schema_version":1,"tenant_id":TENANT,
+             "as_of_utc":"2026-10-01T12:00:00Z",
+             "users":[{"external_user_id":"u1","username":"amin.t",
+                       "display_name":"Amin Test","email":"amin@example.org",
+                       "status":"ACTIVE","active":True,"unit":"Sales"}]}
+    with patch.object(bpms_registry,"_all",return_value=[source]),\
+         patch.object(bpms_registry.setup,"get_setting",
+                      side_effect={"company":{"tenant_id":TENANT}}.get),\
+         patch.object(bpms_registry,"_request",return_value=payload) as request:
+        users=bpms_registry.directory_users(SOURCE)
+    assert users[0]["username"]=="amin.t"
+    assert request.call_args.args[1]=="/avan/v1/directory/users"
+
+    payload["tenant_id"]="different"
+    with patch.object(bpms_registry,"_all",return_value=[source]),\
+         patch.object(bpms_registry.setup,"get_setting",
+                      side_effect={"company":{"tenant_id":TENANT}}.get),\
+         patch.object(bpms_registry,"_request",return_value=payload):
+        with pytest.raises(bpms_registry.BPMSUnavailable):
+            bpms_registry.directory_users(SOURCE)
+
+
+def test_avan_account_approval_does_not_require_bpms_user():
+    state={"tenant_id":None,"company_name":None,"users":[]}
+    @contextmanager
+    def edit():
+        yield state
+    pending={"tenant_id":TENANT,"subject":"sub-1","username":"amin.t",
+             "name":"Amin Test","email":"amin@example.org",
+             "email_verified":True,"roles":["Expert"]}
+    with patch.object(production_onboarding,"find_pending",return_value=pending),\
+         patch.object(production_onboarding.native_access,"edit",edit),\
+         patch("commercial.production_license.capacity",return_value={"max_users":10}),\
+         patch.object(production_onboarding,"finish_pending"),\
+         patch.object(production_onboarding.setup,"audit"):
+        result=production_onboarding.approve_avan_user(
+            tenant_id=TENANT,subject="sub-1",company_name="ACME",
+            role="Expert",department_name="Sales",manager_subject=None)
+    assert result["approved"] is True
+    assert state["users"][0]["username"]=="amin.t"
+    assert state["users"][0]["pm_uid"] is None
