@@ -974,91 +974,222 @@ async function renderLicense(m,settings){
    "کاربران فعال: "+status.active_users+" از "+status.max_users+" · ظرفیت باقی‌مانده: "+status.remaining_seats+" · اعتبار: "+(status.remaining_days===null?"بدون انقضا":status.remaining_days+" روز")+" · پایان: "+(status.expires_at||"بدون انقضا")));else append(p,info(status.reason,true))}catch(e){append(p,info(e.message,true))}
 }
 async function renderUsers(m){
- const p=panel("کاربران و سازمان",
-   "تنها حسابی قابل اتصال است که قبلاً با هویت امضاشده وارد آوان شده، ایمیل تأییدشده آن با کاربر فعال ProcessMaker مطابقت دارد و GodAdmin ارتباط را تصویب کند.");
+ const p=panel("سازمان و دسترسی",
+  "حساب و نقش AVAN مستقل از حساب‌های BPMS است. برای هر کاربر می‌توانید به‌صورت جداگانه کاربر متناظر هر BPMS را انتخاب کنید؛ تطبیق نام کاربری یا ایمیل فقط پیشنهاد است و بدون تأیید مدیر دسترسی ایجاد نمی‌کند.");
  append(m,p);
- const refresh=btn("به‌روزرسانی درخواست‌های دسترسی",()=>showSettings("users"),"secondary");
- append(p,refresh);
- const syncResult=node("div");
- append(p,btn("تازه‌سازی وضعیت کاربران از ProcessMaker",async()=>{
-   syncResult.replaceChildren();
-   if(!confirm("فهرست کامل کاربران ProcessMaker دریافت شود و دسترسی کاربران غیرفعال/حذف‌شده در آوان مسدود گردد؟"))return;
+
+ const toolbar=node("div","actions"),feedback=node("div");
+ append(toolbar,
+  btn("به‌روزرسانی",()=>showSettings("users"),"secondary"),
+  btn("انتقال ارتباطات قدیمی ProcessMaker",async()=>{
+   feedback.replaceChildren();
    try{
-     const r=await api("processmaker/refresh-users",{});
-     append(syncResult,info("کاربران فعال بازبینی‌شده: "+r.refreshed_active_users+
-         " · حساب‌های غیرفعال‌شده: "+r.disabled_unverified_users));
-   }catch(err){showError(syncResult,err)}
- },"secondary"),syncResult);
- try{const mapped=await api("users/mapped");const list=panel("حساب‌های ثبت‌شده","کاربر غیرفعال از ظرفیت لایسنس خارج می‌شود و دسترسی اطلاعات ندارد.");
- for(const u of mapped.users){const row=node("div","actions");append(row,node("span","",(u.name||u.subject)+" · "+u.role+" · "+(u.enabled?"فعال":"غیرفعال")),btn(u.enabled?"غیرفعال‌کردن":"فعال‌کردن",async()=>{try{await api("users/enabled",{subject:u.subject,enabled:!u.enabled});await showSettings("users")}catch(e){showError(syncResult,e)}}));append(list,row)}append(p,list)}catch(e){append(p,info(e.message,true))}
- let pending=[];
+    const r=await api("user-bindings/migrate-legacy",{});
+    append(feedback,info("انتقال قدیمی: "+r.migrated+" ارتباط منتقل شد · "+r.skipped+" مورد نیازمند بررسی است."));
+    await showSettings("users");
+   }catch(err){showError(feedback,err)}
+  },"secondary"));
+ append(p,toolbar,feedback);
+
+ let mapped=[],sources=[];
  try{
-   const response=await api("users/pending");
-   pending=response.pending||[];
- }catch(err){append(p,info(err.message,true));return}
- if(!pending.length){
-   append(p,info("درخواست تأییدشده‌ای در انتظار ثبت نیست. شخص موردنظر باید یک‌بار از فضای کاری آوان با حساب هویت سازمانی خود وارد شود تا درخواست او اینجا ظاهر شود."));
- }
- const link=node("a","visit","باز کردن ورود سازمانی در برگه جدید");
- link.href="/auth/login";link.target="_blank";link.rel="noopener noreferrer";
- append(p,link);
- let users=[];
- try{
-   users=(await api("processmaker/users")).users||[];
+  const [usersResult,sourceResult]=await Promise.all([
+   api("users/mapped"),api("user-bindings/sources")
+  ]);
+  mapped=usersResult.users||[];
+  sources=sourceResult.sources||[];
  }catch(err){
-   append(p,info("فهرست کاربران ProcessMaker در دسترس نیست. ابتدا تنظیمات آن بخش را ثبت و بررسی کن.",true));
-   return;
+  append(p,info("اطلاعات کاربران یا BPMSها قابل دریافت نیست: "+(err?.message||String(err)),true));
+  return;
  }
- for(const account of pending){
-   const section=panel("درخواست "+account.name,
-      "زمان ورود: "+account.seen_at_utc+" · شناسه سازمان: "+account.tenant_id);
-   append(section,node("p","hint","حساب امضاشده: "+account.subject+
-      " · ایمیل تأییدشده: "+(account.email_verified?account.email||"ثبت نشده":"خیر")+
-      " · نقش‌های امضاشده: "+(account.roles||[]).join("، ")));
-   const form=node("form","grid");
-   append(form,field("نام حقوقی سازمان (مطابق لایسنس)","company_name",""));
-   const pmLabel=node("label","full","کاربر فعال ProcessMaker");
-   const select=node("select");select.name="pm_uid";
-   const placeholder=node("option","","انتخاب کاربر با ایمیل برابر");placeholder.value="";
-   append(select,placeholder);
-   for(const user of users){
-     if(!user.email||!account.email_verified||!account.email||
-        user.email.toLowerCase()!==account.email.toLowerCase())continue;
-     const opt=node("option","",user.name+" · "+user.email+" · "+user.pm_uid);
-     opt.value=user.pm_uid;append(select,opt);
+
+ const accounts=panel("کاربران AVAN",
+  "فعال/غیرفعال‌بودن حساب AVAN به BPMS وابسته نیست. اتصال‌های BPMS فقط دامنه داده و قابلیت‌های همان منبع را تعیین می‌کنند.");
+ append(p,accounts);
+ if(!mapped.length)append(accounts,info("هنوز کاربر AVAN تأییدشده‌ای ثبت نشده است."));
+
+ const reasonLabel=reason=>({
+  username_exact:"نام کاربری یکسان",
+  email_exact:"ایمیل تأییدشده یکسان",
+  display_name_similar:"نام مشابه"
+ }[reason]||"پیشنهاد سیستم");
+
+ async function renderBindingEditor(host,user,source,current){
+  host.replaceChildren(info("در حال خواندن فهرست کاربران «"+source.name+"»…"));
+  try{
+   const data=await api("user-bindings/directory?subject="+encodeURIComponent(user.subject)+
+                        "&source_id="+encodeURIComponent(source.id));
+   host.replaceChildren();
+   const suggestions=data.suggestions||[],users=(data.users||[]).filter(x=>x.active);
+   if(suggestions.length){
+    const suggestion=panel("پیشنهاد آوان",
+      "این پیشنهاد فقط برای کمک به مدیر است و به‌صورت خودکار Binding ایجاد نمی‌کند.");
+    for(const candidate of suggestions.slice(0,3)){
+     const row=node("div","binding-suggestion");
+     append(row,
+      node("strong","",candidate.display_name+" · "+candidate.username),
+      node("span","hint",reasonLabel(candidate.reason)+" · امتیاز "+candidate.score),
+      btn("انتخاب این کاربر",()=>{
+       const select=host.querySelector("select[name=external_user_id]");
+       if(select){select.value=candidate.external_user_id;select.dataset.suggestedReason=candidate.reason}
+      },"secondary"));
+     append(suggestion,row);
+    }
+    append(host,suggestion);
    }
-   append(pmLabel,select);append(form,pmLabel);
-   const roleLabel=node("label","","نقش سازمانی");
-   const roleSelect=node("select");roleSelect.name="role";
-   for(const [value,label] of [["Expert","کارشناس"],["Manager","مدیر"],["SysAdmin","مدیر سیستم"]]){
-     if(value==="SysAdmin" && !(account.roles||[]).includes("SysAdmin"))continue;
-     const opt=node("option","",label);opt.value=value;append(roleSelect,opt);
+   const form=node("form","grid binding-editor");
+   const label=node("label","full","کاربر متناظر در "+source.name);
+   const select=node("select");select.name="external_user_id";
+   const empty=node("option","",users.length?"انتخاب کاربر BPMS":"کاربر فعال در این BPMS یافت نشد");
+   empty.value="";append(select,empty);
+   for(const ext of users){
+    const suffix=[ext.email,ext.unit].filter(Boolean).join(" · ");
+    const opt=node("option","",ext.display_name+" · "+ext.username+(suffix?" · "+suffix:""));
+    opt.value=ext.external_user_id;append(select,opt);
    }
-   append(roleLabel,roleSelect);
-   append(form,roleLabel,
-     field("نام واحد سازمانی تأییدشده","department_name","",{required:false}),
-     field("شناسه PM مدیر مستقیم (در صورت وجود)","manager_pm_uid","",
-       {required:false}));
-   const result=node("div","full");
-   const submit=node("button","","تأیید و اتصال امن کاربر");submit.type="submit";
-   append(form,submit,result);
-   form.addEventListener("submit",async e=>{
-     e.preventDefault();busy(form,true);result.replaceChildren();
+   if(current&&users.some(x=>x.external_user_id===current.external_user_id)){
+    select.value=current.external_user_id;
+   }else if(suggestions[0]){
+    select.value=suggestions[0].external_user_id;
+    select.dataset.suggestedReason=suggestions[0].reason;
+   }
+   append(label,select);append(form,label);
+   const out=node("div","full");
+   append(form,
+    btn(current?"ذخیره تغییر اتصال":"اتصال کاربر",async()=>{
+     out.replaceChildren();
+     const external=select.value;if(!external){showError(out,Error("یک کاربر BPMS انتخاب کنید."));return}
+     const suggested=suggestions.find(x=>x.external_user_id===external);
+     const method=suggested?
+       (suggested.reason==="username_exact"?"username_suggestion":
+        suggested.reason==="email_exact"?"email_suggestion":
+        "display_name_suggestion"):"manual";
      try{
-       const mapped=await api("users/approve",{
-         tenant_id:account.tenant_id,subject:account.subject,
-         company_name:formValue(form,"company_name"),
-         pm_uid:formValue(form,"pm_uid"),
-         role:formValue(form,"role"),
-         manager_pm_uid:formValue(form,"manager_pm_uid")||null,
-         department_name:formValue(form,"department_name")||null
-       });
-       append(result,info("کاربر "+mapped.name+" به سازمان "+mapped.company_name+
-           " متصل شد. برای استفاده از ماژول‌های سازمان، لایسنس امضاشده نیز لازم است."));
-       await showSettings("users");
-     }catch(err){showError(result,err)}finally{busy(form,false)}
-   });
-   append(section,form);append(p,section);
+      await api("user-bindings/bind",{
+       subject:user.subject,source_id:source.id,
+       external_user_id:external,match_method:method
+      });
+      append(out,info("اتصال ذخیره شد."));
+      await showSettings("users");
+     }catch(err){showError(out,err)}
+    }),
+    btn("انصراف",()=>host.replaceChildren(),"secondary"),out);
+   append(host,form);
+  }catch(err){host.replaceChildren();showError(host,err)}
+ }
+
+ for(const user of mapped){
+  const card=panel((user.name||user.username||user.subject),
+   "AVAN: "+(user.username||"نام کاربری ثبت نشده")+" · نقش "+(user.role||"—")+
+   " · "+(user.enabled?"فعال":"غیرفعال"));
+  card.classList.add("avan-user-card");
+  const identity=node("div","user-identity-summary");
+  append(identity,
+   node("span","hint","Subject: "+user.subject),
+   node("span","hint","ایمیل: "+(user.email||"ثبت نشده")),
+   node("span","hint","واحد: "+(user.department_name||"ثبت نشده")));
+  append(card,identity);
+  const accountActions=node("div","actions");
+  append(accountActions,btn(user.enabled?"غیرفعال‌کردن حساب AVAN":"فعال‌کردن حساب AVAN",async()=>{
+   try{await api("users/enabled",{subject:user.subject,enabled:!user.enabled});await showSettings("users")}
+   catch(err){showError(feedback,err)}
+  },user.enabled?"secondary":""));
+  append(card,accountActions);
+
+  const bindingTitle=node("div","section-head"),bindingHost=node("div","bpms-binding-list");
+  append(bindingTitle,node("h3","","اتصال به BPMSها"),
+   node("span","hint","هر BPMS یک Binding مستقل دارد."));
+  append(card,bindingTitle,bindingHost);
+  let existing=[];
+  try{existing=(await api("user-bindings/list?subject="+encodeURIComponent(user.subject))).bindings||[]}
+  catch(err){append(bindingHost,info(err.message,true));append(accounts,card);continue}
+
+  for(const source of sources){
+   const current=existing.find(x=>x.source_id===source.id);
+   const row=node("div","bpms-binding-card"),head=node("div","connection-card-head");
+   const text=node("div","connection-info");
+   append(text,node("strong","",source.name),
+    node("p","hint",(source.engine||source.connection_type)+" · "+
+      (current
+       ?("متصل به "+(current.external_display_name||current.external_username||current.external_user_id)+
+         " · "+(current.status==="active"?"فعال":"نیازمند بازبینی"))
+       :"بدون اتصال")));
+   const badge=node("span","connection-pill"+(current?.status==="active"?" is-active":""),
+    current?(current.status==="active"?"متصل":"نیازمند بررسی"):"بدون اتصال");
+   append(head,text,badge);append(row,head);
+   const actions=node("div","connection-actions"),editor=node("div","binding-inline-editor");
+   append(actions,
+    btn(current?"تغییر کاربر BPMS":"انتخاب کاربر BPMS",
+      ()=>renderBindingEditor(editor,user,source,current),"secondary"),
+    btn("همگام‌سازی",async()=>{
+     editor.replaceChildren();
+     try{
+      const r=await api("user-bindings/refresh",{source_id:source.id});
+      append(editor,info("دایرکتوری "+r.directory_users+" کاربر · Binding فعال "+r.active_bindings+
+       " · نیازمند بررسی "+r.stale_bindings));
+     }catch(err){showError(editor,err)}
+    },"secondary"));
+   if(current)append(actions,btn("قطع اتصال",async()=>{
+    if(!confirm("اتصال این کاربر AVAN به «"+source.name+"» قطع شود؟"))return;
+    try{await api("user-bindings/unbind",{subject:user.subject,source_id:source.id});await showSettings("users")}
+    catch(err){showError(editor,err)}
+   },"secondary danger"));
+   append(row,actions,editor);append(bindingHost,row);
+  }
+  if(!sources.length)append(bindingHost,info("هنوز BPMS ثبت نشده است. ابتدا از تب «اتصالات BPMS» یک اتصال ایجاد کنید."));
+  append(accounts,card);
+ }
+
+ const pendingPanel=panel("درخواست‌های تأیید حساب AVAN",
+  "در این مرحله فقط خود حساب، نقش و ساختار سازمانی AVAN تأیید می‌شود. اتصال به BPMS بعد از ایجاد حساب و به‌صورت مستقل انجام می‌شود.");
+ append(p,pendingPanel);
+ let pending=[];
+ try{pending=(await api("users/pending")).pending||[]}
+ catch(err){append(pendingPanel,info(err.message,true));return}
+ if(!pending.length)append(pendingPanel,info("درخواستی در انتظار تأیید نیست."));
+ const loginLink=node("a","visit","باز کردن ورود سازمانی در برگه جدید");
+ loginLink.href="/auth/login";loginLink.target="_blank";loginLink.rel="noopener noreferrer";
+ append(pendingPanel,loginLink);
+
+ for(const account of pending){
+  const section=panel("درخواست "+(account.name||account.username||account.subject),
+   "نام کاربری AVAN: "+(account.username||"ثبت نشده")+" · زمان ورود: "+account.seen_at_utc);
+  append(section,node("p","hint","ایمیل تأییدشده: "+
+    (account.email_verified?account.email||"ثبت نشده":"خیر")+
+    " · نقش‌های هویتی: "+(account.roles||[]).join("، ")));
+  const form=node("form","grid");
+  append(form,field("نام حقوقی سازمان (مطابق لایسنس)","company_name",""));
+  const roleLabel=node("label","","نقش AVAN"),roleSelect=node("select");roleSelect.name="role";
+  for(const [value,label] of [["Expert","کارشناس"],["Manager","مدیر"],["SysAdmin","مدیر سیستم"]]){
+   if(value==="SysAdmin"&&!(account.roles||[]).includes("SysAdmin"))continue;
+   const opt=node("option","",label);opt.value=value;append(roleSelect,opt);
+  }
+  append(roleLabel,roleSelect);append(form,roleLabel,
+   field("نام واحد سازمانی","department_name","",{required:false}));
+  const managerLabel=node("label","","مدیر مستقیم در AVAN"),manager=node("select");manager.name="manager_subject";
+  const none=node("option","","بدون مدیر مستقیم");none.value="";append(manager,none);
+  for(const candidate of mapped.filter(x=>x.enabled)){
+   const opt=node("option","",candidate.name||candidate.username||candidate.subject);
+   opt.value=candidate.subject;append(manager,opt);
+  }
+  append(managerLabel,manager);append(form,managerLabel);
+  const result=node("div","full"),submit=node("button","","تأیید حساب AVAN");submit.type="submit";
+  append(form,submit,result);
+  form.addEventListener("submit",async e=>{
+   e.preventDefault();busy(form,true);result.replaceChildren();
+   try{
+    const approved=await api("users/approve",{
+     tenant_id:account.tenant_id,subject:account.subject,
+     company_name:formValue(form,"company_name"),
+     role:formValue(form,"role"),
+     manager_subject:formValue(form,"manager_subject")||null,
+     department_name:formValue(form,"department_name")||null
+    });
+    append(result,info("حساب AVAN برای "+approved.name+" ساخته شد. اکنون از بخش «اتصال به BPMSها» کاربر متناظر هر BPMS را تعیین کنید."));
+    await showSettings("users");
+   }catch(err){showError(result,err)}finally{busy(form,false)}
+  });
+  append(section,form);append(pendingPanel,section);
  }
 }
 async function renderBPMS(m){
