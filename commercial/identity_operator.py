@@ -1,4 +1,4 @@
-"""Host operator creates a NEW, PM-verified identity. No app data access is granted."""
+"""Host operator creates a NEW AVAN identity. BPMS bindings are separate."""
 
 import argparse
 import getpass
@@ -9,7 +9,6 @@ from urllib.parse import urlsplit
 from uuid import UUID
 import httpx
 from . import setup_console as setup
-from .processmaker_store import open_production, directory
 
 
 def create(client, issuer, secret, tenant, username, email, name, role, password):
@@ -111,34 +110,19 @@ def create(client, issuer, secret, tenant, username, email, name, role, password
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Create a new corporate identity from a verified active PM user; host operator only"
+        description="Create a new AVAN identity; BPMS user binding is configured separately"
     )
-    parser.add_argument("--pm-uid", required=True)
     parser.add_argument("--username", required=True)
+    parser.add_argument("--email", required=True)
+    parser.add_argument("--name", required=True)
     parser.add_argument(
         "--role", choices=["Expert", "Manager", "SysAdmin"], default="Expert"
     )
-    parser.add_argument(
-        "--confirm-employee-email",
-        required=True,
-        help="Operator attests ownership of the PM employee email",
-    )
     args = parser.parse_args()
-    if not re.fullmatch("[a-fA-F0-9]{32}", args.pm_uid):
-        raise ValueError("Invalid PM UID")
-    with open_production() as con:
-        person = directory(con).get(args.pm_uid.lower())
-    if (
-        not person
-        or not person["active"]
-        or not person["email"]
-        or person["email"].strip().casefold()
-        != args.confirm_employee_email.strip().casefold()
-    ):
-        raise ValueError(
-            "Active PM user and operator-verified employee email must match"
-        )
     company = setup.get_setting("company") or {}
+    tenant = company.get("tenant_id")
+    if not tenant:
+        raise ValueError("Configure the AVAN organization first")
     config = setup.get_setting("oidc") or {}
     if not config.get("managed_by_product"):
         raise ValueError("Bundled identity configuration required")
@@ -160,17 +144,18 @@ def main():
             client,
             config["issuer"],
             secret,
-            company["tenant_id"],
+            tenant,
             args.username,
-            person["email"].strip(),
-            person["name"],
+            args.email.strip(),
+            args.name.strip(),
             args.role,
             password,
         )
     print(
-        "Identity created: "
+        "AVAN identity created: "
         + subject
-        + ". User must change password, enroll MFA and log in; GodAdmin must still approve the PM mapping."
+        + ". User must change password, enroll MFA and sign in. "
+          "GodAdmin then approves the AVAN account and configures BPMS bindings separately."
     )
 
 
