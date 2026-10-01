@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
+import hashlib
 import re
+import time
 from typing import Any
 
 from . import agent_storage
@@ -81,6 +83,50 @@ def _source(source_id:str)->dict:
     return source
 
 
+_DIRECTORY_FIELDS=("external_user_id","username","display_name","email","status","active","unit")
+DIRECTORY_CACHE_SECONDS=300
+
+
+def _directory_key(source_id:str)->str:
+    tenant=(setup.get_setting("company") or {}).get("tenant_id") or ""
+    raw=(str(tenant)+"\n"+source_id).encode()
+    return "bpms_directory:"+hashlib.sha256(raw).hexdigest()
+
+
+def _safe_directory_rows(rows:list[dict])->list[dict]:
+    safe=[]
+    for row in rows[:MAX_DIRECTORY_USERS]:
+        if not isinstance(row,dict):
+            continue
+        safe.append({key:row.get(key) for key in _DIRECTORY_FIELDS})
+    return safe
+
+
+def _cached_directory(source_id:str,max_age:int=DIRECTORY_CACHE_SECONDS)->list[dict]|None:
+    with agent_storage.transaction() as tx:
+        snapshot=tx.get(_directory_key(source_id))
+    if (not isinstance(snapshot,dict)
+            or snapshot.get("source_id")!=source_id
+            or not isinstance(snapshot.get("users"),list)
+            or time.time()-float(snapshot.get("saved_at") or 0)>max_age):
+        return None
+    return _safe_directory_rows(snapshot["users"])
+
+
+def _save_directory(source_id:str,source:dict,rows:list[dict])->list[dict]:
+    safe=_safe_directory_rows(rows)
+    with agent_storage.transaction() as tx:
+        tx.put(_directory_key(source_id),{
+            "version":1,
+            "source_id":source_id,
+            "source_name":source.get("name"),
+            "source_engine":source.get("engine"),
+            "saved_at":time.time(),
+            "users":safe,
+        })
+    return safe
+
+
 def _pm_directory(source_id:str)->list[dict]:
     profile=next((p for p in _pm_profiles() if p["id"]==source_id),None)
     if not profile:
@@ -119,18 +165,23 @@ def _pm_directory(source_id:str)->list[dict]:
     return users
 
 
-def directory_users(source_id:str)->list[dict]:
+def directory_users(source_id:str,*,refresh:bool=False)->list[dict]:
     source=_source(source_id)
-    if source["connection_type"]=="processmaker":
-        return _pm_directory(source_id)
     if not source.get("enabled"):
         raise BindingError("BPMS source is disabled")
-    from .bpms_registry import directory_users as adapter_directory,BPMSUnavailable
-    try:
-        rows=adapter_directory(source_id)
-    except BPMSUnavailable as exc:
-        raise BindingError(str(exc)) from exc
-    return rows
+    if not refresh:
+        cached=_cached_directory(source_id)
+        if cached is not None:
+            return cached
+    if source["connection_type"]=="processmaker":
+        rows=_pm_directory(source_id)
+    else:
+        from .bpms_registry import directory_users as adapter_directory,BPMSUnavailable
+        try:
+            rows=adapter_directory(source_id)
+        except BPMSUnavailable as exc:
+            raise BindingError(str(exc)) from exc
+    return _save_directory(source_id,source,rows)
 
 
 def _state(tx,*,lock:bool=False)->dict:
@@ -198,13 +249,14 @@ def suggestions(subject:str,source_id:str,rows:list[dict]|None=None)->dict:
 
 
 def bind(*,subject:str,source_id:str,external_user_id:str,
-         match_method:str="manual",approved_by:str="GodAdmin")->dict:
+         match_method:str="manual",approved_by:str="GodAdmin",
+         _directory_snapshot:list[dict]|None=None)->dict:
     data,user=_avan_user(subject)
     tenant_id=data.get("tenant_id")
     if not tenant_id:
         raise BindingError("Organization is not configured")
     source=_source(source_id)
-    users=directory_users(source_id)
+    users=_directory_snapshot if _directory_snapshot is not None else directory_users(source_id,refresh=True)
     external=next((u for u in users if u.get("external_user_id")==external_user_id),None)
     if not external or not external.get("active"):
         raise BindingError("Selected BPMS user is absent or inactive")
@@ -276,7 +328,7 @@ def unbind(*,subject:str,source_id:str,approved_by:str="GodAdmin")->dict:
 
 def refresh_source(source_id:str,approved_by:str="GodAdmin")->dict:
     source=_source(source_id)
-    directory={u["external_user_id"]:u for u in directory_users(source_id)}
+    directory={u["external_user_id"]:u for u in directory_users(source_id,refresh=True)}
     tenant_id=native_access.read().get("tenant_id") or ""
     now=_now();active=stale=0
     with agent_storage.transaction() as tx:
@@ -302,7 +354,8 @@ def refresh_source(source_id:str,approved_by:str="GodAdmin")->dict:
         tx.audit(tenant_id,approved_by,"BPMS_USER_BINDINGS_REFRESHED",
                  {"source_id":source_id,"active":active,"stale":stale})
     return {"source":source,"directory_users":len(directory),
-            "active_bindings":active,"stale_bindings":stale}
+            "active_bindings":active,"stale_bindings":stale,
+            "synced_at":now}
 
 
 def migrate_legacy_processmaker_bindings()->dict:
@@ -311,6 +364,10 @@ def migrate_legacy_processmaker_bindings()->dict:
     if not source_id:
         return {"migrated":0,"skipped":0,"reason":"no_active_processmaker_source"}
     data=native_access.read();migrated=skipped=0
+    try:directory=directory_users(source_id,refresh=True)
+    except BindingError:
+        return {"migrated":0,"skipped":len(data.get("users",[])),
+                "reason":"processmaker_directory_unavailable","source_id":source_id}
     existing={(b.get("avan_subject"),b.get("source_id")) for b in list_bindings()}
     for user in data.get("users",[]):
         subject=user.get("subject");pm_uid=user.get("pm_uid")
@@ -318,7 +375,8 @@ def migrate_legacy_processmaker_bindings()->dict:
             continue
         try:
             bind(subject=subject,source_id=source_id,external_user_id=pm_uid,
-                 match_method="legacy_migration",approved_by="migration")
+                 match_method="legacy_migration",approved_by="migration",
+                 _directory_snapshot=directory)
             migrated+=1
         except BindingError:
             skipped+=1
