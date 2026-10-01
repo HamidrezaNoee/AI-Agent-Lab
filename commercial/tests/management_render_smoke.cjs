@@ -139,7 +139,7 @@ const server=http.createServer((req,res)=>{
   if(await externalSelect.inputValue()!=='11111111111111111111111111111111')throw Error('Exact username suggestion not preselected');
   await externalSelect.selectOption('22222222222222222222222222222222');
   await userCard.getByRole('button',{name:'اتصال کاربر',exact:true}).click();
-  await page.waitForFunction(()=>true);
+  for(let i=0;i<40&&!bindingPayload;i++)await page.waitForTimeout(50);
   if(!bindingPayload||bindingPayload.subject!=='sub-amin'||
      bindingPayload.external_user_id!=='22222222222222222222222222222222'||
      bindingPayload.match_method!=='manual')throw Error('Admin override of BPMS identity was not persisted as manual binding');
