@@ -602,3 +602,25 @@ body.avan-admin .help-launch:hover{background:rgba(220,157,37,.15);border-color:
 .module-permission-option input{width:auto!important;min-height:auto!important;margin:0!important;accent-color:var(--accent,var(--teal))}
 .module-permission-option span{font-size:12px;color:var(--ink,#203649)}
 @media(max-width:700px){.module-permission-grid{grid-template-columns:1fr}}
+
+
+/* Multi-organization registry. */
+.organization-list{display:grid;gap:12px;margin-top:14px}
+.organization-card{padding:15px 17px;border:1px solid var(--line,var(--border));border-radius:14px;background:var(--surface-soft,#f7fafc)}
+.organization-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.organization-card-meta{display:grid;gap:5px;min-width:0}
+.organization-card-meta strong{font-size:14px;color:var(--ink,#183751)}
+.organization-tenant{font:11px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted,#6b7f91);overflow-wrap:anywhere}
+.organization-badges{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.organization-primary-badge{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;border:1px solid var(--accent,var(--teal));background:var(--accent-soft,rgba(28,178,159,.1));color:var(--accent,var(--teal));font-size:11px;font-weight:800}
+.organization-details{display:flex;gap:8px 18px;flex-wrap:wrap;margin:10px 0 12px}
+.organization-editor-slot:empty{display:none}
+.organization-editor-slot{margin:12px 0}
+.organization-editor{border-right:4px solid var(--accent,var(--teal))}
+.organization-enabled-option{display:flex!important;align-items:center;gap:8px;min-height:42px}
+.organization-enabled-option input{width:auto!important;min-height:auto!important;margin:0!important;accent-color:var(--accent,var(--teal))}
+.organization-tenant-readonly{padding:10px 12px;border-radius:10px;background:var(--surface-soft,#f4f8fa);border:1px dashed var(--line,var(--border));direction:ltr;text-align:left;font:12px ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}
+@media(max-width:700px){
+ .organization-card-head{flex-direction:column}
+ .organization-badges{justify-content:flex-start}
+}
