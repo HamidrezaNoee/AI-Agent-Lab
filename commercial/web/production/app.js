@@ -70,6 +70,7 @@ function setupUser(user){
   if(capabilities.has("assistant"))add(group,sourcePageButton(source,"source-assistant","✦  دستیار"));
   if(capabilities.has("secretary"))add(group,sourcePageButton(source,"source-secretary","▧  دبیر هوشمند"));
   if(capabilities.has("reports"))add(group,sourcePageButton(source,"source-reports","▥  گزارش اقدامات"));
+  if(capabilities.has("monitor"))add(group,sourcePageButton(source,"source-monitor","◷  هشدار و پیگیری"));
   if(capabilities.has("bi"))add(group,sourcePageButton(source,"source-bi","▦  BI"));
   add(sourceButtons,group);
  }
@@ -133,7 +134,7 @@ function select(page){
  if(sourcePage){
   const source=(app.user?.bpms_sources||[]).find(x=>x.source_id===app.selectedSourceId);
   const required={"source-meetings":"meetings","source-assistant":"assistant",
-   "source-secretary":"secretary","source-reports":"reports","source-bi":"bi"}[page];
+   "source-secretary":"secretary","source-reports":"reports","source-monitor":"monitor","source-bi":"bi"}[page];
   if(!source||(required&&!(source.capabilities||[]).includes(required)))return;
  }
  const workspaceNavigation=app.user?.workspace_navigation!==undefined?!!app.user.workspace_navigation:!!app.user?.workspace_access;
@@ -141,14 +142,14 @@ function select(page){
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-assistant":"دستیار BPMS","source-secretary":"دبیر هوشمند BPMS","source-reports":"گزارش اقدامات BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-assistant":"دستیار BPMS","source-secretary":"دبیر هوشمند BPMS","source-reports":"گزارش اقدامات BPMS","source-monitor":"هشدار و پیگیری BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",
    sourcePage&&b.dataset.sourceId
     ?b.dataset.sourceId===app.selectedSourceId&&b.dataset.page===page
     :b.dataset.page===page));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>secretaryPage(app.selectedSourceId),"source-reports":()=>reportsPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>secretaryPage(app.selectedSourceId),"source-reports":()=>reportsPage(app.selectedSourceId),"source-monitor":()=>monitorPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
  if(work)work().catch(err=>{
   const target=root();
   if(orgPage&&app.user?.is_godadmin){
@@ -308,6 +309,7 @@ async function boundSourceOverview(){
   if(capabilities.has("assistant"))add(p,link("دستیار همین ProcessMaker",()=>select("source-assistant"),"button secondary"));
   if(capabilities.has("secretary"))add(p,link("دبیر هوشمند همین ProcessMaker",()=>select("source-secretary"),"button secondary"));
   if(capabilities.has("reports"))add(p,link("گزارش اقدامات همین ProcessMaker",()=>select("source-reports"),"button secondary"));
+  if(capabilities.has("monitor"))add(p,link("هشدار و پیگیری همین ProcessMaker",()=>select("source-monitor"),"button secondary"));
   if(capabilities.has("bi"))add(p,link("BI همین ProcessMaker",()=>select("source-bi"),"button secondary"));
   add(m,p);
   const recent=card("جلسات اخیر این ProcessMaker","فقط جلساتی که کاربر متناظر این Binding مجاز به مشاهده آن‌هاست نمایش داده می‌شوند.");
@@ -558,28 +560,36 @@ function renderDraft(target,draft,sourceId=null){
  }
  add(panel,out);add(target,panel);
 }
-async function monitorPage(){
- const m=root();heading(m,"هشدار و پیگیری","موعد نزدیک، تأخیر، توقف پیشرفت و اقدامات نیازمند پیگیری");
+async function monitorPage(sourceId=null){
+ const scoped=!!sourceId;
+ const source=scoped?(app.user?.bpms_sources||[]).find(x=>x.source_id===sourceId):null;
+ const m=root();
+ if(scoped&&(!source||!(source.capabilities||[]).includes("monitor"))){
+  add(m,note("پایش برای این BPMS و لایسنس فعلی فعال نیست.",true));return
+ }
+ heading(m,scoped?("هشدار و پیگیری · "+source.source_name):"هشدار و پیگیری",
+  scoped?"هشدارها، Baseline و Subscription فقط برای همین BPMS نگهداری می‌شوند.":"موعد نزدیک، تأخیر، توقف پیشرفت و اقدامات نیازمند پیگیری");
  if(!app.user.modules.includes(4)){add(m,note("ماژول پایش در لایسنس فعال نیست."));return}
+ const monitorBase=sourceApi(sourceId,"/monitor");
  const control=card("پایش پس‌زمینه","پس از فعال‌سازی، با بستن مرورگر هم ادامه می‌یابد؛ حداکثر ۳۰ روز و تا زمانی که سرویس هویت اجازه تمدید بدهد. در هر نوبت مجوزها دوباره بررسی می‌شوند.");
  const interval=inputField("فاصله بررسی (دقیقه)",5,"number");interval.input.min=5;interval.input.max=1440;const state=el("div"),out=el("div"),results=el("div");let running=false;
  const hide=el("input");hide.type="checkbox";const filter=el("label");add(filter,hide,el("span","","پنهان‌کردن هشدارهای دیده‌شده"));
  async function refresh(background=false){
-  if(running||app.page!=="monitor")return;running=true;if(app.monitorTimer)clearTimeout(app.monitorTimer);
-  try{const r=await request("/api/monitor",{method:"POST",background});if(!results.isConnected)return;results.replaceChildren();
+  if(running||app.page!==(scoped?"source-monitor":"monitor"))return;running=true;if(app.monitorTimer)clearTimeout(app.monitorTimer);
+  try{const r=await request(monitorBase,{method:"POST",background});if(!results.isConnected)return;results.replaceChildren();
    const subscription=r.subscription||{};state.replaceChildren(note(subscription.enabled?"پایش فعال است. آخرین بررسی پس‌زمینه: "+(subscription.last_run?dateText(subscription.last_run*1000):"در انتظار اجرا"):"پایش پس‌زمینه غیرفعال است."));
    if(subscription.last_error)add(state,note(({login_required:"مجوز تمدید پایان یافته؛ دوباره وارد شوید و پایش را فعال کنید.",access_denied:"دسترسی تغییر کرده و پایش متوقف شده است.",source_unavailable:"منبع داده موقتاً در دسترس نیست؛ بررسی دوباره انجام می‌شود."})[subscription.last_error]||"پایش نیازمند بررسی است.",true));
    add(results,note(fmt(r.total)+" هشدار · "+dateText(r.as_of_utc)));
    if(!r.coverage_complete||r.truncated)add(results,note("پوشش داده یا فهرست نمایش کامل نیست."));
    for(const a of r.alerts){if(hide.checked&&a.acknowledged)continue;
     const item=card(a.severity==="high"?"پیگیری فوری":"پیگیری",a.reason);add(item,el("p","",a.description),el("p","","جلسه "+a.source.meeting_no+" · اقدام "+a.source.action_no+" · "+(a.owner_name||"مسئول نامشخص")),el("small","muted","اولین مشاهده: "+dateText(a.first_seen)));
-    if(a.acknowledged)add(item,el("span","badge","دیده‌شده"));else add(item,link("دیده شد",async()=>{try{await request("/api/monitor/alerts/"+a.id+"/acknowledge",{method:"POST"});await refresh()}catch(e){toast(e.message)}}));
-    add(item,link("مشاهده جلسه",()=>showMeeting(a.source.meeting_id)),link("متن یادآوری",()=>{const t=el("textarea");t.readOnly=true;t.value="یادآوری اقدام "+a.source.action_no+" جلسه "+a.source.meeting_no+": "+a.description+". لطفاً وضعیت پیشرفت، موانع و زمان تکمیل را در فرایند ثبت کنید.";add(item,t);t.select()}));add(results,item)
+    if(a.acknowledged)add(item,el("span","badge","دیده‌شده"));else add(item,link("دیده شد",async()=>{try{await request(monitorBase+"/alerts/"+a.id+"/acknowledge",{method:"POST"});await refresh()}catch(e){toast(e.message)}}));
+    add(item,link("مشاهده جلسه",()=>scoped?showSourceMeeting(sourceId,a.source.meeting_id):showMeeting(a.source.meeting_id)),link("متن یادآوری",()=>{const t=el("textarea");t.readOnly=true;t.value="یادآوری اقدام "+a.source.action_no+" جلسه "+a.source.meeting_no+": "+a.description+". لطفاً وضعیت پیشرفت، موانع و زمان تکمیل را در فرایند ثبت کنید.";add(item,t);t.select()}));add(results,item)
    }
    for(const n of r.notes||[])add(results,note(n));if(!r.total)add(results,note("در دامنه بررسی‌شده هشداری مشاهده نشد."));
-  }catch(e){results.replaceChildren(note(e.message,true))}finally{running=false;if(app.page==="monitor")app.monitorTimer=setTimeout(()=>refresh(true),60000)}
+  }catch(e){results.replaceChildren(note(e.message,true))}finally{running=false;if(app.page===(scoped?"source-monitor":"monitor"))app.monitorTimer=setTimeout(()=>refresh(true),60000)}
  }
- async function subscribe(enabled){try{await request("/api/monitor/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled,interval_seconds:Number(interval.input.value)*60})});out.replaceChildren(note(enabled?"پایش پس‌زمینه فعال شد.":"پایش متوقف شد."));await refresh()}catch(e){out.replaceChildren(note(e.message,true))}}
+ async function subscribe(enabled){try{await request(monitorBase+"/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled,interval_seconds:Number(interval.input.value)*60})});out.replaceChildren(note(enabled?"پایش پس‌زمینه فعال شد.":"پایش متوقف شد."));await refresh()}catch(e){out.replaceChildren(note(e.message,true))}}
  hide.addEventListener("change",refresh);add(control,interval.wrap,link("فعال‌سازی پایش",()=>subscribe(true),"button primary"),link("توقف پایش",()=>subscribe(false)),link("بررسی اکنون",refresh),filter,state,out);add(m,control,results);await refresh();
 }
 function dateText(value){if(!value)return "ثبت نشده";const d=new Date(value);return Number.isNaN(d.getTime())?String(value):new Intl.DateTimeFormat("fa-IR",{dateStyle:"medium",timeStyle:"short"}).format(d)}
