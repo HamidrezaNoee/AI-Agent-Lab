@@ -10,6 +10,9 @@ function heading(container,title,description){add(container,add(el("div","page-h
 function root(){const m=$("main");m.replaceChildren();return m}
 function fmt(value){return new Intl.NumberFormat("fa-IR").format(value)}
 function toast(text){const t=$("toast");t.textContent=text;t.hidden=false}
+function sourceApi(sourceId,path){
+ return sourceId?("/api/sources/"+encodeURIComponent(sourceId)+path):("/api"+path);
+}
 async function request(url,options={}){
  const headers={"Accept":"application/json",...(options.headers||{})};
  if(options.background)headers["X-AVAN-BACKGROUND"]="1";
@@ -64,6 +67,9 @@ function setupUser(user){
   const capabilities=new Set(source.capabilities||["overview"]);
   add(group,sourcePageButton(source,"source-overview","◉  نمای BPMS"));
   if(capabilities.has("meetings"))add(group,sourcePageButton(source,"source-meetings","▤  جلسات"));
+  if(capabilities.has("assistant"))add(group,sourcePageButton(source,"source-assistant","✦  دستیار"));
+  if(capabilities.has("secretary"))add(group,sourcePageButton(source,"source-secretary","▧  دبیر هوشمند"));
+  if(capabilities.has("reports"))add(group,sourcePageButton(source,"source-reports","▥  گزارش اقدامات"));
   if(capabilities.has("bi"))add(group,sourcePageButton(source,"source-bi","▦  BI"));
   add(sourceButtons,group);
  }
@@ -124,20 +130,25 @@ function select(page){
  const orgPage=!platformPage&&!adminPage&&!sourcePage;
  if(platformPage&&(!app.user?.is_godadmin||app.user?.platform_access===false))return;
  if(adminPage&&!app.user?.is_godadmin)return;
- if(sourcePage&&!(app.user?.bpms_sources||[]).some(x=>x.source_id===app.selectedSourceId))return;
+ if(sourcePage){
+  const source=(app.user?.bpms_sources||[]).find(x=>x.source_id===app.selectedSourceId);
+  const required={"source-meetings":"meetings","source-assistant":"assistant",
+   "source-secretary":"secretary","source-reports":"reports","source-bi":"bi"}[page];
+  if(!source||(required&&!(source.capabilities||[]).includes(required)))return;
+ }
  const workspaceNavigation=app.user?.workspace_navigation!==undefined?!!app.user.workspace_navigation:!!app.user?.workspace_access;
  if(orgPage&&!workspaceNavigation)return;
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-assistant":"دستیار BPMS","source-secretary":"دبیر هوشمند BPMS","source-reports":"گزارش اقدامات BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",
    sourcePage&&b.dataset.sourceId
     ?b.dataset.sourceId===app.selectedSourceId&&b.dataset.page===page
     :b.dataset.page===page));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>secretaryPage(app.selectedSourceId),"source-reports":()=>reportsPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
  if(work)work().catch(err=>{
   const target=root();
   if(orgPage&&app.user?.is_godadmin){
@@ -281,6 +292,9 @@ async function boundSourceOverview(){
  if(source.engine==="processmaker"){
   add(p,note("داده‌های این ProcessMaker با Source ID خودش و Binding همین حساب خوانده می‌شود."));
   if(capabilities.has("meetings"))add(p,link("جلسات همین ProcessMaker",()=>select("source-meetings"),"button primary"));
+  if(capabilities.has("assistant"))add(p,link("دستیار همین ProcessMaker",()=>select("source-assistant"),"button secondary"));
+  if(capabilities.has("secretary"))add(p,link("دبیر هوشمند همین ProcessMaker",()=>select("source-secretary"),"button secondary"));
+  if(capabilities.has("reports"))add(p,link("گزارش اقدامات همین ProcessMaker",()=>select("source-reports"),"button secondary"));
   if(capabilities.has("bi"))add(p,link("BI همین ProcessMaker",()=>select("source-bi"),"button secondary"));
   add(m,p);
   const recent=card("جلسات اخیر این ProcessMaker","فقط جلساتی که کاربر متناظر این Binding مجاز به مشاهده آن‌هاست نمایش داده می‌شوند.");
