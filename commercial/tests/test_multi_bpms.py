@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -168,3 +169,14 @@ def test_bound_source_capabilities_follow_engine_and_license_modules():
     # Generic adapters expose only capabilities with an implemented user-scoped
     # AVAN route. Directory sync alone must not create operational menu access.
     assert production_app._source_capabilities(adapter,frozenset({1,2,3,4}))==["overview"]
+
+
+def test_source_deletion_is_blocked_while_any_user_binding_exists():
+    with patch("commercial.user_bpms_bindings.list_bindings",
+               return_value=[{"source_id":"a"*24,"avan_subject":"user"}]):
+        with pytest.raises(HTTPException) as exc:
+            setup_routes._require_source_without_user_bindings("a"*24)
+    assert exc.value.status_code==409
+
+    with patch("commercial.user_bpms_bindings.list_bindings",return_value=[]):
+        setup_routes._require_source_without_user_bindings("a"*24)
