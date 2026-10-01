@@ -49,21 +49,23 @@ class SpeechRequest(BaseModel):
     part:int=Field(0,ge=0,le=20)
 
 
-def snapshot(principal,module,meeting_id=None):
-    from .production_app import _store_response,_normalise_dates
+def snapshot(principal,module,meeting_id=None,source_id=None):
+    from .production_app import _store_response,_source_store_response,_normalise_dates
     from .production_store import authorized_meeting_snapshot,ProductionAccessDenied
     def read(con,scope):
         if module not in scope['license']['modules']:raise ProductionAccessDenied('Module not licensed')
         rows,complete=authorized_meeting_snapshot(con,scope,**({"meeting_id":meeting_id} if meeting_id is not None else {}))
         _normalise_dates(rows)
         return scope,rows,complete
+    if source_id:
+        return _source_store_response(source_id,read,principal)
     return _store_response(read,principal)
 
 
-def ensure_still_authorized(principal,initial_scope,initial_rows,module):
+def ensure_still_authorized(principal,initial_scope,initial_rows,module,source_id=None):
     # A role, hierarchy, BPMS binding or meeting membership can change while the
-    # external model runs. Re-check source visibility before returning any content.
-    scope,rows,_=snapshot(principal,module)
+    # external model runs. Re-check the exact source before returning any content.
+    scope,rows,_=snapshot(principal,module,source_id=source_id)
     if agent_workspace.scope_stamp(scope)!=agent_workspace.scope_stamp(initial_scope):
         raise HTTPException(403,'دسترسی سازمانی تغییر کرده است؛ دوباره پرسش را اجرا کنید.')
     if not {m['meeting_id'] for m in initial_rows}<={m['meeting_id'] for m in rows}:
