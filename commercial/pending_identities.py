@@ -21,7 +21,7 @@ def _ensure():
         if "username" not in columns:
             con.execute("ALTER TABLE pending_identity ADD COLUMN username TEXT")
 
-def stage(principal,*,username:str|None,name:str,email:str|None,email_verified:bool):
+def stage(principal,*,username:str|None=None,name:str,email:str|None,email_verified:bool):
     _ensure()
     clean_username=(username or "").strip()[:180] or None
     with _db() as con:
