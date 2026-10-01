@@ -62,6 +62,7 @@ def approve_avan_user(
     role: str,
     department_name: str | None = None,
     manager_subject: str | None = None,
+    module_permissions: list[int] | None = None,
 ):
     """Approve an AVAN account without coupling it to any BPMS identity."""
     import uuid
@@ -106,10 +107,21 @@ def approve_avan_user(
         data["company_name"]=company_name.strip()
         from .production_license import capacity, ProductionLicenseDenied
         try:
-            capacity(tenant_id,company_name.strip(),
-                     sum(bool(u.get("enabled")) for u in users)+1)
+            licensed=capacity(tenant_id,company_name.strip(),
+                              sum(bool(u.get("enabled")) for u in users)+1)
         except ProductionLicenseDenied as exc:
             raise ProvisioningDenied(str(exc)) from exc
+        licensed_modules={int(x) for x in licensed.get("modules",())}
+        requested=(licensed_modules if module_permissions is None
+                   else {int(x) for x in module_permissions
+                         if isinstance(x,int) and x in (1,2,3,4)})
+        if module_permissions is not None and (
+            len(requested)!=len(set(module_permissions))
+            or any(not isinstance(x,int) or x not in (1,2,3,4)
+                    for x in module_permissions)
+            or not requested<=licensed_modules
+        ):
+            raise ProvisioningDenied("AVAN module permission is invalid or not licensed")
         users.append({
             "subject":subject,
             "username":(user.get("username") or "").strip() or None,
@@ -118,6 +130,7 @@ def approve_avan_user(
             "department_name":department,
             "role":role,
             "manager_subject":manager_subject,
+            "module_permissions":sorted(requested),
             "enabled":True,
         })
     finish_pending(tenant_id,subject)
@@ -129,6 +142,7 @@ def approve_avan_user(
         "username":user.get("username"),
         "name":user.get("name") or user.get("username") or subject,
         "role":role,
+        "modules":sorted(requested),
         "tenant_id":tenant_id,
     }
 
