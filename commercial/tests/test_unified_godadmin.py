@@ -8,7 +8,10 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from commercial import production_app as app,setup_console as setup,setup_routes as admin
+from commercial import (
+    production_app as app,setup_console as setup,setup_routes as admin,
+    native_access,production_license,user_bpms_bindings,
+)
 
 
 TENANT="168418b2-8fa6-4414-a37f-83c9a26da332"
@@ -112,7 +115,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
         bootstrap_me=self.client.get("/api/me").json()
         self.assertTrue(bootstrap_me["bootstrap_mode"])
         self.assertTrue(bootstrap_me["is_godadmin"])
-        self.assertTrue(bootstrap_me["workspace_navigation"])
+        self.assertFalse(bootstrap_me["workspace_navigation"])
         self.assertFalse(bootstrap_me["workspace_access"])
         self.assertFalse(bootstrap_me["platform_access"])
         csrf={"X-AVAN-ADMIN-CSRF":signed.json()["csrf"]}
@@ -138,7 +141,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/api/settings").status_code,200)
         me=self.client.get("/api/me").json()
         self.assertTrue(me["is_godadmin"])
-        self.assertTrue(me["workspace_navigation"])
+        self.assertFalse(me["workspace_navigation"])
         self.assertFalse(me["workspace_access"])
         self.assertTrue(me["workspace_degraded"])
         self.assertEqual(self.client.get("/api/meetings").status_code,403)
