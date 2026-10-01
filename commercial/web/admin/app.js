@@ -521,6 +521,136 @@ function settingsSubnav(items,active,onChange){
  return nav;
 }
 
+async function renderIdentity(m){
+ const p=panel("هویت و ورود",
+  "ورود AVAN با زیرساخت هویت داخلی Keycloak/OIDC انجام می‌شود. این بخش فقط Authentication را مدیریت می‌کند؛ نقش AVAN و اتصال کاربر به BPMS در «کاربران و دسترسی» جدا هستند.");
+ append(m,p);
+
+ const [identityResult,orgResult,pendingResult]=await Promise.allSettled([
+  api("identity/status"),api("organizations"),api("users/pending")
+ ]);
+ const status=identityResult.status==="fulfilled"?identityResult.value:{
+  connected:false,managed_by_product:false,detail:identityResult.reason?.message||"وضعیت هویت قابل دریافت نیست."
+ };
+ const organizations=orgResult.status==="fulfilled"?(orgResult.value.organizations||[]):[];
+ const pending=pendingResult.status==="fulfilled"?(pendingResult.value.pending||[]):[];
+
+ const stats=node("div","identity-status-grid");
+ const stat=(label,value,ok=null)=>{
+  const card=node("div","identity-status-card");
+  append(card,node("span","",label),node("strong","",value||"—"));
+  if(ok!==null)card.classList.add(ok?"is-ok":"is-bad");
+  append(stats,card);
+ };
+ stat("سرویس هویت",status.connected?"متصل":"در دسترس نیست",!!status.connected);
+ stat("پروتکل",status.protocol||"OIDC");
+ stat("Realm",status.realm||"avan");
+ stat("MFA",status.mfa||"TOTP / Authenticator");
+ stat("GodAdmin سازمانی",status.godadmin_bound?"متصل":"هنوز Bind نشده",!!status.godadmin_bound);
+ append(p,stats);
+
+ const infra=panel("Keycloak / OIDC","تنظیمات Secret داخلی AVAN از مرورگر دریافت نمی‌شوند؛ این صفحه فقط وضعیت امن و عمومی سرویس هویت را نشان می‌دهد.");
+ const issuer=node("div","identity-kv");
+ append(issuer,node("span","","Issuer"),node("code","",status.issuer||"ثبت نشده"));
+ const realm=node("div","identity-kv");
+ append(realm,node("span","","Realm"),node("strong","",status.realm||"avan"));
+ const protocol=node("div","identity-kv");
+ append(protocol,node("span","","Protocol"),node("strong","",status.protocol||"OIDC"));
+ append(infra,issuer,realm,protocol);
+ if(status.detail)append(infra,info(status.detail,!status.connected));
+ append(infra,btn("بررسی دوباره سرویس هویت",()=>showSettings("identity"),"secondary"));
+ append(p,infra);
+
+ const god=panel("GodAdmin سازمانی",
+  "Bootstrap GodAdmin فقط برای راه‌اندازی اولیه است. مدیریت دائمی سامانه باید به یک هویت واقعی OIDC/Keycloak متصل شود.");
+ if(status.godadmin_bound){
+  const bound=node("div","identity-bound-summary");
+  append(bound,
+   node("div","identity-kv",node("span","","Subject"),node("code","",status.godadmin_subject||"—")),
+   node("div","identity-kv",node("span","","Tenant"),node("code","",status.godadmin_tenant_id||"—")));
+  append(god,bound,info("GodAdmin به هویت سازمانی متصل است. ورود مدیریتی از مسیر OIDC و MFA انجام می‌شود."));
+ }else{
+  const primary=organizations.find(x=>x.is_primary)||organizations[0]||null;
+  append(god,info("GodAdmin هنوز به حساب سازمانی Bind نشده است.",true));
+  if(primary){
+   append(god,node("p","hint","سازمان سازگار فعلی: "+primary.company_name+" · "+primary.tenant_id));
+  }else{
+   append(god,info("ابتدا در تب «سازمان‌ها» حداقل یک سازمان ایجاد کنید.",true));
+  }
+
+  const createBox=panel("ساخت حساب GodAdmin در Keycloak",
+   "یک حساب واقعی GodAdmin بسازید. رمز واردشده در AVAN ذخیره نمی‌شود و باید در اولین ورود تغییر کند.");
+  const f=node("form","grid"),out=node("div","full");
+  append(f,
+   field("نام کاربری GodAdmin","username","godadmin"),
+   field("نام و نام خانوادگی","name",""),
+   field("ایمیل سازمانی","email","",{type:"email"}),
+   field("رمز موقت حداقل ۱۶ کاراکتر","password","",{secret:true}),
+   field("کد ۶ رقمی Authenticator فعلی Bootstrap","otp","",{help:"کد جاری Authenticator مربوط به GodAdmin اولیه."}));
+  const create=node("button","","ساخت حساب GodAdmin");create.type="submit";
+  append(f,create,out);
+  f.addEventListener("submit",async e=>{
+   e.preventDefault();busy(f,true);out.replaceChildren();
+   try{
+    const result=await api("identity/create-godadmin-account",{
+     username:formValue(f,"username"),
+     name:formValue(f,"name"),
+     email:formValue(f,"email"),
+     password:formValue(f,"password"),
+     otp:formValue(f,"otp")
+    });
+    const pw=f.elements.namedItem("password");if(pw)pw.value="";
+    append(out,info("حساب ساخته شد. در یک تب جدید با همین حساب وارد شوید، رمز موقت را تغییر دهید و MFA را کامل کنید؛ سپس به این صفحه برگردید و Binding را تأیید کنید."));
+    append(out,(()=>{const a=node("a","visit","باز کردن ورود سازمانی در تب جدید");a.href="/auth/login";a.target="_blank";a.rel="noopener noreferrer";return a})());
+   }catch(err){showError(out,err)}
+   finally{busy(f,false)}
+  });
+  if(primary)append(god,createBox);append(createBox,f);
+
+  const candidates=panel("حساب‌های آماده اتصال",
+   "فقط هویت‌هایی که ورود OIDC معتبر انجام داده‌اند اینجا دیده می‌شوند. اتصال نهایی نیازمند کد Authenticator فعلی Bootstrap است.");
+  const eligible=pending.filter(x=>!primary||x.tenant_id===primary.tenant_id);
+  if(!eligible.length)append(candidates,info("هنوز حساب سازمانی آماده Binding نیست. ابتدا با حساب GodAdmin جدید وارد شوید."));
+  for(const account of eligible){
+   const row=node("div","identity-candidate");
+   const meta=node("div");
+   append(meta,node("strong","",account.name||account.username||account.subject),
+    node("span","hint",(account.username||"بدون نام کاربری")+" · "+(account.email||"ایمیل ثبت نشده")));
+   const action=node("div","identity-bind-action");
+   const otp=field("کد Authenticator","otp_"+account.subject,"",{required:true});
+   const input=otp.querySelector("input");input.inputMode="numeric";input.maxLength=6;
+   const out=node("div");
+   append(action,otp,btn("اتصال به GodAdmin",async()=>{
+    out.replaceChildren();
+    const code=input.value.trim();
+    if(!/^[0-9]{6}$/.test(code)){showError(out,Error("کد شش‌رقمی معتبر وارد کنید."));return}
+    try{
+     const result=await api("identity/bind-godadmin",{
+      tenant_id:account.tenant_id,subject:account.subject,otp:code
+     });
+     window.location.assign(result.login_url||"/auth/login");
+    }catch(err){showError(out,err)}
+   }),out);
+   append(row,meta,action);append(candidates,row);
+  }
+  append(god,candidates);
+ }
+ append(p,god);
+
+ const rule=panel("مرز مسئولیت هویت",
+  "Authentication و Authorization در AVAN جدا هستند. Keycloak هویت و MFA را تأیید می‌کند؛ نقش، ماژول‌های AVAN و Binding هر BPMS در بخش «کاربران و دسترسی» تعیین می‌شوند.");
+ append(rule,
+  node("div","identity-rule-flow",
+   node("span","","Keycloak / OIDC"),
+   node("b","","→"),
+   node("span","","AVAN User"),
+   node("b","","→"),
+   node("span","","AVAN Permissions"),
+   node("b","","→"),
+   node("span","","BPMS Bindings")));
+ append(p,rule);
+}
+
 async function renderOrganizationHub(m){
  const items=[["company","سازمان‌ها"],["identity","هویت و ورود"],["users","کاربران و دسترسی"]];
  append(m,settingsSubnav(items,state.orgSub,code=>{state.orgSub=code;showSettings("organization")}));
