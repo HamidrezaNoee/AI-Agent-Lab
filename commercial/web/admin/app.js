@@ -1025,17 +1025,39 @@ async function renderUsers(m){
  });
  append(createUser,createForm);append(p,createUser);
 
- let mapped=[],sources=[];
+ let mapped=[],sources=[],licensedModules=[];
  try{
-  const [usersResult,sourceResult]=await Promise.all([
-   api("users/mapped"),api("user-bindings/sources")
+  const [usersResult,sourceResult,licenseResult]=await Promise.all([
+   api("users/mapped"),api("user-bindings/sources"),api("license/status")
   ]);
   mapped=usersResult.users||[];
   sources=sourceResult.sources||[];
+  licensedModules=licenseResult.valid?(licenseResult.modules||[]):[];
  }catch(err){
   append(p,info("اطلاعات کاربران یا BPMSها قابل دریافت نیست: "+(err?.message||String(err)),true));
   return;
  }
+
+ const moduleLabels={
+  1:"جلسات و دستیار",
+  2:"دبیر هوشمند",
+  3:"BI و گزارش",
+  4:"هشدار و پیگیری"
+ };
+ const moduleSelector=(selected,namePrefix="module")=>{
+  const wrap=node("div","module-permission-grid");
+  const chosen=new Set(selected||[]);
+  for(const id of licensedModules){
+   const label=node("label","module-permission-option");
+   const input=node("input");input.type="checkbox";input.value=String(id);
+   input.dataset.moduleId=String(id);input.name=namePrefix+"_"+id;input.checked=chosen.has(id);
+   append(label,input,node("span","",moduleLabels[id]||("ماژول "+id)));append(wrap,label);
+  }
+  if(!licensedModules.length)append(wrap,node("span","hint","هیچ ماژول فعالی در لایسنس سازمان وجود ندارد."));
+  return wrap;
+ };
+ const selectedModules=host=>[...host.querySelectorAll("input[data-module-id]:checked")]
+   .map(x=>Number(x.dataset.moduleId)).filter(x=>Number.isInteger(x));
 
  const accounts=panel("کاربران AVAN",
   "فعال/غیرفعال‌بودن حساب AVAN به BPMS وابسته نیست. اتصال‌های BPMS فقط دامنه داده و قابلیت‌های همان منبع را تعیین می‌کنند.");
@@ -1130,6 +1152,23 @@ async function renderUsers(m){
   },user.enabled?"secondary":""));
   append(card,accountActions);
 
+  const permissionBox=node("div","avan-module-permissions");
+  append(permissionBox,node("h3","","مجوزهای ماژول AVAN"),
+   node("p","hint","این مجوزها مستقل از BPMS هستند و فقط می‌توانند زیرمجموعه ماژول‌های فعال لایسنس سازمان باشند."));
+  const initialModules=user.module_permissions==null?licensedModules:user.module_permissions;
+  const permissionOptions=moduleSelector(initialModules,"user_module");
+  const permissionOut=node("div");
+  append(permissionBox,permissionOptions,
+   btn("ذخیره مجوزهای AVAN",async()=>{
+    permissionOut.replaceChildren();
+    try{
+     await api("users/modules",{subject:user.subject,modules:selectedModules(permissionOptions)});
+     append(permissionOut,info("مجوزهای AVAN ذخیره شد."));
+     await showSettings("users");
+    }catch(err){showError(permissionOut,err)}
+   },"secondary"),permissionOut);
+  append(card,permissionBox);
+
   const bindingTitle=node("div","section-head"),bindingHost=node("div","bpms-binding-list");
   append(bindingTitle,node("h3","","اتصال به BPMSها"),
    node("span","hint","هر BPMS یک Binding مستقل دارد."));
@@ -1207,6 +1246,9 @@ async function renderUsers(m){
    opt.value=candidate.subject;append(manager,opt);
   }
   append(managerLabel,manager);append(form,managerLabel);
+  const moduleLabel=node("label","full","مجوزهای اولیه AVAN");
+  const pendingModules=moduleSelector(licensedModules,"pending_module");
+  append(moduleLabel,pendingModules);append(form,moduleLabel);
   const result=node("div","full"),submit=node("button","","تأیید حساب AVAN");submit.type="submit";
   append(form,submit,result);
   form.addEventListener("submit",async e=>{
@@ -1217,7 +1259,8 @@ async function renderUsers(m){
      company_name:formValue(form,"company_name"),
      role:formValue(form,"role"),
      manager_subject:formValue(form,"manager_subject")||null,
-     department_name:formValue(form,"department_name")||null
+     department_name:formValue(form,"department_name")||null,
+     modules:selectedModules(pendingModules)
     });
     append(result,info("حساب AVAN برای "+approved.name+" ساخته شد. اکنون از بخش «اتصال به BPMSها» کاربر متناظر هر BPMS را تعیین کنید."));
     await showSettings("users");
