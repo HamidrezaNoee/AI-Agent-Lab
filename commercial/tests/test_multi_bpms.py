@@ -150,10 +150,17 @@ def test_bound_source_capabilities_follow_engine_and_license_modules():
     pm={"engine":"processmaker","connection_type":"processmaker"}
     adapter={"engine":"camunda","connection_type":"adapter"}
     assert production_app._source_capabilities(pm,frozenset())==["overview"]
-    assert production_app._source_capabilities(pm,frozenset({1}))==["overview","meetings"]
-    assert production_app._source_capabilities(pm,frozenset({3}))==["overview","bi"]
+    assert production_app._source_capabilities(pm,frozenset({1}))==[
+        "overview","meetings","assistant"
+    ]
+    assert production_app._source_capabilities(pm,frozenset({2}))==[
+        "overview","secretary"
+    ]
+    assert production_app._source_capabilities(pm,frozenset({3}))==[
+        "overview","bi","reports"
+    ]
     assert production_app._source_capabilities(pm,frozenset({1,2,3,4}))==[
-        "overview","meetings","bi"
+        "overview","meetings","assistant","secretary","bi","reports"
     ]
     # Generic adapters expose only capabilities with an implemented user-scoped
     # AVAN route. Directory sync alone must not create operational menu access.
