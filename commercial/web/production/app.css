@@ -26,13 +26,18 @@
 #admin-nav[hidden]{display:none!important}
 .system-management-nav{border:1px solid transparent!important}
 .system-management-nav.active{
- background:linear-gradient(90deg,#e9f4f2,#eef8fb)!important;
- color:var(--teal)!important;border-color:#d5ebe7!important;
+ background:var(--accent-soft)!important;
+ color:var(--accent)!important;
+ border-color:var(--accent)!important;
 }
 .system-admin-shell{
  width:100%;min-height:calc(100vh - 190px);padding:0;margin:0;
- border:1px solid var(--border);border-radius:16px;background:var(--white);
+ border:1px solid var(--line,var(--border));border-radius:16px;background:var(--canvas);
  overflow:hidden;box-shadow:var(--shadow);
+}
+:root[data-theme='dark'] body.avan-app .system-admin-shell{
+ background:var(--canvas)!important;
+ border-color:var(--line)!important;
 }
 .system-admin-frame{
  display:block;width:100%;height:calc(100vh - 190px);min-height:720px;
