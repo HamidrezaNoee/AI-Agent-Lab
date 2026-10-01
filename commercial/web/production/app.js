@@ -212,45 +212,58 @@ async function meetingPage(){
  add(m,more);
  await appendPage();
 }
-async function assistantPage(){
- const [catalog,status,history]=await Promise.all([request("/api/questions"),request("/api/agent/status"),request("/api/conversations")]);
- if(app.page!=="assistant")return;app.voiceEnabled=status.voice_enabled;
- const m=root();heading(m,"دستیار مدیریتی","پرسش فارسی، پاسخ مستند و گفت‌وگوهای ذخیره‌شده شما");
+async function assistantPage(sourceId=null){
+ const scoped=!!sourceId;
+ const source=scoped?(app.user?.bpms_sources||[]).find(x=>x.source_id===sourceId):null;
+ const m=root();
+ if(scoped&&(!source||!(source.capabilities||[]).includes("assistant"))){
+  add(m,note("دستیار برای این BPMS و لایسنس فعلی فعال نیست.",true));return
+ }
+ const base=sourceId?("/api/sources/"+encodeURIComponent(sourceId)):"/api";
+ const [catalog,status,history]=await Promise.all([
+  request(base+"/questions"),request(base+"/agent/status"),request(base+"/conversations")
+ ]);
+ if(app.page!==(scoped?"source-assistant":"assistant"))return;
+ app.voiceEnabled=status.voice_enabled;
+ heading(m,scoped?("دستیار · "+source.source_name):"دستیار مدیریتی",
+  scoped
+   ?"پرسش فقط بر داده‌های مجاز همین BPMS و Binding فعلی پاسخ داده می‌شود."
+   :"پرسش فارسی، پاسخ مستند و گفت‌وگوهای ذخیره‌شده شما");
  const layout=el("div","agent-layout"),past=card("گفت‌وگوهای من","پاسخ‌های قبلی با زمان ثبت نمایش داده می‌شوند؛ برای وضعیت روز دوباره سؤال کنید.");
  const work=el("div"),form=card("پرسش مدیریتی","پاسخ شامل یافته، تحلیل و پیشنهاد همراه با شواهد جلسه است.");
  const text=el("textarea");text.id="management-question";text.maxLength=2000;text.rows=4;text.placeholder="مثلاً: کدام واحد بیشترین مصوبات تأخیردار را دارد و چه اقدامی پیشنهاد می‌دهی؟";text.setAttribute("aria-label","سؤال مدیریتی");
  const result=el("div");result.id="management-result";result.setAttribute("aria-live","polite");
  const startNew=()=>{app.newConversation=true;app.conversationId=null;result.replaceChildren();text.value="";text.focus()};
- add(form,text,link("دریافت پاسخ",()=>askQuestion(text.value),"button primary"),link("گفت‌وگوی تازه",startNew));
- if(status.voice_enabled)attachVoiceInput(form,text);
+ add(form,text,link("دریافت پاسخ",()=>askQuestion(text.value,sourceId),"button primary"),link("گفت‌وگوی تازه",startNew));
+ if(status.voice_enabled)attachVoiceInput(form,text,false,sourceId);
  if(!status.enabled)add(form,note("مدیر سامانه باید اتصال هوش مصنوعی را فعال کند.",true));
  add(work,form,result);add(layout,past,work);add(m,layout);
  const load=async id=>{
-  try{const c=await request("/api/conversations/"+encodeURIComponent(id));if(!result.isConnected)return;
+  try{const conv=await request(base+"/conversations/"+encodeURIComponent(id));if(!result.isConnected)return;
    app.conversationId=id;app.newConversation=false;result.replaceChildren();
-   for(const turn of c.turns){const panel=card(turn.question,"پاسخ ثبت‌شده در "+dateText(turn.created_at));
-    renderAnalysis(panel,{...turn.answer,conversation_id:id,turn_id:turn.id});add(result,panel)}
+   for(const turn of conv.turns){const panel=card(turn.question,"پاسخ ثبت‌شده در "+dateText(turn.created_at));
+    renderAnalysis(panel,{...turn.answer,conversation_id:id,turn_id:turn.id},sourceId);add(result,panel)}
    text.placeholder="سؤال بعدی درباره این گفتگو...";
   }catch(e){result.replaceChildren(note(e.message,true))}
  };
- for(const c of history.conversations){const row=el("div","history-item");
-  add(row,link(c.title,()=>load(c.id),"history-title"),el("small","muted",dateText(c.updated_at)),
-   link("حذف",async()=>{try{await request("/api/conversations/"+encodeURIComponent(c.id)+"/delete",{method:"POST"});row.remove();if(app.conversationId===c.id)startNew()}catch(e){toast(e.message)}},"link-button"));add(past,row)}
+ for(const item of history.conversations){const row=el("div","history-item");
+  add(row,link(item.title,()=>load(item.id),"history-title"),el("small","muted",dateText(item.updated_at)),
+   link("حذف",async()=>{try{await request(base+"/conversations/"+encodeURIComponent(item.id)+"/delete",{method:"POST"});row.remove();if(app.conversationId===item.id)startNew()}catch(e){toast(e.message)}},"link-button"));add(past,row)}
  if(!history.conversations.length)add(past,el("p","muted","هنوز گفت‌وگویی ذخیره نشده است."));
  const suggestions=card("پرسش‌های آماده"),grid=el("div","questions");
- catalog.questions.forEach(q=>add(grid,link(q,()=>{text.value=q;askQuestion(q)},"")));add(suggestions,grid);add(work,suggestions);
- if(app.pendingQuestion){const q=app.pendingQuestion;app.pendingQuestion=null;startNew();text.value=q;await askQuestion(q)}
+ catalog.questions.forEach(q=>add(grid,link(q,()=>{text.value=q;askQuestion(q,sourceId)},"")));add(suggestions,grid);add(work,suggestions);
+ if(app.pendingQuestion){const q=app.pendingQuestion;app.pendingQuestion=null;startNew();text.value=q;await askQuestion(q,sourceId)}
  else if(app.conversationId)await load(app.conversationId);
 }
-async function askQuestion(question){
+async function askQuestion(question,sourceId=null){
  const target=$("management-result");if(!target)return;
  if(app.sending){toast("پرسش قبلی هنوز در حال بررسی است.");return}
  if(question.trim().length<3||question.trim().length>2000){toast("پرسش باید بین ۳ و ۲۰۰۰ نویسه باشد.");return}
  app.sending=true;const pending=note("در حال بررسی سوابق و محاسبه پاسخ...");add(target,pending);
- try{const result=await request("/api/ask",{method:"POST",headers:{"Content-Type":"application/json"},
+ try{const result=await request(sourceApi(sourceId,"/ask"),{method:"POST",headers:{"Content-Type":"application/json"},
   body:JSON.stringify({question:question.trim(),new_conversation:app.newConversation,conversation_id:app.conversationId})});
   if(!target.isConnected)return;pending.remove();app.newConversation=false;app.conversationId=result.conversation_id;
-  const panel=card(question,"پاسخ در "+dateText(result.as_of_utc));renderAnalysis(panel,result);add(target,panel);panel.scrollIntoView({behavior:"smooth",block:"start"});
+  const panel=card(question,"پاسخ در "+dateText(result.as_of_utc));renderAnalysis(panel,result,sourceId);add(target,panel);panel.scrollIntoView({behavior:"smooth",block:"start"});
  }catch(err){if(target.isConnected)pending.replaceWith(note(err.message,true))}finally{app.sending=false}
 }
 async function init(){
