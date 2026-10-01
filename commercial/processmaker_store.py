@@ -97,7 +97,7 @@ def directory(con):
     }
 
 
-def verified_scope(con, principal):
+def verified_scope(con, principal, source_id=None):
     if not isinstance(principal, Principal):
         raise ProductionAccessDenied("Verified identity required")
     data = native_access.read()
@@ -113,17 +113,28 @@ def verified_scope(con, principal):
         raise EmployeeMappingRequired("Active AVAN account required")
 
     from .user_bpms_bindings import (
-        active_processmaker_source_id, bindings_by_source
+        active_processmaker_source_id, bindings_by_source,
+        processmaker_profile, BindingError,
     )
-    source_id = active_processmaker_source_id()
-    bound = bindings_by_source(source_id) if source_id else {}
+    active_source_id = active_processmaker_source_id()
+    source_id = source_id or active_source_id
+    if not source_id:
+        raise EmployeeMappingRequired("ProcessMaker source is not selected")
+    try:
+        profile = processmaker_profile(source_id)
+    except BindingError as exc:
+        raise ProductionAccessDenied("ProcessMaker source is not available") from exc
+
+    bound = bindings_by_source(source_id)
 
     def external_uid(user):
         binding = bound.get(user.get("subject"))
         if binding and binding.get("status") == "active":
             return str(binding.get("external_user_id") or "")
-        # Compatibility path for installations created before ADR-001.
-        return str(user.get("pm_uid") or "")
+        # Compatibility is permitted only for the former globally active source.
+        if source_id == active_source_id:
+            return str(user.get("pm_uid") or "")
+        return ""
 
     current_uid = external_uid(current)
     users = directory(con)
@@ -148,7 +159,9 @@ def verified_scope(con, principal):
                 if not uid or not users.get(uid, {}).get("active"):
                     continue
                 manager_subject = user.get("manager_subject")
-                legacy_manager_uid = user.get("manager_pm_uid")
+                legacy_manager_uid = (
+                    user.get("manager_pm_uid") if source_id == active_source_id else None
+                )
                 if ((manager_subject and manager_subject in visible_subjects) or
                     (legacy_manager_uid and legacy_manager_uid in visible)):
                     more_subjects.add(subject)
@@ -172,17 +185,20 @@ def verified_scope(con, principal):
         if uid and users.get(uid, {}).get("active"):
             staff[uid] = user
 
-    from .production_license import signed_entitlement, ProductionLicenseDenied
+    from .production_license import entitlement, ProductionLicenseDenied
     try:
-        lic = signed_entitlement(
-            con, tenant_id=data["tenant_id"], company_name=data["company_name"]
+        lic = entitlement(
+            tenant_id=data["tenant_id"], company_name=data["company_name"]
         )
     except ProductionLicenseDenied as exc:
         raise ProductionAccessDenied("Valid license required") from exc
 
+    mysql = profile.get("mysql") or {}
     return {
         "license": lic,
         "source_id": source_id,
+        "source_name": profile.get("name") or "ProcessMaker",
+        "timezone": mysql.get("timezone", "Asia/Tehran"),
         "pm_uid": current_uid,
         "name": current.get("name") or users[current_uid]["name"],
         "department": current.get("department_name") or users[current_uid].get("unit"),
