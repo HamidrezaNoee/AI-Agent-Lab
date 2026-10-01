@@ -51,7 +51,9 @@ function statusName(value){return {TO_DO:"در جریان",COMPLETED:"تکمیل
 function titleCase(role){return {Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم",GodAdmin:"مدیر کل سامانه"}[role]||role}
 function setupUser(user){
  app.user=user;app.csrf=user.csrf;$("nav").hidden=false;
- const workspaceNavigation=(user.bpms_sources||[]).length>0;
+ const workspaceNavigation=user.workspace_navigation!==undefined
+   ?!!user.workspace_navigation
+   :!!user.workspace_access;
  $("pm-nav").hidden=!workspaceNavigation;
  $("platform-nav").hidden=!(user.is_godadmin&&user.platform_access!==false);
  $("admin-nav").hidden=!user.is_godadmin;
