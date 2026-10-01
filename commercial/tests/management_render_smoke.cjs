@@ -28,12 +28,13 @@ const server=http.createServer((req,res)=>{
   page.setDefaultTimeout(8000);
   const pageErrors=[];
   page.on('pageerror',e=>pageErrors.push(e.message));
-  let failBpms=false,savedAppearance=null;
+  let failBpms=false,savedAppearance=null,bindingPayload=null;
 
   await page.route('**/admin/api/**',async route=>{
     const p=new URL(route.request().url()).pathname;
     let data={};
     if(p==='/admin/api/appearance/save'){savedAppearance=route.request().postDataJSON();return route.fulfill({json:{identity_theme_synced:true}})}
+    if(p==='/admin/api/user-bindings/bind'){bindingPayload=route.request().postDataJSON();return route.fulfill({json:{binding:{...bindingPayload,status:'active'}}})}
     if(p==='/admin/api/state')data={
       authenticated:true,password_changed:true,mfa_enrolled:true,mfa_authenticated:true,
       csrf:'test',auth_mode:'oidc'
@@ -74,8 +75,31 @@ const server=http.createServer((req,res)=>{
       valid:true,mode:'licensed',active_users:1,max_users:10,remaining_seats:9,
       remaining_days:30,expires_at:'2026-12-31T00:00:00Z',modules:[1,2,3,4]
     };
-    else if(p==='/admin/api/users/mapped')data={users:[]};
+    else if(p==='/admin/api/users/mapped')data={users:[{
+      subject:'sub-amin',username:'amin.t',email:'amin@example.org',name:'امین تست',
+      role:'Expert',department_name:'فروش',manager_subject:null,enabled:true,pm_uid:null,pm_active:false
+    }]};
     else if(p==='/admin/api/users/pending')data={pending:[]};
+    else if(p==='/admin/api/user-bindings/sources')data={sources:[{
+      id:'aaaaaaaaaaaaaaaaaaaaaaaa',name:'ProcessMaker اصلی',engine:'processmaker',
+      connection_type:'processmaker',enabled:true,active:true
+    }]};
+    else if(p==='/admin/api/user-bindings/list')data={bindings:[]};
+    else if(p==='/admin/api/user-bindings/directory')data={
+      source:{id:'aaaaaaaaaaaaaaaaaaaaaaaa',name:'ProcessMaker اصلی',engine:'processmaker',
+              connection_type:'processmaker',enabled:true,active:true},
+      suggestions:[{
+        external_user_id:'11111111111111111111111111111111',username:'amin.t',
+        display_name:'امین متناظر',email:'amin@example.org',status:'ACTIVE',active:true,
+        unit:'فروش',score:100,reason:'username_exact'
+      }],
+      users:[
+       {external_user_id:'11111111111111111111111111111111',username:'amin.t',
+        display_name:'امین متناظر',email:'amin@example.org',status:'ACTIVE',active:true,unit:'فروش'},
+       {external_user_id:'22222222222222222222222222222222',username:'ali.j',
+        display_name:'علی جایگزین',email:'ali@example.org',status:'ACTIVE',active:true,unit:'عملیات'}
+      ]
+    };
     else if(p==='/admin/api/processmaker/users')data={users:[]};
     else data={};
     await route.fulfill({json:data});
@@ -103,6 +127,22 @@ const server=http.createServer((req,res)=>{
     if(!box||box.height<40)throw Error('Collapsed management tab: '+label);
     if(!(await host.innerText()).trim())throw Error('Empty management tab text: '+label);
   }
+
+  // ADR-001 regression: exact username is a suggestion only; Admin may bind another BPMS user.
+  await page.getByRole('button',{name:'سازمان و دسترسی',exact:true}).click();
+  await page.getByRole('button',{name:'کاربران و دسترسی',exact:true}).click();
+  const userCard=page.locator('.avan-user-card').filter({hasText:'amin.t'}).first();
+  await userCard.waitFor();
+  await userCard.getByRole('button',{name:'انتخاب کاربر BPMS',exact:true}).click();
+  const externalSelect=userCard.locator('select[name="external_user_id"]');
+  await externalSelect.waitFor();
+  if(await externalSelect.inputValue()!=='11111111111111111111111111111111')throw Error('Exact username suggestion not preselected');
+  await externalSelect.selectOption('22222222222222222222222222222222');
+  await userCard.getByRole('button',{name:'اتصال کاربر',exact:true}).click();
+  await page.waitForFunction(()=>true);
+  if(!bindingPayload||bindingPayload.subject!=='sub-amin'||
+     bindingPayload.external_user_id!=='22222222222222222222222222222222'||
+     bindingPayload.match_method!=='manual')throw Error('Admin override of BPMS identity was not persisted as manual binding');
 
   await page.getByRole('button',{name:'تنظیمات ظاهری',exact:true}).click();
   await page.locator('[data-appearance-field="title"]').fill('عنوان ویرایش‌شده');
