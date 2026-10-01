@@ -33,6 +33,7 @@ COPY --chown=10001:10001 commercial/security.py /app/commercial/security.py
 COPY --chown=10001:10001 commercial/meeting_questions.py /app/commercial/meeting_questions.py
 COPY --chown=10001:10001 commercial/processmaker_store.py /app/commercial/processmaker_store.py
 COPY --chown=10001:10001 commercial/native_access.py /app/commercial/native_access.py
+COPY --chown=10001:10001 commercial/user_bpms_bindings.py /app/commercial/user_bpms_bindings.py
 COPY --chown=10001:10001 commercial/production_store.py /app/commercial/production_store.py
 COPY --chown=10001:10001 commercial/production_license.py /app/commercial/production_license.py
 COPY --chown=10001:10001 commercial/licensing/codec.py /app/commercial/licensing/codec.py
