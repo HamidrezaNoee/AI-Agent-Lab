@@ -267,6 +267,7 @@ def unbind(*,subject:str,source_id:str,approved_by:str="GodAdmin")->dict:
 def refresh_source(source_id:str)->dict:
     source=_source(source_id)
     directory={u["external_user_id"]:u for u in directory_users(source_id)}
+    tenant_id=native_access.read().get("tenant_id") or ""
     now=_now();active=stale=0
     with agent_storage.transaction() as tx:
         state=_state(tx,lock=True)
@@ -288,8 +289,7 @@ def refresh_source(source_id:str)->dict:
                 b["last_verified_at"]=now
                 stale+=1
         tx.put(STORE_KEY,state)
-        tx.audit((native_access.read().get("tenant_id") or ""),"GodAdmin",
-                 "BPMS_USER_BINDINGS_REFRESHED",
+        tx.audit(tenant_id,"GodAdmin","BPMS_USER_BINDINGS_REFRESHED",
                  {"source_id":source_id,"active":active,"stale":stale})
     return {"source":source,"directory_users":len(directory),
             "active_bindings":active,"stale_bindings":stale}
