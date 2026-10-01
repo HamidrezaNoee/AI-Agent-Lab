@@ -1,5 +1,6 @@
 """First-run promotion and server-side separation of platform and staff access."""
 import tempfile
+from contextlib import contextmanager
 import time
 import unittest
 from pathlib import Path
@@ -213,6 +214,37 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertEqual(me["role"],"Manager")
         self.assertEqual(me["modules"],[1,2,3,4])
         self.assertEqual(me["bpms_sources"][0]["external_username"],"pm.operator")
+
+    def test_approved_avan_user_can_login_without_any_bpms_binding(self):
+        setup.bind_godadmin_identity(TENANT,"operator")
+        organization={"tenant_id":TENANT,"company_name":"ایران رور","users":[{
+            "subject":"employee","username":"amin.t","email":"employee@example.com",
+            "name":"امین","role":"Expert","department_name":"فروش","enabled":True,
+            "pm_uid":None,"pm_active":False
+        }]}
+
+        @contextmanager
+        def edit():
+            yield organization
+
+        entitlement={"modules":frozenset({1,2,3,4}),
+                     "expires_at":"2027-01-01T00:00:00Z","mode":"licensed"}
+        with patch.object(native_access,"read",return_value=organization), \
+             patch.object(native_access,"edit",edit), \
+             patch.object(production_license,"entitlement",return_value=entitlement), \
+             patch.object(user_bpms_bindings,"list_bindings",return_value=[]), \
+             patch.object(user_bpms_bindings,"source_catalog",return_value=[]), \
+             patch.object(user_bpms_bindings,"active_processmaker_source_id",return_value=None):
+            admitted=self.oidc_login("employee")
+            self.assertEqual(admitted.headers["location"],"/")
+            me=self.client.get("/api/me").json()
+
+        self.assertEqual(me["username"],"amin.t")
+        self.assertFalse(me["workspace_navigation"])
+        self.assertFalse(me["workspace_access"])
+        self.assertEqual(me["bpms_sources"],[])
+        self.assertTrue(me["source_navigation"] is False)
+
 
     def test_binding_requires_matching_issuer_and_host_recovery_unbinds(self):
         setup.bind_godadmin_identity(TENANT,"operator")
