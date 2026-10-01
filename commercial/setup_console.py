@@ -120,7 +120,7 @@ def _unseal(name:str,blob:bytes)->dict:
 
 ALLOWED_SETTINGS=frozenset({
     "installation","mysql","oidc","processmaker","processmaker_profiles",
-    "company","license","ai","agent_sql","agent_sql_pending",
+    "company","organizations","license","ai","agent_sql","agent_sql_pending",
     "agent_sql_connections","bpms_connections","appearance"
 })
 
