@@ -477,9 +477,17 @@ function renderAnalysis(target,result,sourceId=null){
  }
  add(target,evidence,el("small","muted","زمان بررسی: "+result.as_of_utc));
 }
-async function secretaryPage(){
- const m=root();heading(m,"دبیر هوشمند جلسه","استخراج، ویرایش، تأیید و آماده‌سازی اقدامات برای فرم جلسه");
+async function secretaryPage(sourceId=null){
+ const scoped=!!sourceId;
+ const source=scoped?(app.user?.bpms_sources||[]).find(x=>x.source_id===sourceId):null;
+ const m=root();
+ if(scoped&&(!source||!(source.capabilities||[]).includes("secretary"))){
+  add(m,note("دبیر هوشمند برای این BPMS و لایسنس فعلی فعال نیست.",true));return
+ }
+ heading(m,scoped?("دبیر هوشمند · "+source.source_name):"دبیر هوشمند جلسه",
+  scoped?"پیش‌نویس و اقدامات فقط در دامنه همین BPMS و Binding فعلی ساخته می‌شوند.":"استخراج، ویرایش، تأیید و آماده‌سازی اقدامات برای فرم جلسه");
  if(!app.user.modules.includes(2)){add(m,note("ماژول دبیر هوشمند در لایسنس فعال نیست."));return}
+ const draftBase=sourceApi(sourceId,"/secretary/drafts");
  const panel=card("تهیه پیش‌نویس","شماره دقیق جلسه و متن گفتگو یا یادداشت دبیر را وارد کنید.");
  const number=el("input");number.placeholder="شماره جلسه";number.maxLength=80;number.setAttribute("aria-label","شماره جلسه");
  const notes=el("textarea");notes.rows=9;notes.maxLength=18000;notes.placeholder="متن جلسه و تصمیمات...";notes.setAttribute("aria-label","متن جلسه");
@@ -487,23 +495,32 @@ async function secretaryPage(){
  const create=link("استخراج مصوبات",async()=>{
   if(notes.value.trim().length<10||!number.value.trim()){result.replaceChildren(note("شماره جلسه و متن کافی وارد کنید.",true));return}
   create.disabled=true;result.replaceChildren(note("در حال استخراج پیش‌نویس..."));
-  try{const draft=await request("/api/secretary/drafts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({meeting_no:number.value.trim(),notes:notes.value.trim()})});result.replaceChildren();renderDraft(result,draft)}
+  try{const draft=await request(draftBase,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({meeting_no:number.value.trim(),notes:notes.value.trim()})});result.replaceChildren();renderDraft(result,draft,sourceId)}
   catch(e){result.replaceChildren(note(e.message,true))}finally{create.disabled=false}
  },"button primary");
- add(panel,number,notes,create,link("پیشنهاد دستور جلسه",()=>{app.pendingQuestion="برای جلسه آینده با توجه به اقدامات باز و سوابق جلسه شماره "+number.value+" دستور جلسه و گزارش پیگیری پیشنهاد بده";select("assistant")}));add(m,panel,result);
- const [status,previous]=await Promise.all([request("/api/agent/status"),request("/api/secretary/drafts")]);if(!m.isConnected)return;
- if(status.voice_enabled)attachVoiceInput(panel,notes);
+ add(panel,number,notes,create);
+ if(!scoped||(source.capabilities||[]).includes("assistant")){
+  add(panel,link("پیشنهاد دستور جلسه",()=>{
+   app.pendingQuestion="برای جلسه آینده با توجه به اقدامات باز و سوابق جلسه شماره "+number.value+" دستور جلسه و گزارش پیگیری پیشنهاد بده";
+   select(scoped?"source-assistant":"assistant")
+  }));
+ }
+ add(m,panel,result);
+ const [status,previous]=await Promise.all([
+  request(sourceApi(sourceId,"/agent/status")),request(draftBase)
+ ]);if(!m.isConnected)return;
+ if(status.voice_enabled)attachVoiceInput(panel,notes,false,sourceId);
  const list=card("پیش‌نویس‌های ذخیره‌شده","با انتخاب هر مورد می‌توانید بازبینی را ادامه دهید.");
  for(const d of previous.drafts)add(list,link((d.meeting_no||d.meeting_id)+" · "+d.summary+" · "+(d.status==="approved"?"تأییدشده":"در حال ویرایش"),async()=>{
-  try{const draft=await request("/api/secretary/drafts/"+encodeURIComponent(d.id));result.replaceChildren();renderDraft(result,draft);result.scrollIntoView({behavior:"smooth"})}catch(e){toast(e.message)}
+  try{const draft=await request(draftBase+"/"+encodeURIComponent(d.id));result.replaceChildren();renderDraft(result,draft,sourceId);result.scrollIntoView({behavior:"smooth"})}catch(e){toast(e.message)}
  }));if(!previous.drafts.length)add(list,el("p","muted","هنوز پیش‌نویسی ایجاد نشده است."));add(m,list);
 }
 function inputField(label,value,type="text"){
  const wrap=el("label","field"),input=el(type==="textarea"?"textarea":"input");
  if(type!=="textarea")input.type=type;input.value=value??"";input.setAttribute("aria-label",label);add(wrap,el("span","",label),input);return {wrap,input};
 }
-function renderDraft(target,draft){
- const payload=draft.payload,approved=draft.status==="approved",path="/api/secretary/drafts/"+encodeURIComponent(draft.id);
+function renderDraft(target,draft,sourceId=null){
+ const payload=draft.payload,approved=draft.status==="approved",path=sourceApi(sourceId,"/secretary/drafts/"+encodeURIComponent(draft.id));
  const panel=card("بازبینی پیش‌نویس · نسخه "+fmt(draft.revision||1),"تأیید پیش‌نویس، اطلاعاتی در ProcessMaker ثبت نمی‌کند.");
  const summary=inputField("خلاصه جلسه",payload.summary,"textarea");summary.input.maxLength=3000;add(panel,summary.wrap);
  const actions=el("div"),editors=[],out=el("div");let dirty=false;
@@ -527,17 +544,17 @@ function renderDraft(target,draft){
  for(const q of payload.questions||[])add(panel,note(q));
  const approve=link("تأیید نسخه ذخیره‌شده",async()=>{
   if(dirty||!check.checked){out.replaceChildren(note("نسخه ذخیره‌شده را بازبینی و تأیید کنید.",true));return}approve.disabled=true;
-  try{const r=await request(path+"/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true,revision:draft.revision||1})});target.replaceChildren();renderDraft(target,r)}catch(e){out.replaceChildren(note(e.message,true));approve.disabled=false}
+  try{const r=await request(path+"/approve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true,revision:draft.revision||1})});target.replaceChildren();renderDraft(target,r,sourceId)}catch(e){out.replaceChildren(note(e.message,true));approve.disabled=false}
  },"button primary");
  const check=el("input");check.type="checkbox";const consent=el("label");add(consent,check,el("span","","این نسخه را بازبینی کرده‌ام."));
  if(!approved){const save=link("ذخیره اصلاحات",async()=>{save.disabled=true;try{
-   const r=await request(path+"/edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({revision:draft.revision||1,payload:{summary:summary.input.value,actions:editors.filter(e=>e.item.isConnected).map(e=>e.value()),questions:payload.questions||[]}})});target.replaceChildren();renderDraft(target,r);
+   const r=await request(path+"/edit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({revision:draft.revision||1,payload:{summary:summary.input.value,actions:editors.filter(e=>e.item.isConnected).map(e=>e.value()),questions:payload.questions||[]}})});target.replaceChildren();renderDraft(target,r,sourceId);
   }catch(e){out.replaceChildren(note(e.message,true))}finally{save.disabled=false}},"button primary");add(panel,save,consent,approve);
   panel.addEventListener("input",e=>{if(e.target!==check)changed()});panel.addEventListener("change",e=>{if(e.target!==check)changed()});
  }else{
   panel.querySelectorAll("input,textarea,select").forEach(x=>x.disabled=true);add(panel,note("پیش‌نویس تأیید شده؛ هنوز در ProcessMaker ثبت نشده است."));
   for(const [suffix,title,filename] of [["export","دریافت پیش‌نویس کامل","meeting-actions.json"],["processmaker","دریافت ردیف‌های فرم ProcessMaker","processmaker-actions.json"]])add(panel,link(title,async()=>{try{downloadJson(await request(path+"/"+suffix),filename)}catch(e){out.replaceChildren(note(e.message,true))}},"button primary"));
-  add(panel,link("بازگشایی برای اصلاح",async()=>{try{const r=await request(path+"/reopen",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true,revision:draft.revision||1})});target.replaceChildren();renderDraft(target,r)}catch(e){out.replaceChildren(note(e.message,true))}}));
+  add(panel,link("بازگشایی برای اصلاح",async()=>{try{const r=await request(path+"/reopen",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true,revision:draft.revision||1})});target.replaceChildren();renderDraft(target,r,sourceId)}catch(e){out.replaceChildren(note(e.message,true))}}));
  }
  add(panel,out);add(target,panel);
 }
