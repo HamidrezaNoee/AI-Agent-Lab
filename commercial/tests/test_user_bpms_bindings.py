@@ -196,3 +196,26 @@ def test_agent_scope_stamp_isolated_by_bpms_source_even_for_same_external_user()
     first=agent_workspace.scope_stamp({**base,"source_id":"a"*24})
     second=agent_workspace.scope_stamp({**base,"source_id":"b"*24})
     assert first!=second
+
+
+def test_binding_live_revalidates_selected_external_user_even_when_directory_can_be_cached():
+    tx=FakeTx({"version":1,"bindings":[]})
+    @contextmanager
+    def transaction():
+        yield tx
+    avan={"subject":"sub-1","username":"amin.t","email":"amin@example.org",
+          "name":"Amin Test","enabled":True}
+    source={"id":SOURCE,"name":"PM 1","engine":"processmaker",
+            "connection_type":"processmaker","enabled":True,"active":True}
+    inactive={"external_user_id":"pm-ali","username":"ali.j","display_name":"Ali J",
+              "email":"ali@example.org","status":"INACTIVE","active":False,"unit":"Sales"}
+    with patch.object(user_bpms_bindings,"_avan_user",
+                      return_value=({"tenant_id":TENANT},avan)), \
+         patch.object(user_bpms_bindings,"_source",return_value=source), \
+         patch.object(user_bpms_bindings,"directory_users",return_value=[inactive]) as directory, \
+         patch.object(user_bpms_bindings.agent_storage,"transaction",transaction):
+        with pytest.raises(user_bpms_bindings.BindingError):
+            user_bpms_bindings.bind(subject="sub-1",source_id=SOURCE,
+                                    external_user_id="pm-ali")
+    directory.assert_called_once_with(SOURCE,refresh=True)
+    assert tx.store["bpms_user_bindings"]["bindings"]==[]
