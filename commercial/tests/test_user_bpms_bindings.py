@@ -7,7 +7,7 @@ import pytest
 
 from commercial import (
     bpms_registry, production_onboarding, user_bpms_bindings,
-    processmaker_store, native_access, production_license,
+    processmaker_store, native_access, production_license, agent_workspace,
 )
 from commercial.security import Principal
 
@@ -188,3 +188,11 @@ def test_legacy_pm_uid_never_authorizes_without_explicit_binding():
                       return_value={legacy_uid:{"name":"Legacy","active":True,"unit":""}}):
         with pytest.raises(processmaker_store.EmployeeMappingRequired):
             processmaker_store.verified_scope(object(),principal,source_id=source)
+
+
+def test_agent_scope_stamp_isolated_by_bpms_source_even_for_same_external_user():
+    base={"tenant_id":TENANT,"external_user_id":"same-user","role":"Expert",
+          "visible_uids":{"same-user"},"license":{"modules":frozenset({1})}}
+    first=agent_workspace.scope_stamp({**base,"source_id":"a"*24})
+    second=agent_workspace.scope_stamp({**base,"source_id":"b"*24})
+    assert first!=second
