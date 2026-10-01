@@ -522,7 +522,7 @@ function settingsSubnav(items,active,onChange){
 }
 
 async function renderOrganizationHub(m){
- const items=[["company","اطلاعات سازمان"],["identity","هویت و ورود"],["users","کاربران و دسترسی"]];
+ const items=[["company","سازمان‌ها"],["identity","هویت و ورود"],["users","کاربران و دسترسی"]];
  append(m,settingsSubnav(items,state.orgSub,code=>{state.orgSub=code;showSettings("organization")}));
  if(state.orgSub==="company")await renderCompany(m);
  else if(state.orgSub==="identity")await renderIdentity(m);
@@ -1475,21 +1475,93 @@ async function renderBPMS(m){
 }
 
 async function renderCompany(m){
- const p=panel("اطلاعات سازمان",
-  "نام سازمان و شناسه Tenant از داخل آوان مدیریت می‌شوند. شناسه سازمان در اولین ذخیره توسط خود سیستم ساخته و ثابت می‌شود.");
- const current=await api("company");
- const form=node("form"),out=node("div");
- append(form,field("نام رسمی سازمان","company_name",current.company_name||""),
-   node("button","","ذخیره اطلاعات سازمان"),out);
- if(current.tenant_id)append(p,info("شناسه ثابت سازمان: "+current.tenant_id));
- form.addEventListener("submit",async e=>{
+ const p=panel("مدیریت سازمان‌ها",
+  "هر سازمان Tenant ID ثابت خودش را دارد. می‌توانید چند سازمان تعریف کنید، وضعیت هرکدام را ببینید، نام را ویرایش و سازمان را فعال یا غیرفعال کنید.");
+ append(m,p);
+
+ const toolbar=node("div","section-head"),title=node("div");
+ append(title,node("h3","","سازمان‌های ثبت‌شده"),
+  node("span","hint","Tenant ID بعد از ایجاد هرگز تغییر نمی‌کند."));
+ const actions=node("div","actions"),editor=node("div","organization-editor-slot");
+ append(actions,btn("+ افزودن سازمان",()=>openOrganizationEditor(null)));
+ append(toolbar,title,actions);append(p,toolbar,editor);
+
+ const list=node("div","organization-list");append(p,list);
+ let state;
+ try{state=await api("organizations")}
+ catch(err){append(list,info("فهرست سازمان‌ها قابل دریافت نیست: "+(err?.message||String(err)),true));return}
+
+ const rows=state.organizations||[];
+ if(!rows.length)append(list,info("هنوز سازمانی ثبت نشده است. روی «افزودن سازمان» بزنید."));
+
+ function openOrganizationEditor(current){
+  editor.replaceChildren();
+  const box=panel(current?"ویرایش سازمان":"افزودن سازمان جدید",
+   current
+    ?"Tenant ID ثابت می‌ماند؛ فقط نام رسمی و وضعیت سازمان قابل تغییر است."
+    :"برای سازمان جدید AVAN یک Tenant ID یکتا و دائمی تولید می‌کند.");
+  box.classList.add("organization-editor");
+  const form=node("form","grid"),out=node("div","full");
+  append(form,field("نام رسمی سازمان","company_name",current?.company_name||""));
+  const enabledLabel=node("label","organization-enabled-option");
+  const enabled=node("input");enabled.type="checkbox";enabled.checked=current?!!current.enabled:true;
+  append(enabledLabel,enabled,node("span","", "سازمان فعال باشد"));
+  append(form,enabledLabel);
+  if(current)append(form,node("div","full organization-tenant-readonly",
+    "Tenant ID: "+current.tenant_id));
+  const save=node("button","",current?"ذخیره تغییرات":"ایجاد سازمان");save.type="submit";
+  append(form,save,btn("انصراف",()=>editor.replaceChildren(),"secondary"),out);
+  form.addEventListener("submit",async e=>{
    e.preventDefault();busy(form,true);out.replaceChildren();
    try{
-     const saved=await api("company/save",{company_name:formValue(form,"company_name")});
-     append(out,info("اطلاعات سازمان ذخیره شد · Tenant ID: "+saved.tenant_id));
+    const result=await api("organizations/save",{
+     tenant_id:current?.tenant_id||null,
+     company_name:formValue(form,"company_name"),
+     enabled:enabled.checked
+    });
+    append(out,info((result.created?"سازمان ایجاد شد":"تغییرات ذخیره شد")+" · Tenant ID: "+result.tenant_id));
+    await showSettings("company");
    }catch(err){showError(out,err)}finally{busy(form,false)}
- });
- append(p,form);append(m,p);
+  });
+  append(box,form);append(editor,box);
+ }
+
+ for(const org of rows){
+  const card=node("div","organization-card");
+  const head=node("div","organization-card-head"),meta=node("div","organization-card-meta");
+  append(meta,node("strong","",org.company_name||"سازمان بدون نام"),
+   node("span","organization-tenant",org.tenant_id));
+  const badges=node("div","organization-badges");
+  append(badges,node("span","connection-pill "+(org.enabled?"is-active":"is-off"),
+    org.enabled?"فعال":"غیرفعال"));
+  if(org.is_primary)append(badges,node("span","organization-primary-badge","سازمان سازگار فعلی"));
+  append(head,meta,badges);append(card,head);
+
+  const details=node("div","organization-details");
+  append(details,
+   node("span","hint","ایجاد: "+(org.created_utc?new Date(org.created_utc).toLocaleString("fa-IR"):"—")),
+   node("span","hint","آخرین تغییر: "+(org.updated_utc?new Date(org.updated_utc).toLocaleString("fa-IR"):"—")));
+  append(card,details);
+
+  const cardActions=node("div","actions");
+  append(cardActions,
+   btn("ویرایش",()=>openOrganizationEditor(org),"secondary"),
+   btn(org.enabled?"غیرفعال‌سازی":"فعال‌سازی",async()=>{
+    if(org.enabled&&!confirm("سازمان «"+org.company_name+"» غیرفعال شود؟"))return;
+    try{
+     await api("organizations/enabled",{tenant_id:org.tenant_id,enabled:!org.enabled});
+     await showSettings("company");
+    }catch(err){
+     editor.replaceChildren();showError(editor,err)
+    }
+   },org.enabled?"secondary danger":""));
+  append(card,cardActions);append(list,card);
+ }
+
+ const noteBox=node("div","settings-clean-note");
+ append(noteBox,node("strong","","قاعده چندسازمانی AVAN"),
+  node("p","hint","نام و وضعیت سازمان قابل تغییر است اما Tenant ID ثابت می‌ماند. اتصال کاربران، BPMSها، لایسنس و داده‌های Agent در مراحل بعدی با همین Tenant ID به سازمان مربوط Scope می‌شوند."));
+ append(p,noteBox);
 }
 
 document.addEventListener("DOMContentLoaded",start);
