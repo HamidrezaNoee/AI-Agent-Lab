@@ -144,3 +144,17 @@ def test_godadmin_assistant_works_without_processmaker_connection():
             assert response.status_code==200,response.text
             assert response.json()["answer"]=="راهنمای اتصال"
             assert client.post("/api/platform/ask",json={"question":"روش اتصال چیست؟"}).status_code==403
+
+
+def test_bound_source_capabilities_follow_engine_and_license_modules():
+    pm={"engine":"processmaker","connection_type":"processmaker"}
+    adapter={"engine":"camunda","connection_type":"adapter"}
+    assert production_app._source_capabilities(pm,frozenset())==["overview"]
+    assert production_app._source_capabilities(pm,frozenset({1}))==["overview","meetings"]
+    assert production_app._source_capabilities(pm,frozenset({3}))==["overview","bi"]
+    assert production_app._source_capabilities(pm,frozenset({1,2,3,4}))==[
+        "overview","meetings","bi"
+    ]
+    # Generic adapters expose only capabilities with an implemented user-scoped
+    # AVAN route. Directory sync alone must not create operational menu access.
+    assert production_app._source_capabilities(adapter,frozenset({1,2,3,4}))==["overview"]
