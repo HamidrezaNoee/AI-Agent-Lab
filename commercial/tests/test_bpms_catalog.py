@@ -118,7 +118,8 @@ def test_deleting_active_processmaker_profile_clears_runtime_legacy_connection()
         data[name]=value
     with patch.object(routes.setup,"get_setting",side_effect=get_setting), \
          patch.object(routes.setup,"put_setting",side_effect=put_setting), \
-         patch.object(routes.setup,"audit"):
+         patch.object(routes.setup,"audit"), \
+         patch("commercial.user_bpms_bindings.list_bindings",return_value=[]):
         result=routes.bpms_catalog_delete(
             routes.BPMSCatalogRef(connection_type="processmaker",id=seed["id"]),
             session=("sid",{})
