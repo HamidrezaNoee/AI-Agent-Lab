@@ -61,7 +61,7 @@ def snapshot(principal,module,meeting_id=None):
 
 
 def ensure_still_authorized(principal,initial_scope,initial_rows,module):
-    # A role, hierarchy, PM mapping or meeting membership can change while the
+    # A role, hierarchy, BPMS binding or meeting membership can change while the
     # external model runs. Re-check source visibility before returning any content.
     scope,rows,_=snapshot(principal,module)
     if agent_workspace.scope_stamp(scope)!=agent_workspace.scope_stamp(initial_scope):
@@ -175,7 +175,7 @@ def register(app,authorized,csrf):
         _,_,principal=value
         scope,rows,record=load_draft(principal,identifier)
         meeting=next(m for m in rows if m['meeting_id']==record['meeting_id'])
-        if scope['role']!='SysAdmin' and scope['pm_uid']!=meeting.get('secretary_uid'):
+        if scope['role']!='SysAdmin' and scope['external_user_id']!=meeting.get('secretary_uid'):
             raise HTTPException(403,'تأیید پیش‌نویس فقط برای دبیر جلسه یا مدیر سیستم مجاز است.')
         try:result=agent_state.approve_draft(scope,principal.subject,identifier,{m['meeting_id'] for m in rows},body.revision)
         except agent_workspace.RevisionConflict:raise HTTPException(409,'نسخه پیش‌نویس تغییر کرده است؛ دوباره بازبینی کنید.')
