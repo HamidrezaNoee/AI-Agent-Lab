@@ -189,7 +189,7 @@ def alert_status(scope, actor, result):
 
 
 def acknowledge(scope, actor, identifier):
-    key = user_key('alert_status', scope, actor)
+    key = source_user_key('alert_status', scope, actor)
     with agent_storage.transaction() as tx:
         data = tx.get(key, {}, lock=True)
         if identifier not in data:
