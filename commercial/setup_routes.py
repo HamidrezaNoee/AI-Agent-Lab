@@ -717,26 +717,153 @@ class CompanyConfig(BaseModel):
     company_name:str=Field(min_length=2,max_length=200)
 
 
-@router.post("/api/company/save")
-def company_save(body:CompanyConfig,session=Depends(_ready)):
+class OrganizationSave(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    tenant_id:str|None=Field(default=None,max_length=36)
+    company_name:str=Field(min_length=2,max_length=200)
+    enabled:bool=True
+
+
+class OrganizationEnabled(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    tenant_id:str=Field(min_length=36,max_length=36)
+    enabled:bool
+
+
+def _organizations_state()->dict:
+    """Read the AVAN organization registry and surface legacy company as row zero.
+
+    The legacy single-company setting remains the compatibility organization until
+    tenant-scoped users/licenses/BPMS connections are fully migrated.
+    """
     import uuid
-    current=setup.get_setting("company") or {}
-    tenant_id=current.get("tenant_id")
-    if tenant_id:
-        try: tenant_id=str(uuid.UUID(str(tenant_id)))
-        except ValueError: raise HTTPException(409,"شناسه سازمان ذخیره‌شده معتبر نیست.")
+    raw=setup.get_setting("organizations") or {}
+    rows=raw.get("organizations") if isinstance(raw,dict) else None
+    rows=[dict(x) for x in rows if isinstance(x,dict)] if isinstance(rows,list) else []
+    primary=raw.get("primary_tenant_id") if isinstance(raw,dict) else None
+    legacy=setup.get_setting("company") or {}
+    legacy_id=legacy.get("tenant_id")
+    legacy_name=legacy.get("company_name")
+    if legacy_id and not any(x.get("tenant_id")==legacy_id for x in rows):
+        try:legacy_id=str(uuid.UUID(str(legacy_id)))
+        except ValueError:legacy_id=None
+        if legacy_id:
+            now=datetime.now(timezone.utc).isoformat()
+            rows.insert(0,{
+                "tenant_id":legacy_id,
+                "company_name":str(legacy_name or "سازمان فعلی")[:200],
+                "enabled":True,
+                "created_utc":now,
+                "updated_utc":now,
+            })
+            primary=primary or legacy_id
+    if not primary and rows:
+        primary=rows[0].get("tenant_id")
+    return {"primary_tenant_id":primary,"organizations":rows}
+
+
+def _save_organizations(state:dict)->None:
+    setup.put_setting("organizations",{
+        "primary_tenant_id":state.get("primary_tenant_id"),
+        "organizations":state.get("organizations") or [],
+    })
+
+
+@router.get("/api/organizations")
+def organizations_get(session=Depends(_ready)):
+    state=_organizations_state()
+    return {
+        "primary_tenant_id":state.get("primary_tenant_id"),
+        "organizations":[
+            {
+                "tenant_id":row.get("tenant_id"),
+                "company_name":row.get("company_name"),
+                "enabled":bool(row.get("enabled",True)),
+                "is_primary":row.get("tenant_id")==state.get("primary_tenant_id"),
+                "created_utc":row.get("created_utc"),
+                "updated_utc":row.get("updated_utc"),
+            }
+            for row in state["organizations"]
+        ],
+    }
+
+
+@router.post("/api/organizations/save")
+def organization_save(body:OrganizationSave,session=Depends(_ready)):
+    import uuid
+    state=_organizations_state()
+    rows=state["organizations"]
+    now=datetime.now(timezone.utc).isoformat()
+    name=body.company_name.strip()
+    if body.tenant_id:
+        try:tenant_id=str(uuid.UUID(body.tenant_id))
+        except ValueError:raise HTTPException(422,"Tenant ID سازمان معتبر نیست.")
+        row=next((x for x in rows if x.get("tenant_id")==tenant_id),None)
+        if not row:raise HTTPException(404,"سازمان پیدا نشد.")
+        row["company_name"]=name
+        row["enabled"]=body.enabled
+        row["updated_utc"]=now
+        created=False
     else:
         tenant_id=str(uuid.uuid4())
-    payload={"tenant_id":tenant_id,"company_name":body.company_name.strip()}
-    setup.put_setting("company",payload)
-    return {"saved":True,**payload}
+        rows.append({
+            "tenant_id":tenant_id,
+            "company_name":name,
+            "enabled":body.enabled,
+            "created_utc":now,
+            "updated_utc":now,
+        })
+        if not state.get("primary_tenant_id"):
+            state["primary_tenant_id"]=tenant_id
+        created=True
+
+    # Preserve the original single-tenant runtime contract until the remaining
+    # stores are tenant-scoped. Editing the compatibility organization updates it.
+    if tenant_id==state.get("primary_tenant_id"):
+        setup.put_setting("company",{"tenant_id":tenant_id,"company_name":name})
+    _save_organizations(state)
+    setup.audit("ORGANIZATION_CREATED" if created else "ORGANIZATION_UPDATED")
+    return {"saved":True,"created":created,"tenant_id":tenant_id,
+            "company_name":name,"enabled":body.enabled,
+            "is_primary":tenant_id==state.get("primary_tenant_id")}
+
+
+@router.post("/api/organizations/enabled")
+def organization_enabled(body:OrganizationEnabled,session=Depends(_ready)):
+    import uuid
+    try:tenant_id=str(uuid.UUID(body.tenant_id))
+    except ValueError:raise HTTPException(422,"Tenant ID سازمان معتبر نیست.")
+    state=_organizations_state()
+    row=next((x for x in state["organizations"] if x.get("tenant_id")==tenant_id),None)
+    if not row:raise HTTPException(404,"سازمان پیدا نشد.")
+    row["enabled"]=body.enabled
+    row["updated_utc"]=datetime.now(timezone.utc).isoformat()
+    _save_organizations(state)
+    setup.audit("ORGANIZATION_ENABLED" if body.enabled else "ORGANIZATION_DISABLED")
+    return {"saved":True,"tenant_id":tenant_id,"enabled":body.enabled}
+
+
+# Backward-compatible single-company endpoints. New UI uses /api/organizations.
+@router.post("/api/company/save")
+def company_save(body:CompanyConfig,session=Depends(_ready)):
+    state=_organizations_state()
+    primary=state.get("primary_tenant_id")
+    saved=organization_save(OrganizationSave(
+        tenant_id=primary,company_name=body.company_name,enabled=True
+    ),session) if primary else organization_save(OrganizationSave(
+        company_name=body.company_name,enabled=True
+    ),session)
+    return {"saved":True,"tenant_id":saved["tenant_id"],
+            "company_name":saved["company_name"]}
 
 
 @router.get("/api/company")
 def company_get(session=Depends(_ready)):
-    current=setup.get_setting("company") or {}
-    return {"tenant_id":current.get("tenant_id"),
-            "company_name":current.get("company_name")}
+    state=_organizations_state()
+    primary=state.get("primary_tenant_id")
+    current=next((x for x in state["organizations"] if x.get("tenant_id")==primary),None)
+    return {"tenant_id":current.get("tenant_id") if current else None,
+            "company_name":current.get("company_name") if current else None}
 
 
 @router.get("/api/identity/status")
