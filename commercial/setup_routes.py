@@ -539,8 +539,23 @@ class BPMSID(BaseModel):
     source_id:str=Field(pattern=r"^[0-9a-f]{24}$")
 
 
+def _require_source_without_user_bindings(source_id:str):
+    """Do not orphan AVAN↔BPMS identity mappings by deleting their source."""
+    from .user_bpms_bindings import list_bindings
+    try:
+        bindings=[b for b in list_bindings() if b.get("source_id")==source_id]
+    except Exception:
+        raise HTTPException(503,"وضعیت اتصال کاربران قابل بررسی نیست؛ حذف BPMS متوقف شد.")
+    if bindings:
+        raise HTTPException(
+            409,
+            "این BPMS هنوز به کاربر AVAN متصل است؛ ابتدا همه Bindingهای آن را در «سازمان و دسترسی» قطع کنید."
+        )
+
+
 @router.post("/api/bpms/connections/delete")
 def bpms_delete(body:BPMSID,session=Depends(_ready)):
+    _require_source_without_user_bindings(body.source_id)
     from .bpms_registry import delete,BPMSUnavailable
     try:return delete(body.source_id)
     except BPMSUnavailable as exc:raise HTTPException(404,str(exc))
@@ -1286,6 +1301,7 @@ def bpms_catalog_copy(body:BPMSCatalogCopy,session=Depends(_ready)):
 
 @router.post("/api/bpms/catalog/delete")
 def bpms_catalog_delete(body:BPMSCatalogRef,session=Depends(_ready)):
+    _require_source_without_user_bindings(body.id)
     if body.connection_type=="processmaker":
         state=_pm_profiles_state()
         source=next((p for p in state["profiles"] if p["id"]==body.id),None)
