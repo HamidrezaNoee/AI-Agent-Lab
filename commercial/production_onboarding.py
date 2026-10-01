@@ -54,6 +54,89 @@ def visible_pm_users() -> list[dict]:
     ]
 
 
+def approve_avan_user(
+    *,
+    tenant_id: str,
+    subject: str,
+    company_name: str,
+    role: str,
+    department_name: str | None = None,
+    manager_subject: str | None = None,
+):
+    """Approve an AVAN account without coupling it to any BPMS identity."""
+    import uuid
+
+    try:
+        tenant_id = str(uuid.UUID(tenant_id))
+    except (TypeError, ValueError, AttributeError):
+        raise ProvisioningDenied("Verified tenant UUID required")
+    if (
+        not isinstance(company_name, str)
+        or not 2 <= len(company_name.strip()) <= 200
+        or role not in ("Expert", "Manager", "SysAdmin")
+    ):
+        raise ProvisioningDenied("Unapproved company or AVAN role")
+    if department_name is not None and len(department_name.strip()) > 160:
+        raise ProvisioningDenied("Department name is too long")
+    department = department_name.strip() if department_name else None
+    user = find_pending(tenant_id, subject)
+    if user is None:
+        raise ProvisioningDenied("OIDC user has not completed signed organizational login")
+    if role == "SysAdmin" and "SysAdmin" not in user["roles"]:
+        raise ProvisioningDenied("SysAdmin must ALSO hold the signed IdP role")
+    if not user["email_verified"] or not user["email"]:
+        raise ProvisioningDenied("IdP email must be verified before AVAN account approval")
+    manager_subject=(manager_subject or "").strip() or None
+    if manager_subject==subject:
+        raise ProvisioningDenied("User cannot manage themselves")
+
+    with native_access.edit() as data:
+        if data["tenant_id"] not in (None, tenant_id):
+            raise ProvisioningDenied("Workspace already belongs to another company")
+        if data["company_name"] not in (None, company_name.strip()):
+            raise ProvisioningDenied("Company differs from existing tenant")
+        users=data["users"]
+        if any(u.get("subject")==subject for u in users):
+            raise ProvisioningDenied("AVAN identity already exists")
+        if manager_subject and not any(
+            u.get("subject")==manager_subject and u.get("enabled") for u in users
+        ):
+            raise ProvisioningDenied("Direct manager must be an active AVAN user")
+        data["tenant_id"]=tenant_id
+        data["company_name"]=company_name.strip()
+        from .production_license import capacity, ProductionLicenseDenied
+        try:
+            capacity(tenant_id,company_name.strip(),
+                     sum(bool(u.get("enabled")) for u in users)+1)
+        except ProductionLicenseDenied as exc:
+            raise ProvisioningDenied(str(exc)) from exc
+        users.append({
+            "subject":subject,
+            "username":(user.get("username") or "").strip() or None,
+            "email":user.get("email"),
+            "name":user.get("name") or user.get("username") or subject,
+            "department_name":department,
+            "role":role,
+            "manager_subject":manager_subject,
+            "enabled":True,
+            # Legacy compatibility only. BPMS status no longer controls AVAN account status.
+            "pm_uid":None,
+            "manager_pm_uid":None,
+            "pm_active":False,
+        })
+    finish_pending(tenant_id,subject)
+    setup.audit("AVAN_USER_APPROVED_"+role.upper())
+    return {
+        "approved":True,
+        "company_name":company_name.strip(),
+        "subject":subject,
+        "username":user.get("username"),
+        "name":user.get("name") or user.get("username") or subject,
+        "role":role,
+        "tenant_id":tenant_id,
+    }
+
+
 def approve_employee(
     *,
     tenant_id: str,
