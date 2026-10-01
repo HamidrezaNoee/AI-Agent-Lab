@@ -493,7 +493,7 @@ body.avan-admin button:disabled{opacity:.56;cursor:not-allowed}
 
 
 /* Embedded mode: management is rendered inside the main AVAN workspace shell. */
-body.avan-admin.admin-embedded{background:transparent!important;min-height:100vh}
+body.avan-admin.admin-embedded{background:var(--canvas,#f3f7fa)!important;min-height:100vh}
 body.avan-admin.admin-embedded>header,
 body.avan-admin.admin-embedded>footer{display:none!important}
 body.avan-admin.admin-embedded>main{
