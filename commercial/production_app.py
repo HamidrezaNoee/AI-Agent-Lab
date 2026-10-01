@@ -354,28 +354,48 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         response=RedirectResponse("/auth/pending",status_code=303)
         response.delete_cookie("avan_login_state",path="/")
         return response
-    try:
-        if not platform_admin:
-            with open_production() as con:
-                verified_scope(con,principal)
-    except EmployeeMappingRequired:
-        # No meeting read or organizational role is granted here. A verified
-        # identity is staged for explicit GodAdmin + active PM user approval.
+
+    # AVAN account authorization is independent from every BPMS binding.
+    from . import native_access
+    organization=native_access.read()
+    stored=next((u for u in organization.get("users",[])
+                 if u.get("subject")==principal.subject),None)
+    if not stored and not platform_admin:
         _stage_verified_identity(principal,claims,access)
         response=RedirectResponse("/auth/pending",status_code=303)
         response.delete_cookie("avan_login_state",path="/")
         return response
-    except ProductionUnavailable:
-        raise HTTPException(status_code=503,
-            detail="حساب Keycloak تأیید شد اما اتصال به MySQL پروسس‌میکر برقرار نیست؛ تنظیمات منبع در GodAdmin بررسی شود.")
-    except ProductionAccessDenied:
-        raise HTTPException(status_code=403,
-            detail="هویت سازمانی تأیید شد اما دسترسی اطلاعات جلسات هنوز فعال نیست؛ وضعیت سازمان، نقش کاربر و لایسنس امضاشده آوان در GodAdmin بررسی شود.")
-    except Exception:
-        # Do not expose SQL exception strings, bearer tokens, user information
-        # or operational table names through public identity endpoints.
-        raise HTTPException(status_code=503,
-            detail="دسترسی به داده‌های ProcessMaker تأیید نشد؛ اتصال MySQL و نگاشت کاربر را در GodAdmin بررسی کنید.")
+    if stored and not stored.get("enabled"):
+        raise HTTPException(status_code=403,detail="حساب AVAN توسط مدیر سامانه غیرفعال شده است.")
+    if stored and organization.get("tenant_id")!=str(principal.tenant_id):
+        raise HTTPException(status_code=403,detail="حساب AVAN متعلق به این سازمان نیست.")
+    if stored and stored.get("role")=="SysAdmin" and "SysAdmin" not in principal.roles:
+        raise HTTPException(status_code=403,detail="نقش مدیر سیستم در سرویس هویت تأیید نشده است.")
+
+    if stored:
+        preferred=claims.get("preferred_username")
+        email=claims.get("email")
+        name=claims.get("name")
+        # Refresh descriptive AVAN identity claims only; never touch BPMS bindings.
+        with native_access.edit() as org:
+            target=next((u for u in org.get("users",[])
+                         if u.get("subject")==principal.subject),None)
+            if target:
+                if isinstance(preferred,str) and preferred.strip():
+                    target["username"]=preferred.strip()[:180]
+                if isinstance(email,str) and email.strip():
+                    target["email"]=email.strip()[:240]
+                if isinstance(name,str) and name.strip():
+                    target["name"]=name.strip()[:250]
+
+    if stored and not platform_admin:
+        from .production_license import entitlement,ProductionLicenseDenied
+        try:
+            entitlement(tenant_id=organization["tenant_id"],
+                        company_name=organization["company_name"])
+        except ProductionLicenseDenied:
+            raise HTTPException(status_code=403,
+                detail="لایسنس AVAN برای این سازمان معتبر نیست.")
 
     _purge()
     if len(sessions)>5000:
