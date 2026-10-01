@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from collections import Counter
 import secrets
 from . import agent_storage
-from .agent_workspace import user_key, RevisionConflict
+from .agent_workspace import source_user_key, scope_stamp, RevisionConflict
 from .agent_tools import source, instant
 
 
@@ -33,7 +33,7 @@ def audit(scope, actor, event, detail, con=None):
 
 
 def observe(scope, actor, meetings, now, complete):
-    name = "monitor:" + scope["tenant_id"] + ":" + actor
+    name = source_user_key("monitor_observations", scope, actor)
     observations = {}
     with agent_storage.transaction() as tx:
         old = tx.get(name, {}, lock=True)
@@ -85,6 +85,7 @@ def save_draft(scope, actor, meeting_id, payload):
                 "id": identifier,
                 "tenant": scope["tenant_id"],
                 "actor": actor,
+                "scope": scope_stamp(scope),
                 "meeting_id": meeting_id,
                 "payload": payload,
                 "status": "draft",
@@ -93,7 +94,7 @@ def save_draft(scope, actor, meeting_id, payload):
                 "approved_at": None,
             },
         )
-        index_key = user_key('drafts', scope, actor)
+        index_key = source_user_key('drafts', scope, actor)
         index = tx.get(index_key, [], lock=True)
         tx.put(index_key, ([identifier] + index)[:200])
         audit(scope, actor, "SECRETARY_DRAFT_CREATED", {"draft_id": identifier}, tx)
@@ -105,6 +106,7 @@ def _allowed(row, scope, actor, allowed):
         not row
         or row["tenant"] != scope["tenant_id"]
         or row["actor"] != actor
+        or row.get("scope") != scope_stamp(scope)
         or row["meeting_id"] not in allowed
     ):
         raise PermissionError("Draft unavailable")
@@ -135,7 +137,7 @@ def approve_draft(scope, actor, identifier, allowed_meetings, revision=None):
 
 def list_drafts(scope, actor, allowed_meetings):
     with agent_storage.transaction() as tx:
-        ids = tx.get(user_key('drafts', scope, actor), [])
+        ids = tx.get(source_user_key('drafts', scope, actor), [])
         result = []
         for identifier in ids:
             row = tx.get('draft:' + identifier)
@@ -170,7 +172,7 @@ def alert_id(alert):
 
 
 def alert_status(scope, actor, result):
-    key = user_key('alert_status', scope, actor)
+    key = source_user_key('alert_status', scope, actor)
     with agent_storage.transaction() as tx:
         data = tx.get(key, {}, lock=True)
         now = datetime.now(timezone.utc).isoformat()
