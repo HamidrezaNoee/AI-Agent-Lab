@@ -113,13 +113,14 @@ def verified_scope(con, principal, source_id=None):
         raise EmployeeMappingRequired("Active AVAN account required")
 
     from .user_bpms_bindings import (
-        active_processmaker_source_id, bindings_by_source,
+        default_processmaker_source_id, bindings_by_source,
         processmaker_profile, BindingError,
     )
-    active_source_id = active_processmaker_source_id()
-    source_id = source_id or active_source_id
+    source_id = source_id or default_processmaker_source_id(principal.subject)
     if not source_id:
-        raise EmployeeMappingRequired("ProcessMaker source is not selected")
+        raise EmployeeMappingRequired(
+            "Select an explicitly bound ProcessMaker source; unscoped access is unavailable"
+        )
     try:
         profile = processmaker_profile(source_id)
     except BindingError as exc:
@@ -182,11 +183,15 @@ def verified_scope(con, principal, source_id=None):
 
     from .production_license import entitlement, ProductionLicenseDenied
     try:
-        lic = entitlement(
+        licensed = entitlement(
             tenant_id=data["tenant_id"], company_name=data["company_name"]
         )
     except ProductionLicenseDenied as exc:
         raise ProductionAccessDenied("Valid license required") from exc
+    # AVAN account grants are independent from BPMS bindings and can only
+    # narrow the organization's licensed module set.
+    effective=native_access.effective_modules(current,licensed["modules"])
+    lic={**licensed,"modules":effective}
 
     mysql = profile.get("mysql") or {}
     return {
