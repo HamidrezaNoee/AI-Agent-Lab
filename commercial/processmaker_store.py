@@ -103,48 +103,89 @@ def verified_scope(con, principal):
     data = native_access.read()
     if data["tenant_id"] != str(principal.tenant_id):
         raise EmployeeMappingRequired("Organization is not mapped")
-    staff = {
-        u["pm_uid"]: u for u in data["users"] if u.get("enabled") and u.get("pm_active")
+
+    avan_users = {
+        u.get("subject"): u for u in data["users"]
+        if u.get("subject") and u.get("enabled")
     }
-    current = next(
-        (u for u in staff.values() if u["subject"] == principal.subject), None
+    current = avan_users.get(principal.subject)
+    if not current:
+        raise EmployeeMappingRequired("Active AVAN account required")
+
+    from .user_bpms_bindings import (
+        active_processmaker_source_id, bindings_by_source
     )
+    source_id = active_processmaker_source_id()
+    bound = bindings_by_source(source_id) if source_id else {}
+
+    def external_uid(user):
+        binding = bound.get(user.get("subject"))
+        if binding and binding.get("status") == "active":
+            return str(binding.get("external_user_id") or "")
+        # Compatibility path for installations created before ADR-001.
+        return str(user.get("pm_uid") or "")
+
+    current_uid = external_uid(current)
     users = directory(con)
-    if not current or not users.get(current["pm_uid"], {}).get("active"):
-        raise EmployeeMappingRequired("Active PM mapping required")
-    role = current["role"]
+    if not current_uid or not users.get(current_uid, {}).get("active"):
+        raise EmployeeMappingRequired("Active ProcessMaker binding required")
+
+    role = current.get("role")
     if role not in ("Expert", "Manager", "SysAdmin") or (
         role == "SysAdmin" and "SysAdmin" not in principal.roles
     ):
         raise ProductionAccessDenied("Role not authorized")
-    visible = {current["pm_uid"]}
+
+    visible_subjects = {principal.subject}
+    visible = {current_uid}
+
     if role == "Manager":
         for _ in range(32):
-            more = {
-                uid
-                for uid, u in staff.items()
-                if u.get("manager_pm_uid") in visible
-                and users.get(uid, {}).get("active")
-            }
-            if more <= visible:
+            more_subjects = set()
+            more_uids = set()
+            for subject, user in avan_users.items():
+                uid = external_uid(user)
+                if not uid or not users.get(uid, {}).get("active"):
+                    continue
+                manager_subject = user.get("manager_subject")
+                legacy_manager_uid = user.get("manager_pm_uid")
+                if ((manager_subject and manager_subject in visible_subjects) or
+                    (legacy_manager_uid and legacy_manager_uid in visible)):
+                    more_subjects.add(subject)
+                    more_uids.add(uid)
+            if more_subjects <= visible_subjects and more_uids <= visible:
                 break
-            visible |= more
+            visible_subjects |= more_subjects
+            visible |= more_uids
         else:
             raise ProductionAccessDenied("Hierarchy depth exceeded")
-    from .production_license import signed_entitlement, ProductionLicenseDenied
+    elif role == "SysAdmin":
+        for subject, user in avan_users.items():
+            uid = external_uid(user)
+            if uid and users.get(uid, {}).get("active"):
+                visible_subjects.add(subject)
+                visible.add(uid)
 
+    staff = {}
+    for subject, user in avan_users.items():
+        uid = external_uid(user)
+        if uid and users.get(uid, {}).get("active"):
+            staff[uid] = user
+
+    from .production_license import signed_entitlement, ProductionLicenseDenied
     try:
         lic = signed_entitlement(
             con, tenant_id=data["tenant_id"], company_name=data["company_name"]
         )
     except ProductionLicenseDenied as exc:
         raise ProductionAccessDenied("Valid license required") from exc
+
     return {
         "license": lic,
-        "pm_uid": current["pm_uid"],
-        "name": users[current["pm_uid"]]["name"],
-        "department": users[current["pm_uid"]].get("unit")
-        or current.get("department_name"),
+        "source_id": source_id,
+        "pm_uid": current_uid,
+        "name": current.get("name") or users[current_uid]["name"],
+        "department": current.get("department_name") or users[current_uid].get("unit"),
         "role": role,
         "company": data["company_name"],
         "tenant_id": data["tenant_id"],
@@ -152,7 +193,6 @@ def verified_scope(con, principal):
         "directory": users,
         "staff": staff,
     }
-
 
 def decode_case(raw):
     """phpserialize never instantiates PHP/Python classes; object tokens are rejected."""
