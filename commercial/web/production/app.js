@@ -627,9 +627,17 @@ function attachSpeech(target,result,sourceId=null){
  }catch(e){status.textContent=e.message}finally{play.disabled=false}});add(area,play,status);add(target,area);
 }
 
-async function reportsPage(){
- const m=root();heading(m,"گزارش اقدامات","فیلتر، مقایسه عملکرد و خروجی CSV از داده‌های مجاز جاری");
+async function reportsPage(sourceId=null){
+ const scoped=!!sourceId;
+ const source=scoped?(app.user?.bpms_sources||[]).find(x=>x.source_id===sourceId):null;
+ const m=root();
+ if(scoped&&(!source||!(source.capabilities||[]).includes("reports"))){
+  add(m,note("گزارش اقدامات برای این BPMS و لایسنس فعلی فعال نیست.",true));return
+ }
+ heading(m,scoped?("گزارش اقدامات · "+source.source_name):"گزارش اقدامات",
+  scoped?"فیلتر، مقایسه و CSV فقط از دامنه همین BPMS تهیه می‌شود.":"فیلتر، مقایسه عملکرد و خروجی CSV از داده‌های مجاز جاری");
  if(!app.user.modules.includes(3)){add(m,note("ماژول گزارش‌گیری در لایسنس فعال نیست."));return}
+ const reportBase=sourceApi(sourceId,"/reports/actions");
  const panel=card("فیلتر گزارش"),filters=el("div","report-filters"),result=el("div"),controls={};let offset=0,lastQuery=null;
  for(const [key,label,options] of [["status","وضعیت",[["all","همه"],["open","باز"],["closed","بسته‌شده"],["overdue","تأخیردار"],["due_soon","موعد نزدیک"]]],
   ["period","بازه",[["all","همه زمان‌ها"],["this_month","ماه جاری شمسی"],["last_month","ماه قبل شمسی"],["last_30_days","۳۰ روز گذشته"],["last_7_days","۷ روز گذشته"]]],
@@ -640,7 +648,7 @@ async function reportsPage(){
  for(const [key,label] of [["meeting_no","شماره جلسه"],["owner","مسئول"],["unit","واحد"]]){const f=inputField(label,"");controls[key]=f.input;add(filters,f.wrap)}
  const query=()=>Object.fromEntries(Object.entries(controls).map(([k,v])=>[k,v.value||null]));
  async function load(reset=true){if(reset)offset=0;result.replaceChildren(note("در حال تهیه گزارش..."));try{
-  lastQuery=query();const r=await request("/api/reports/actions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...lastQuery,offset,limit:30})});if(!result.isConnected)return;result.replaceChildren();
+  lastQuery=query();const r=await request(reportBase,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...lastQuery,offset,limit:30})});if(!result.isConnected)return;result.replaceChildren();
   const stats=el("div","stats");for(const [label,value] of [["کل اقدامات",r.metrics.total],["باز",r.metrics.open],["تأخیردار",r.metrics.overdue]])add(stats,add(el("div","stat"),el("span","",label),el("strong","",fmt(value))));add(result,stats);
   if(!r.coverage_complete)add(result,note("پوشش داده ناقص است؛ آمار فقط مربوط به داده‌های بازیابی‌شده است."));
   for(const g of r.groups||[])add(result,el("p","",g.group.join(" · ")+": "+fmt(g.total)+" اقدام، "+fmt(g.overdue)+" تأخیردار"));
@@ -648,7 +656,7 @@ async function reportsPage(){
   for(const a of r.rows){const row=el("tr");for(const value of [a.source.meeting_no+" / "+a.source.action_no,a.description,a.owner_name,a.is_closed?"بسته‌شده":a.status,a.progress_percent==null?"نامشخص":fmt(a.progress_percent)+"٪",dateText(a.due_at_utc)])add(row,el("td","",value||"—"));add(table,row)}add(result,add(el("div","table-scroll"),table));
   if(offset>0)add(result,link("صفحه قبل",()=>{offset=Math.max(0,offset-30);load(false)}));if(r.has_more)add(result,link("صفحه بعد",()=>{offset+=30;load(false)}));
  }catch(e){result.replaceChildren(note(e.message,true))}}
- add(panel,filters,link("نمایش گزارش",()=>load(),"button primary"),link("دریافت CSV",async()=>{try{const r=await request("/api/reports/actions/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query()),binary:true});const url=URL.createObjectURL(await r.blob()),a=el("a");a.href=url;a.download="meeting-actions.csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}));add(m,panel,result);await load();
+ add(panel,filters,link("نمایش گزارش",()=>load(),"button primary"),link("دریافت CSV",async()=>{try{const r=await request(reportBase+"/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query()),binary:true});const url=URL.createObjectURL(await r.blob()),a=el("a");a.href=url;a.download="meeting-actions.csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}));add(m,panel,result);await load();
 }
 async function biPage(sourceId=null){
  const source=sourceId?(app.user?.bpms_sources||[]).find(x=>x.source_id===sourceId):null;
