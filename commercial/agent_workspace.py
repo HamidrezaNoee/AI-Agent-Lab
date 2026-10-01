@@ -17,7 +17,14 @@ def user_key(kind, scope, actor):
 
 
 def scope_stamp(scope):
-    value = [scope["pm_uid"], scope["role"], sorted(scope.get("visible_uids", []))]
+    # Source identity is part of the authorization stamp. The same AVAN user may
+    # bind to different external accounts in different BPMS instances.
+    value = [
+        scope.get("source_id"),
+        scope.get("external_user_id"),
+        scope["role"],
+        sorted(scope.get("visible_uids", [])),
+    ]
     return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 
 
