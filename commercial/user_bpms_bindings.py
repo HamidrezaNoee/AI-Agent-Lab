@@ -208,6 +208,20 @@ def binding_for(subject:str,source_id:str)->dict|None:
                  if b.get("source_id")==source_id and b.get("status")=="active"),None)
 
 
+def processmaker_bindings_for(subject:str)->list[dict]:
+    """Return active bindings to enabled ProcessMaker sources for one AVAN user."""
+    catalog={s["id"]:s for s in source_catalog()
+             if s.get("engine")=="processmaker" and s.get("enabled")}
+    return [dict(b) for b in list_bindings(subject)
+            if b.get("status")=="active" and b.get("source_id") in catalog]
+
+
+def default_processmaker_source_id(subject:str)->str|None:
+    """Legacy unscoped routes are safe only when exactly one PM binding exists."""
+    rows=processmaker_bindings_for(subject)
+    return str(rows[0]["source_id"]) if len(rows)==1 else None
+
+
 def bindings_by_source(source_id:str)->dict[str,dict]:
     return {str(b["avan_subject"]):b for b in list_bindings()
             if b.get("source_id")==source_id and b.get("status")=="active"
