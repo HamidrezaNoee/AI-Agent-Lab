@@ -53,7 +53,8 @@ def native_time(value, tz):
 
 def case_predicate(scope, args, now):
     where, parameters = ["1=1"], []
-    tz = ZoneInfo((get_setting("mysql") or {}).get("timezone", "Asia/Tehran"))
+    tz = ZoneInfo(scope.get("timezone") or
+                  (get_setting("mysql") or {}).get("timezone", "Asia/Tehran"))
     if scope["role"] != "SysAdmin":
         ids = sorted(scope["visible_uids"])
         if not ids or len(ids) > 500:
