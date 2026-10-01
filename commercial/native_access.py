@@ -30,6 +30,5 @@ def seats(tenant_id):
     data = read()
     if data["tenant_id"] != tenant_id:
         return 0
-    return sum(
-        u.get("enabled") is True and u.get("pm_active") is True for u in data["users"]
-    )
+    # AVAN licensing counts active AVAN accounts, independently of BPMS bindings.
+    return sum(u.get("enabled") is True for u in data["users"])
