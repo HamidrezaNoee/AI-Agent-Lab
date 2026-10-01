@@ -40,7 +40,7 @@ icons and glass form. Appearance must persist image/SVG/text/tags/size/hover/orb
 - Render canvas at <=30fps, cap DPR at 1.5, cache layout geometry between resizes,
   update card-side classes only when changed, guard asynchronous initialization,
   stop motion in hidden tabs/mobile/reduced-motion mode.
-- Form remains expanded. Password whitespace is preserved; username isn't prefilled.
+- First login panel expands on hover/focus/tap and collapses on pointer leave. Password whitespace is preserved; username isn't prefilled.
 - Keycloak OTP loads the same configurable scene. Existing realm conditional OTP
   already implements the requested enrollment-dependent flow.
 - Empty element list stays empty. Add/copy/delete/reorder preserve unsaved edits.
@@ -61,7 +61,7 @@ Browser tests need Playwright and Chromium; `CHROMIUM_PATH` can point to an inst
 executable. Tests use mocked APIs, not real customer credentials.
 The focused Python suite passed 26 tests. Management rendering passed, including
 all settings tabs, recoverable BPMS errors and Appearance edit retention/empty-list save.
-Scene browser test passed: loaded high-resolution Earth, settings-driven nodes, hover/select, draggable card, permanently visible blank-username form, reduced-motion pause and mobile width. Desktop screenshot was inspected.
+Scene browser test passed: loaded high-resolution Earth, settings-driven nodes, hover/select, draggable card, blank-username form, reduced-motion pause and mobile width. Desktop screenshot was inspected.
 
 Known unrelated baseline issue: `test_unified_godadmin` expects 403 for a degraded
 meeting endpoint but current production code returns 503. Login and binding steps

@@ -106,9 +106,14 @@ const server=http.createServer((req,res)=>{
  const after=await card.boundingBox();
  if(Math.abs(after.x-before.x)<30&&Math.abs(after.y-before.y)<20)throw Error('Login card drag did not move');
  if(errors.length)throw Error('Browser errors: '+errors.join(' | '));
- // Form stays visible when pointer leaves; keyboard and mobile remain usable.
+ // First-step panel reveals on hover and collapses on leave; orbit hit target stays stable.
  await page.mouse.move(0,0);
- if(!await page.locator('input[name="username"]').isVisible())throw Error('Login form collapsed');
+ await page.waitForFunction(()=>document.querySelector('.login-reveal-card')?.classList.contains('is-collapsed'));
+ if(await page.locator('input[name="username"]').isVisible())throw Error('Login form did not collapse');
+ const revealBox=await card.boundingBox();
+ await page.mouse.move(revealBox.x+revealBox.width/2,revealBox.y+revealBox.height/2);
+ await page.waitForFunction(()=>document.querySelector('.login-reveal-card')?.classList.contains('is-expanded'));
+ if(!await page.locator('input[name="username"]').isVisible())throw Error('Login form did not reveal');
  if(await page.locator('input[name="username"]').inputValue()!=='')throw Error('Username prefilled');
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.waitForTimeout(100);
@@ -117,6 +122,9 @@ const server=http.createServer((req,res)=>{
  await page.waitForTimeout(100);
  if(position!==await first.evaluate(el=>el.style.transform))throw Error('Reduced motion ignored');
  await page.setViewportSize({width:390,height:844});
+ await page.mouse.move(0,0);
+ await page.waitForTimeout(250);
+ await page.locator('.login-reveal-toggle').click({force:true});
  if(!await page.locator('input[name="username"]').isVisible())throw Error('Mobile form hidden');
  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile horizontal overflow');
  await browser.close();server.close();

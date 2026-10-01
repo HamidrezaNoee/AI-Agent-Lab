@@ -309,7 +309,7 @@ function loginRevealButton(){
 }
 function showLogin(){
  const m=main(),p=panel("ورود به آوان","");
- p.classList.add("login","login-reveal-card","is-expanded");
+ p.classList.add("login","login-reveal-card","is-collapsed");
  p.prepend(loginCardDecor(),loginBrand());
  const subtitle=node("p","login-reveal-subtitle","خوش آمدید؛ برای ادامه وارد حساب کاربری شوید.");
  const reveal=loginRevealButton(),f=node("form","login-expand-body");
@@ -330,7 +330,6 @@ function showLogin(){
   });
   return captchaReady;
  };
- reveal.remove();
  ensureCaptchaMounted();
 
  f.addEventListener("submit",async e=>{
@@ -340,13 +339,13 @@ function showLogin(){
     if(!captcha)throw Error("سرویس ضدربات آماده نیست.");
     const captchaToken=captcha.token()||"";
     if(!captchaToken)throw Error("ابتدا اعتبارسنجی ضدربات را کامل کنید.");
-    busy(f,true);
+    p.dataset.submitting="1";busy(f,true);
     const result=await api("login",{username:formValue(f,"username"),
       password:f.elements.namedItem("password").value,captcha_token:captchaToken});
     if(result.mfa_required){showLoginOtp(result.challenge);return}
     state.csrf=result.csrf;window.location.assign("/")
   }catch(err){showError(out,err);captcha?.reset()}finally{
-   busy(f,false);
+   delete p.dataset.submitting;busy(f,false);
    if(captcha&&!captcha.token())loginBtn.disabled=true;
   }
  });

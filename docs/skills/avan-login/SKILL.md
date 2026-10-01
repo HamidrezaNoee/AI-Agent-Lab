@@ -10,7 +10,7 @@ Read `AGENTS.md`, `docs/AI_HANDOFF.md` and `docs/LOGIN_APPEARANCE_FA.md` at the 
    checks. Keep setup-only enrollment separate from ordinary user login.
 2. Inspect the canonical `commercial/web/admin/login-scene.js` and
    `login-scene.css`; do not patch only the Keycloak copy.
-3. Keep form fields permanently visible: username, password, CAPTCHA, submit.
+3. Keep the first login panel collapsed until hover/focus/tap; reveal username, password, CAPTCHA and submit. Collapse on pointer leave; keep OTP open.
    Do not add help/tutorials, role selection, default usernames or a first-page OTP.
 4. Preserve the bright Earth on the left and glass form on the right. Use the
    high-resolution raster layers, editable SVG nodes and text DOM overlays.
