@@ -565,9 +565,11 @@ async function renderIdentity(m){
   "Bootstrap GodAdmin فقط برای راه‌اندازی اولیه است. مدیریت دائمی سامانه باید به یک هویت واقعی OIDC/Keycloak متصل شود.");
  if(status.godadmin_bound){
   const bound=node("div","identity-bound-summary");
-  append(bound,
-   node("div","identity-kv",node("span","","Subject"),node("code","",status.godadmin_subject||"—")),
-   node("div","identity-kv",node("span","","Tenant"),node("code","",status.godadmin_tenant_id||"—")));
+  const subjectRow=node("div","identity-kv");
+  append(subjectRow,node("span","","Subject"),node("code","",status.godadmin_subject||"—"));
+  const tenantRow=node("div","identity-kv");
+  append(tenantRow,node("span","","Tenant"),node("code","",status.godadmin_tenant_id||"—"));
+  append(bound,subjectRow,tenantRow);
   append(god,bound,info("GodAdmin به هویت سازمانی متصل است. ورود مدیریتی از مسیر OIDC و MFA انجام می‌شود."));
  }else{
   const primary=organizations.find(x=>x.is_primary)||organizations[0]||null;
@@ -639,15 +641,13 @@ async function renderIdentity(m){
 
  const rule=panel("مرز مسئولیت هویت",
   "Authentication و Authorization در AVAN جدا هستند. Keycloak هویت و MFA را تأیید می‌کند؛ نقش، ماژول‌های AVAN و Binding هر BPMS در بخش «کاربران و دسترسی» تعیین می‌شوند.");
- append(rule,
-  node("div","identity-rule-flow",
-   node("span","","Keycloak / OIDC"),
-   node("b","","→"),
-   node("span","","AVAN User"),
-   node("b","","→"),
-   node("span","","AVAN Permissions"),
-   node("b","","→"),
-   node("span","","BPMS Bindings")));
+ const flow=node("div","identity-rule-flow");
+ append(flow,
+  node("span","","Keycloak / OIDC"),node("b","","→"),
+  node("span","","AVAN User"),node("b","","→"),
+  node("span","","AVAN Permissions"),node("b","","→"),
+  node("span","","BPMS Bindings"));
+ append(rule,flow);
  append(p,rule);
 }
 
