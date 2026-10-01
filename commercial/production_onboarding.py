@@ -155,22 +155,29 @@ def approve_employee(**_kwargs):
     )
 
 def refresh_employee_statuses() -> dict:
-    """Compatibility endpoint: refresh PM bindings, never AVAN account status."""
-    from .user_bpms_bindings import (
-        active_processmaker_source_id, refresh_source, BindingError
-    )
-    source_id=active_processmaker_source_id()
-    if not source_id:
-        raise ProvisioningDenied("No active ProcessMaker source")
-    try:
-        result=refresh_source(source_id)
-    except BindingError as exc:
-        raise ProvisioningDenied(str(exc)) from exc
+    """Compatibility endpoint: refresh all configured ProcessMaker binding sources."""
+    from .user_bpms_bindings import source_catalog,refresh_source,BindingError
+    sources=[s for s in source_catalog()
+             if s.get("engine")=="processmaker" and s.get("enabled")]
+    if not sources:
+        raise ProvisioningDenied("No ProcessMaker source is configured")
+    active=stale=directory_users=0
+    refreshed=[]
+    for source in sources:
+        try:
+            result=refresh_source(source["id"])
+        except BindingError as exc:
+            raise ProvisioningDenied(str(exc)) from exc
+        active+=result["active_bindings"]
+        stale+=result["stale_bindings"]
+        directory_users+=result["directory_users"]
+        refreshed.append(source["id"])
     setup.audit("PM_BINDINGS_RECONCILED")
     return {
-        "refreshed_active_users":result["active_bindings"],
+        "refreshed_active_users":active,
         "disabled_unverified_users":0,
-        "stale_bindings":result["stale_bindings"],
-        "directory_users":result["directory_users"],
-        "source":"per_source_bpms_binding_directory",
+        "stale_bindings":stale,
+        "directory_users":directory_users,
+        "refreshed_sources":refreshed,
+        "source":"all_processmaker_binding_directories",
     }
