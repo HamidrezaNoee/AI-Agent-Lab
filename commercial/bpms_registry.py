@@ -121,6 +121,25 @@ class BIResponse(BaseModel):
     has_more:bool=False
 
 
+class DirectoryUser(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    external_user_id:str=Field(min_length=1,max_length=128)
+    username:str=Field(min_length=1,max_length=120)
+    display_name:str=Field(min_length=1,max_length=240)
+    email:str|None=Field(default=None,max_length=240)
+    status:str=Field(default="ACTIVE",min_length=1,max_length=32)
+    active:bool
+    unit:str=Field(default="",max_length=160)
+
+
+class DirectoryResponse(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    schema_version:Literal[1]
+    tenant_id:str=Field(min_length=1,max_length=80)
+    as_of_utc:datetime
+    users:list[DirectoryUser]=Field(max_length=5000)
+
+
 def _all():
     return list((setup.get_setting("bpms_connections") or {}).get("sources",[]))
 
@@ -209,7 +228,7 @@ def set_enabled(identifier:str,enabled:bool):
     return {"id":identifier,"enabled":enabled}
 
 
-def _request(source,path,params=None):
+def _request(source,path,params=None,max_body=MAX_BODY):
     token=source["bearer_token"]
     try:
         with httpx.Client(timeout=8,follow_redirects=False,trust_env=False,verify=True) as client:
@@ -222,7 +241,7 @@ def _request(source,path,params=None):
                 body=bytearray()
                 for chunk in response.iter_bytes():
                     body.extend(chunk)
-                    if len(body)>MAX_BODY:
+                    if len(body)>max_body:
                         raise BPMSUnavailable("BPMS adapter response is too large")
         return json.loads(body)
     except (httpx.HTTPError,ValueError) as exc:
@@ -238,6 +257,27 @@ def identity(source):
         body.get("tenant_id")!=company["tenant_id"]):
         raise BPMSUnavailable("BPMS adapter tenant or contract does not match")
     return {"connected":True,"tenant_id":company["tenant_id"],"schema_version":1}
+
+
+def directory_users(identifier:str)->list[dict]:
+    source=_source(identifier)
+    if not source:raise BPMSUnavailable("Connection is disabled or missing")
+    company=setup.get_setting("company") or {}
+    try:
+        payload=DirectoryResponse.model_validate(
+            _request(source,"/avan/v1/directory/users",max_body=2*1024*1024)
+        )
+    except ValidationError as exc:
+        raise BPMSUnavailable("BPMS adapter directory does not match the AVAN v1 contract") from exc
+    if payload.tenant_id!=company.get("tenant_id"):
+        raise BPMSUnavailable("BPMS adapter directory belongs to another organization")
+    seen=set();result=[]
+    for user in payload.users:
+        if user.external_user_id in seen:
+            raise BPMSUnavailable("BPMS adapter directory contains duplicate user IDs")
+        seen.add(user.external_user_id)
+        result.append(user.model_dump(mode="json"))
+    return result
 
 
 def report(args:BIRequest):
