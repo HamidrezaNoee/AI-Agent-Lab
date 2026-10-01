@@ -50,6 +50,15 @@ def active_processmaker_source_id()->str|None:
     return active if isinstance(active,str) and re.fullmatch(r"[0-9a-f]{24}",active) else None
 
 
+def processmaker_profile(source_id:str)->dict:
+    profile=next((p for p in _pm_profiles() if p["id"]==source_id),None)
+    if not profile:
+        raise BindingError("ProcessMaker source does not exist")
+    if not isinstance(profile.get("mysql"),dict) or not profile["mysql"]:
+        raise BindingError("ProcessMaker source has no MySQL configuration")
+    return profile
+
+
 def source_catalog()->list[dict]:
     result=[{
         "id":p["id"],"name":p["name"],"engine":"processmaker",
