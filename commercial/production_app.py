@@ -420,8 +420,12 @@ def _stage_verified_identity(principal,claims:dict,access:str):
     except (httpx.HTTPError,ValueError,TypeError):
         # Only verified access-token claims may be used as a fallback.
         user_claims=claims
-    stage(principal,name=str(user_claims.get("name") or
-          claims.get("preferred_username") or principal.subject),
+    preferred=user_claims.get("preferred_username")
+    if not isinstance(preferred,str) or not preferred.strip():
+        preferred=claims.get("preferred_username")
+    stage(principal,
+          username=preferred.strip() if isinstance(preferred,str) and preferred.strip() else None,
+          name=str(user_claims.get("name") or preferred or principal.subject),
           email=user_claims.get("email")
               if isinstance(user_claims.get("email"),str) else None,
           email_verified=user_claims.get("email_verified") is True)
@@ -435,9 +439,9 @@ def pending_approval():
     <body style="font-family:Tahoma,sans-serif;background:#f4f7fa;color:#153853;
                  max-width:650px;margin:12vh auto;padding:24px;line-height:2.2">
     <h1>درخواست دسترسی ثبت شد</h1>
-    <p>هویت شما توسط سامانه سازمانی تأیید شد. پیش از مشاهده جلسات،
-    مدیر سامانه باید ارتباط حساب شما با کاربر فعال ProcessMaker و
-    مجوزهای سازمانی را تأیید کند.</p>
+    <p>هویت شما توسط سامانه سازمانی تأیید شد. مدیر سامانه ابتدا حساب
+    و مجوزهای AVAN را تأیید می‌کند؛ اتصال شما به هر BPMS به‌صورت جداگانه
+    در بخش سازمان و دسترسی انجام می‌شود.</p>
     <a href="/">بازگشت به آوان</a></body></html>""",
                     media_type="text/html; charset=utf-8")
 
