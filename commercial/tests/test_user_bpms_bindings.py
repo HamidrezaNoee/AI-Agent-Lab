@@ -1,10 +1,15 @@
 """Regression tests for ADR-001: AVAN identity is independent from BPMS identity."""
 from contextlib import contextmanager
 from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 
-from commercial import bpms_registry, production_onboarding, user_bpms_bindings
+from commercial import (
+    bpms_registry, production_onboarding, user_bpms_bindings,
+    processmaker_store, native_access, production_license,
+)
+from commercial.security import Principal
 
 
 TENANT="168418b2-8fa6-4414-a37f-83c9a26da332"
@@ -115,3 +120,51 @@ def test_avan_account_approval_does_not_require_bpms_user():
     assert result["approved"] is True
     assert state["users"][0]["username"]=="amin.t"
     assert state["users"][0]["pm_uid"] is None
+
+
+def test_processmaker_scope_uses_binding_of_selected_source_only():
+    source_a="a"*24
+    source_b="b"*24
+    external_a="1"*32
+    external_b="2"*32
+    organization={"tenant_id":TENANT,"company_name":"ACME","users":[{
+        "subject":"sub-1","username":"amin.t","name":"Amin","role":"Expert",
+        "department_name":"Sales","enabled":True,"pm_uid":None,"pm_active":False
+    }]}
+    profiles={
+        source_a:{"id":source_a,"name":"PM A","mysql":{"timezone":"Asia/Tehran"}},
+        source_b:{"id":source_b,"name":"PM B","mysql":{"timezone":"UTC"}},
+    }
+    bindings={
+        source_a:{"sub-1":{"avan_subject":"sub-1","source_id":source_a,
+                           "external_user_id":external_a,"status":"active"}},
+        source_b:{"sub-1":{"avan_subject":"sub-1","source_id":source_b,
+                           "external_user_id":external_b,"status":"active"}},
+    }
+    directory={
+        external_a:{"name":"Ali A","email":None,"active":True,"unit":"A"},
+        external_b:{"name":"Ali B","email":None,"active":True,"unit":"B"},
+    }
+    entitlement={"modules":frozenset({1,2,3,4}),"expires_at":None,
+                 "mode":"local_evaluation"}
+    principal=Principal(UUID(TENANT),"sub-1",frozenset())
+
+    with patch.object(native_access,"read",return_value=organization), \
+         patch.object(user_bpms_bindings,"active_processmaker_source_id",return_value=source_a), \
+         patch.object(user_bpms_bindings,"bindings_by_source",
+                      side_effect=lambda source_id:bindings[source_id]), \
+         patch.object(user_bpms_bindings,"processmaker_profile",
+                      side_effect=lambda source_id:profiles[source_id]), \
+         patch.object(processmaker_store,"directory",return_value=directory), \
+         patch.object(production_license,"entitlement",return_value=entitlement):
+        scope_a=processmaker_store.verified_scope(object(),principal,source_id=source_a)
+        scope_b=processmaker_store.verified_scope(object(),principal,source_id=source_b)
+
+    assert scope_a["pm_uid"]==external_a
+    assert scope_a["source_id"]==source_a
+    assert scope_a["timezone"]=="Asia/Tehran"
+    assert scope_b["pm_uid"]==external_b
+    assert scope_b["source_id"]==source_b
+    assert scope_b["timezone"]=="UTC"
+    assert scope_a["visible_uids"]=={external_a}
+    assert scope_b["visible_uids"]=={external_b}
