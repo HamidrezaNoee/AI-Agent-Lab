@@ -1350,23 +1350,99 @@ class StaffApproval(BaseModel):
     tenant_id:str=Field(min_length=36,max_length=36)
     subject:str=Field(min_length=1,max_length=180)
     company_name:str=Field(min_length=2,max_length=200)
-    pm_uid:str=Field(min_length=32,max_length=32)
     role:str=Field(min_length=6,max_length=8)
-    manager_pm_uid:str|None=Field(default=None,max_length=32)
+    manager_subject:str|None=Field(default=None,max_length=180)
     department_name:str|None=Field(default=None,max_length=160)
 
 @router.post("/api/users/approve")
 def approve_staff(body:StaffApproval,session=Depends(_ready)):
-    from .production_onboarding import ProvisioningDenied,approve_employee
-    try:return approve_employee(
+    from .production_onboarding import ProvisioningDenied,approve_avan_user
+    try:return approve_avan_user(
         tenant_id=body.tenant_id,subject=body.subject,
-        company_name=body.company_name,pm_uid=body.pm_uid,
-        role=body.role,manager_pm_uid=body.manager_pm_uid,
+        company_name=body.company_name,role=body.role,
+        manager_subject=body.manager_subject,
         department_name=body.department_name)
     except ProvisioningDenied as exc:
-        # The exception contains only server-defined validation messages; no
-        # SQL driver errors, passwords, PM tokens or raw IdP access token.
         raise HTTPException(409,str(exc))
+
+
+class UserBpmsBindingSave(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    subject:str=Field(min_length=1,max_length=180)
+    source_id:str=Field(pattern=r"^[0-9a-f]{24}$")
+    external_user_id:str=Field(min_length=1,max_length=128)
+    match_method:Literal["manual","username_suggestion","email_suggestion",
+                         "display_name_suggestion"]="manual"
+
+
+class UserBpmsBindingRef(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    subject:str=Field(min_length=1,max_length=180)
+    source_id:str=Field(pattern=r"^[0-9a-f]{24}$")
+
+
+class UserBpmsSourceRef(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    source_id:str=Field(pattern=r"^[0-9a-f]{24}$")
+
+
+@router.get("/api/user-bindings/sources")
+def user_binding_sources(session=Depends(_ready)):
+    from .user_bpms_bindings import source_catalog
+    return {"sources":source_catalog()}
+
+
+@router.get("/api/user-bindings/list")
+def user_binding_list(subject:str,session=Depends(_ready)):
+    if not 1<=len(subject)<=180:
+        raise HTTPException(422,"شناسه کاربر AVAN معتبر نیست.")
+    from .user_bpms_bindings import list_bindings
+    return {"bindings":list_bindings(subject)}
+
+
+@router.get("/api/user-bindings/directory")
+def user_binding_directory(subject:str,source_id:str,session=Depends(_ready)):
+    if not 1<=len(subject)<=180 or not re.fullmatch(r"[0-9a-f]{24}",source_id or ""):
+        raise HTTPException(422,"کاربر یا BPMS معتبر نیست.")
+    from .user_bpms_bindings import BindingError,directory_users,suggestions
+    try:
+        suggested=suggestions(subject,source_id)
+        return {"source":suggested["source"],
+                "suggestions":suggested["suggestions"],
+                "users":directory_users(source_id)}
+    except BindingError as exc:
+        raise HTTPException(409,str(exc))
+
+
+@router.post("/api/user-bindings/bind")
+def user_binding_save(body:UserBpmsBindingSave,session=Depends(_ready)):
+    from .user_bpms_bindings import BindingError,bind
+    try:
+        return {"binding":bind(subject=body.subject,source_id=body.source_id,
+                               external_user_id=body.external_user_id,
+                               match_method=body.match_method)}
+    except BindingError as exc:
+        raise HTTPException(409,str(exc))
+
+
+@router.post("/api/user-bindings/unbind")
+def user_binding_remove(body:UserBpmsBindingRef,session=Depends(_ready)):
+    from .user_bpms_bindings import BindingError,unbind
+    try:return unbind(subject=body.subject,source_id=body.source_id)
+    except BindingError as exc:raise HTTPException(409,str(exc))
+
+
+@router.post("/api/user-bindings/refresh")
+def user_binding_refresh(body:UserBpmsSourceRef,session=Depends(_ready)):
+    from .user_bpms_bindings import BindingError,refresh_source
+    try:return refresh_source(body.source_id)
+    except BindingError as exc:raise HTTPException(409,str(exc))
+
+
+@router.post("/api/user-bindings/migrate-legacy")
+def user_binding_migrate_legacy(session=Depends(_ready)):
+    from .user_bpms_bindings import migrate_legacy_processmaker_bindings
+    return migrate_legacy_processmaker_bindings()
 
 
 class PublicKey(BaseModel):
@@ -1621,7 +1697,9 @@ def license_status(session=Depends(_ready)):
 def mapped_users(session=Depends(_ready)):
     from . import native_access
     data=native_access.read()
-    return {'users':[{k:u.get(k) for k in ('subject','pm_uid','name','role','department_name','enabled','pm_active')} for u in data['users']]}
+    fields=('subject','username','email','name','role','department_name',
+            'manager_subject','enabled','pm_uid','pm_active')
+    return {'users':[{k:u.get(k) for k in fields} for u in data['users']]}
 
 
 class UserEnabled(BaseModel):
@@ -1638,13 +1716,11 @@ def user_enabled(body:UserEnabled,session=Depends(_ready)):
         user=next((u for u in data['users'] if u['subject']==body.subject),None)
         if not user:raise HTTPException(404,'کاربر ثبت نشده است.')
         if body.enabled:
-            from .production_onboarding import _directory
-            active=any(u.pm_uid==user['pm_uid'] and u.status=='ACTIVE' for u in _directory())
-            if not active:raise HTTPException(409,'کاربر ProcessMaker فعال نیست.')
-            used=sum(u['subject']!=body.subject and u.get('enabled') and u.get('pm_active') for u in data['users'])+1
+            used=sum(u.get('subject')!=body.subject and u.get('enabled')
+                     for u in data['users'])+1
             try:capacity(data['tenant_id'],data['company_name'],used)
-            except ProductionLicenseDenied:raise HTTPException(409,'اعتبار زمانی یا ظرفیت لایسنس اجازه فعال‌سازی نمی‌دهد.')
-            user['pm_active']=True
+            except ProductionLicenseDenied:
+                raise HTTPException(409,'اعتبار زمانی یا ظرفیت لایسنس اجازه فعال‌سازی نمی‌دهد.')
         user['enabled']=body.enabled
     return {'saved':True,'enabled':body.enabled}
 
