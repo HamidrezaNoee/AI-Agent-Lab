@@ -55,6 +55,37 @@ def register(app, csrf):
             },
         )
 
+    @app.post("/api/sources/{source_id}/bi/processes")
+    def source_processes(source_id: str, body: BIQuery, value=Depends(csrf)):
+        from .production_app import _source_store_response
+        return _source_store_response(
+            source_id,lambda con,scope:load(con,scope,body),value[2]
+        )
+
+    @app.post("/api/sources/{source_id}/bi/processes/export")
+    def source_export(source_id: str, body: BIQuery, value=Depends(csrf)):
+        import csv, io
+
+        report=source_processes(source_id,body,value)
+        out=io.StringIO(newline="")
+        writer=csv.writer(out)
+        writer.writerow(["پوشش","کامل" if report["coverage_complete"] else "ناقص"])
+        writer.writerow([
+            "فرایند","کل","باز","تکمیل","لغو","پیش‌نویس",
+            "وظایف تأخیردار","میانگین چرخه (ساعت)"
+        ])
+        for p in report["processes"]:
+            writer.writerow([csv_cell(p[k]) for k in (
+                "title","total","open","completed","cancelled","draft",
+                "overdue_tasks","average_cycle_hours"
+            )])
+        return Response(
+            ("\ufeff"+out.getvalue()).encode("utf-8"),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition":
+                     'attachment; filename="processmaker-source-bi.csv"'},
+        )
+
     from .agent_routes import Question, guard_model
 
     @app.post("/api/bi/ask")
