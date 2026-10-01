@@ -1444,10 +1444,11 @@ def user_binding_directory(subject:str,source_id:str,session=Depends(_ready)):
         raise HTTPException(422,"کاربر یا BPMS معتبر نیست.")
     from .user_bpms_bindings import BindingError,directory_users,suggestions
     try:
-        suggested=suggestions(subject,source_id)
+        users=directory_users(source_id)
+        suggested=suggestions(subject,source_id,users)
         return {"source":suggested["source"],
                 "suggestions":suggested["suggestions"],
-                "users":directory_users(source_id)}
+                "users":users}
     except BindingError as exc:
         raise HTTPException(409,str(exc))
 
