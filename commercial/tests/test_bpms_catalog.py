@@ -28,8 +28,7 @@ def test_legacy_processmaker_is_migrated_to_unified_bpms_profile_without_exposin
         data[name]=value
     with patch.object(routes.setup,"get_setting",side_effect=get_setting), \
          patch.object(routes.setup,"put_setting",side_effect=put_setting), \
-         patch.object(routes.setup,"audit"), \
-         patch("commercial.user_bpms_bindings.list_bindings",return_value=[]):
+         patch.object(routes.setup,"audit"):
         state=routes._pm_profiles_state()
         assert len(state["profiles"])==1
         profile=state["profiles"][0]
