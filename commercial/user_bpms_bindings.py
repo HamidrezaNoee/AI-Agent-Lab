@@ -162,10 +162,11 @@ def _avan_user(subject:str)->tuple[dict,dict]:
     return data,user
 
 
-def suggestions(subject:str,source_id:str)->dict:
+def suggestions(subject:str,source_id:str,rows:list[dict]|None=None)->dict:
     _,user=_avan_user(subject)
     source=_source(source_id)
-    rows=[u for u in directory_users(source_id) if u.get("active")]
+    rows=[u for u in (rows if rows is not None else directory_users(source_id))
+          if u.get("active")]
     username=_norm(user.get("username"))
     email=_clean_text(user.get("email"),240).casefold()
     name=_norm(user.get("name"))
