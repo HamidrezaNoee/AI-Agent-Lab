@@ -82,8 +82,8 @@ def guard_model(fn):
     except AgentInvalid:raise HTTPException(502,'پاسخ مدل از بررسی ساختار یا ارجاع عبور نکرد؛ پرسش را دوباره اجرا کنید.')
 
 
-def monitor_for(principal):
-    scope,rows,complete=snapshot(principal,4)
+def monitor_for(principal,source_id=None):
+    scope,rows,complete=snapshot(principal,4,source_id=source_id)
     now=datetime.now(timezone.utc)
     observations=agent_state.observe(scope,principal.subject,rows,now,complete)
     tools=MeetingTools(rows,now=now,complete=complete,modules=scope['license']['modules'],observations=observations)
@@ -275,25 +275,28 @@ def register(app,authorized,csrf):
         return rows[0]
 
     @app.post('/api/monitor')
-    def monitor(value=Depends(csrf)):
+    def monitor(value=Depends(csrf),source_id=None):
         _,_,principal=value
-        result=monitor_for(principal)
-        # Current result contains no cached source text. Subscription status is metadata only.
-        state=agent_monitor.status({'tenant_id':str(principal.tenant_id)},principal.subject)
+        result=monitor_for(principal,source_id)
+        scope,_,_=snapshot(principal,4,source_id=source_id)
+        state=agent_monitor.status(scope,principal.subject)
         return {**result,'subscription':state,'subscribed':state['enabled']}
 
     @app.post('/api/monitor/subscribe')
-    def subscribe(body:Subscribe,value=Depends(csrf)):
+    def subscribe(body:Subscribe,value=Depends(csrf),source_id=None):
         _,session,principal=value
-        scope,_,_=snapshot(principal,4)
+        scope,_,_=snapshot(principal,4,source_id=source_id)
         try:return agent_monitor.subscribe(scope,principal.subject,session,body.enabled,body.interval_seconds)
         except ValueError as exc:raise HTTPException(409,str(exc))
 
     @app.post('/api/monitor/alerts/{identifier}/acknowledge')
-    def acknowledge(identifier:str,value=Depends(csrf)):
-        result=monitor_for(value[2])
+    def acknowledge(identifier:str,value=Depends(csrf),source_id=None):
+        principal=value[2]
+        result=monitor_for(principal,source_id)
         if not any(a['id']==identifier for a in result['alerts']):raise HTTPException(404,'هشدار در دامنه فعلی موجود نیست.')
-        agent_state.acknowledge({'tenant_id':str(value[2].tenant_id)},value[2].subject,identifier)
+        scope,_,_=snapshot(principal,4,source_id=source_id)
+        try:agent_state.acknowledge(scope,principal.subject,identifier)
+        except PermissionError:raise HTTPException(404,'هشدار در دامنه فعلی موجود نیست.')
         return {'acknowledged':True}
 
     @app.post('/api/voice/transcribe')
@@ -396,6 +399,18 @@ def register(app,authorized,csrf):
     @app.post('/api/sources/{source_id}/reports/actions/export')
     def source_action_export(source_id:str,body:ActionQuery,value=Depends(csrf)):
         return action_export(body,value,source_id)
+
+    @app.post('/api/sources/{source_id}/monitor')
+    def source_monitor(source_id:str,value=Depends(csrf)):
+        return monitor(value,source_id)
+
+    @app.post('/api/sources/{source_id}/monitor/subscribe')
+    def source_subscribe(source_id:str,body:Subscribe,value=Depends(csrf)):
+        return subscribe(body,value,source_id)
+
+    @app.post('/api/sources/{source_id}/monitor/alerts/{identifier}/acknowledge')
+    def source_acknowledge(source_id:str,identifier:str,value=Depends(csrf)):
+        return acknowledge(identifier,value,source_id)
 
     @app.post('/api/sources/{source_id}/voice/transcribe')
     async def source_transcribe(source_id:str,request:Request,value=Depends(csrf)):
