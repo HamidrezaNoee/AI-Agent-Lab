@@ -1,5 +1,5 @@
 "use strict";
-const app={user:null,csrf:null,page:"overview",cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,cleanup:[]};
+const app={user:null,csrf:null,page:"overview",selectedSourceId:null,cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,cleanup:[]};
 const $=id=>document.getElementById(id);
 function el(tag,klass,text){const n=document.createElement(tag);if(klass)n.className=klass;if(text!==undefined)n.textContent=String(text);return n}
 function add(parent,...children){for(const x of children.flat())if(x!==undefined&&x!==null)parent.append(x);return parent}
@@ -52,16 +52,25 @@ function setupUser(user){
  $("pm-nav").hidden=!workspaceNavigation;
  $("platform-nav").hidden=!(user.is_godadmin&&user.platform_access!==false);
  $("admin-nav").hidden=!user.is_godadmin;
+ const sourceNav=$("bound-source-nav"),sourceButtons=$("bound-source-buttons");
+ sourceButtons.replaceChildren();
+ for(const source of user.bpms_sources||[]){
+  const b=el("button","","◉  "+source.source_name);
+  b.type="button";b.dataset.page="source-overview";b.dataset.sourceId=source.source_id;
+  b.addEventListener("click",()=>{app.selectedSourceId=source.source_id;select("source-overview")});
+  add(sourceButtons,b);
+ }
+ sourceNav.hidden=!(user.bpms_sources||[]).length;
  $("admin-entry").hidden=true;$("logout").hidden=false;
  document.body.classList.remove("auth-screen");
  $("person-name").textContent=user.name+" · "+titleCase(user.role);
  $("company-name").textContent=user.company;
  $("company-sub").textContent=user.workspace_degraded
-   ?(user.department||"مدیریت سامانه")+" · اتصال سازمانی نیازمند بررسی"
-   :(user.department||"مدیریت جلسات");
+   ?(user.department||"حساب AVAN")+" · اتصال BPMS نیازمند بررسی"
+   :(user.department||"فضای کاری سازمان");
  $("logout").onclick=signOut;
  recordActivity();
- document.querySelectorAll("#nav button").forEach(b=>b.addEventListener("click",()=>select(b.dataset.page)));
+ document.querySelectorAll("#nav button:not([data-source-id])").forEach(b=>b.addEventListener("click",()=>select(b.dataset.page)));
 }
 async function signOut(){
  if(!app.csrf){sessionExpired();return}
@@ -104,19 +113,22 @@ window.addEventListener("storage",event=>{if(event.key==="avan-logout"&&app.user
 function select(page){
  const platformPage=page.startsWith("platform-");
  const adminPage=page==="system-management";
- const orgPage=!platformPage&&!adminPage;
+ const sourcePage=page==="source-overview";
+ const orgPage=!platformPage&&!adminPage&&!sourcePage;
  if(platformPage&&(!app.user?.is_godadmin||app.user?.platform_access===false))return;
  if(adminPage&&!app.user?.is_godadmin)return;
+ if(sourcePage&&!(app.user?.bpms_sources||[]).some(x=>x.source_id===app.selectedSourceId))return;
  const workspaceNavigation=app.user?.workspace_navigation!==undefined?!!app.user.workspace_navigation:!!app.user?.workspace_access;
  if(orgPage&&!workspaceNavigation)return;
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
  $("breadcrumb").textContent=labels[page]||"آوان";
- document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
+ document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",
+   b.dataset.page===page&&(!sourcePage||b.dataset.sourceId===app.selectedSourceId)));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
  if(work)work().catch(err=>{
   const target=root();
   if(orgPage&&app.user?.is_godadmin){
@@ -225,9 +237,14 @@ async function init(){
  try{
   const user=await request("/api/me");setupUser(user);
   const workspaceNavigation=user.workspace_navigation!==undefined?!!user.workspace_navigation:!!user.workspace_access;
-  if(workspaceNavigation)select("overview");
-  else if(user.is_godadmin&&user.platform_access!==false)select("platform-overview");
-  else select("overview");
+  if(user.bootstrap_mode){select("system-management");return}
+  if(workspaceNavigation){select("overview");return}
+  if((user.bpms_sources||[]).length){
+   app.selectedSourceId=user.bpms_sources[0].source_id;select("source-overview");return
+  }
+  if(user.is_godadmin&&user.platform_access!==false){select("platform-overview");return}
+  const m=root();heading(m,"حساب AVAN فعال است","هنوز هیچ کاربر BPMS به این حساب متصل نشده است.");
+  add(m,note("مدیر سامانه باید از بخش «سازمان و دسترسی» حداقل یک BPMS را به حساب شما متصل کند."));
  }
  catch(err){
   if(err.message.includes("نشست سازمانی"))return;
@@ -237,6 +254,30 @@ async function init(){
  }
 }
 document.addEventListener("DOMContentLoaded",init);
+
+function boundSourceOverview(){
+ const source=(app.user?.bpms_sources||[]).find(x=>x.source_id===app.selectedSourceId);
+ const m=root();
+ if(!source){add(m,note("اتصال BPMS برای این حساب در دسترس نیست.",true));return}
+ heading(m,source.source_name,"این BPMS با یک Binding مستقل به حساب AVAN شما متصل است.");
+ const stats=el("div","stats");
+ for(const [label,value] of [
+  ["نوع BPMS",source.engine||"—"],
+  ["کاربر متصل",source.external_display_name||source.external_username||source.external_user_id||"—"],
+  ["وضعیت","Binding فعال"]
+ ])add(stats,add(el("div","stat"),el("span","",label),el("strong","",value)));
+ add(m,stats);
+ const p=card("دسترسی منبع","نقش و مجوزهای AVAN مستقل هستند؛ این اتصال فقط دامنه داده و قابلیت‌های همین BPMS را مشخص می‌کند.");
+ if(source.engine==="processmaker"&&app.user.workspace_access){
+  add(p,note("این اتصال ProcessMaker منبع فعال فضای کاری فعلی است."),
+   link("نمای کلی جلسات",()=>select("overview"),"button primary"),
+   link("جلسات و مصوبات",()=>select("meetings")),
+   link("BI فرایندها",()=>select("bi")));
+ }else{
+  add(p,note("اتصال هویتی این منبع فعال است. منوهای عملیاتی فقط زمانی نمایش داده می‌شوند که آداپتر این BPMS قابلیت متناظر و مجوز کاربر را اعلام کند."));
+ }
+ add(m,p);
+}
 
 async function systemManagement(){
  if(!app.user?.is_godadmin)return;
