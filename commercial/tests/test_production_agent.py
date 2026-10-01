@@ -304,3 +304,21 @@ def test_monitor_unit_growth_requires_full_coverage_and_comparison():
     assert any(a['kind']=='backlog_growth' for a in result['alerts'])
     result=MeetingTools(rows,now=NOW,observations=baseline,complete=False).monitor(MonitorQuery())
     assert not any(a['kind']=='backlog_growth' for a in result['alerts'])
+
+
+def test_agent_snapshot_reads_exact_selected_bpms_source():
+    selected="b"*24
+    principal=Principal(UUID(SCOPE["tenant_id"]),"source-user")
+    scoped={**SCOPE,"source_id":selected,"external_user_id":"external-b"}
+    def source_store(source_id,action,received_principal):
+        assert source_id==selected
+        assert received_principal is principal
+        return action(object(),scoped)
+    with patch.object(web,"_source_store_response",side_effect=source_store) as routed, \
+         patch("commercial.production_store.authorized_meeting_snapshot",
+               return_value=([],True)):
+        scope,rows,complete=agent_routes.snapshot(principal,1,source_id=selected)
+    assert routed.call_count==1
+    assert scope["source_id"]==selected
+    assert scope["external_user_id"]=="external-b"
+    assert rows==[] and complete is True
