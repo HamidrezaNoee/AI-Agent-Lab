@@ -94,22 +94,25 @@ def monitor_for(principal):
 
 def register(app,authorized,csrf):
     @app.get('/api/agent/status')
-    def status(value=Depends(authorized)):
+    def status(value=Depends(authorized),source_id=None):
         from .setup_console import get_setting
         _,_,principal=value
-        from .production_app import _store_response
-        scope=_store_response(lambda con,scope:scope,principal)
+        if source_id:
+            scope=snapshot(principal,1,source_id=source_id)[0]
+        else:
+            from .production_app import _store_response
+            scope=_store_response(lambda con,scope:scope,principal)
         cfg=get_setting('ai') or {}
         return {'enabled':bool(cfg.get('enabled') and cfg.get('api_key')),
                 'model':cfg.get('model'),'modules':sorted(scope['license']['modules']),
                 'direct_processmaker_write':False,'voice_enabled':bool(cfg.get('voice_enabled'))}
 
     @app.post('/api/ask')
-    def ask(body:Question,value=Depends(csrf)):
+    def ask(body:Question,value=Depends(csrf),source_id=None):
         _,session,principal=value
         def work():
             with run_slot((str(principal.tenant_id),principal.subject)):
-                scope,rows,complete=snapshot(principal,1)
+                scope,rows,complete=snapshot(principal,1,source_id=source_id)
                 tools=MeetingTools(rows,complete=complete,modules=scope['license']['modules'])
                 identifier=None if body.new_conversation else (body.conversation_id or session.get('conversation_id'))
                 history=[]
@@ -124,7 +127,7 @@ def register(app,authorized,csrf):
                     result=run_agent(body.question,tools,history=history)
                     from .production_app import _oidc_config
                     _oidc_config()[4].authenticate("Bearer "+session["access_token"])
-                    ensure_still_authorized(principal,scope,rows,1)
+                    ensure_still_authorized(principal,scope,rows,1,source_id=source_id)
                 except Exception:
                     agent_state.audit(scope,principal.subject,'AGENT_FAILED',{'error_code':'generation_or_authorization'})
                     raise
@@ -140,11 +143,11 @@ def register(app,authorized,csrf):
         return guard_model(work)
 
     @app.post('/api/secretary/drafts')
-    def draft(body:DraftRequest,value=Depends(csrf)):
+    def draft(body:DraftRequest,value=Depends(csrf),source_id=None):
         _,session,principal=value
         def work():
             with run_slot((str(principal.tenant_id),principal.subject)):
-                scope,rows,complete=snapshot(principal,2)
+                scope,rows,complete=snapshot(principal,2,source_id=source_id)
                 matches=[m for m in rows if normal(m['meeting_no'])==normal(body.meeting_no)]
                 if len(matches)!=1:raise HTTPException(404,'شماره جلسه در دامنه بازیابی‌شده یکتا نیست یا موجود نیست؛ شماره دقیق را بررسی کنید.')
                 meeting=matches[0]
@@ -156,26 +159,26 @@ def register(app,authorized,csrf):
                 payload=extract_draft(body.notes,meeting,owners,today=today)
                 from .production_app import _oidc_config
                 _oidc_config()[4].authenticate("Bearer "+session["access_token"])
-                ensure_still_authorized(principal,scope,[meeting],2)
+                ensure_still_authorized(principal,scope,[meeting],2,source_id=source_id)
                 identifier=agent_state.save_draft(scope,principal.subject,meeting['meeting_id'],payload)
                 return {'id':identifier,'status':'draft','revision':1,'payload':payload,'read_only':True}
         return guard_model(work)
 
-    def load_draft(principal,identifier):
-        scope,rows,_=snapshot(principal,2)
+    def load_draft(principal,identifier,source_id=None):
+        scope,rows,_=snapshot(principal,2,source_id=source_id)
         try:record=agent_state.get_draft(scope,principal.subject,identifier,{m['meeting_id'] for m in rows})
         except PermissionError:raise HTTPException(404,'پیش‌نویس در دسترس نیست.')
         return scope,rows,record
 
     @app.get('/api/secretary/drafts/{identifier}')
-    def read_draft(identifier:str,value=Depends(authorized)):
-        return load_draft(value[2],identifier)[2]
+    def read_draft(identifier:str,value=Depends(authorized),source_id=None):
+        return load_draft(value[2],identifier,source_id)[2]
 
     @app.post('/api/secretary/drafts/{identifier}/approve')
-    def approve(identifier:str,body:Approval,value=Depends(csrf)):
+    def approve(identifier:str,body:Approval,value=Depends(csrf),source_id=None):
         if not body.confirmed:raise HTTPException(422,'تأیید صریح پیش‌نویس لازم است.')
         _,_,principal=value
-        scope,rows,record=load_draft(principal,identifier)
+        scope,rows,record=load_draft(principal,identifier,source_id)
         meeting=next(m for m in rows if m['meeting_id']==record['meeting_id'])
         if scope['role']!='SysAdmin' and scope['external_user_id']!=meeting.get('secretary_uid'):
             raise HTTPException(403,'تأیید پیش‌نویس فقط برای دبیر جلسه یا مدیر سیستم مجاز است.')
@@ -184,8 +187,8 @@ def register(app,authorized,csrf):
         return {**result,'processmaker_written':False}
 
     @app.get('/api/secretary/drafts/{identifier}/export')
-    def export(identifier:str,value=Depends(authorized)):
-        scope,_,record=load_draft(value[2],identifier)
+    def export(identifier:str,value=Depends(authorized),source_id=None):
+        scope,_,record=load_draft(value[2],identifier,source_id)
         if record['status']!='approved':raise HTTPException(409,'ابتدا پیش‌نویس را بازبینی و تأیید کنید.')
         # Canonical handover contract, not invented Dynaform variable names.
         payload={'schema_version':1,'meeting_id':record['meeting_id'],
@@ -195,36 +198,36 @@ def register(app,authorized,csrf):
         return JSONResponse(payload,headers={'Content-Disposition':'attachment; filename="meeting-actions.json"'})
 
     @app.get('/api/conversations')
-    def conversations(value=Depends(authorized)):
-        scope,rows,_=snapshot(value[2],1)
+    def conversations(value=Depends(authorized),source_id=None):
+        scope,rows,_=snapshot(value[2],1,source_id=source_id)
         items=agent_workspace.conversations(scope,value[2].subject,{m['meeting_id'] for m in rows})
         return {'conversations':[{k:v for k,v in c.items() if k!='turns'} for c in items]}
 
-    def load_conversation(principal,identifier):
-        scope,rows,_=snapshot(principal,1)
+    def load_conversation(principal,identifier,source_id=None):
+        scope,rows,_=snapshot(principal,1,source_id=source_id)
         try:record=agent_workspace.conversation(scope,principal.subject,identifier,{m['meeting_id'] for m in rows})
         except PermissionError:raise HTTPException(404,'گفت‌وگو در دسترس نیست.')
         return scope,rows,record
 
     @app.get('/api/conversations/{identifier}')
-    def conversation(identifier:str,value=Depends(authorized)):
-        return agent_workspace.public_conversation(load_conversation(value[2],identifier)[2])
+    def conversation(identifier:str,value=Depends(authorized),source_id=None):
+        return agent_workspace.public_conversation(load_conversation(value[2],identifier,source_id)[2])
 
     @app.post('/api/conversations/{identifier}/delete')
-    def remove_conversation(identifier:str,value=Depends(csrf)):
-        scope,_,_=snapshot(value[2],1)
+    def remove_conversation(identifier:str,value=Depends(csrf),source_id=None):
+        scope,_,_=snapshot(value[2],1,source_id=source_id)
         agent_workspace.delete_conversation(scope,value[2].subject,identifier)
         if value[1].get('conversation_id')==identifier:value[1].pop('conversation_id',None)
         return {'deleted':True}
 
     @app.get('/api/secretary/drafts')
-    def drafts(value=Depends(authorized)):
-        scope,rows,_=snapshot(value[2],2)
+    def drafts(value=Depends(authorized),source_id=None):
+        scope,rows,_=snapshot(value[2],2,source_id=source_id)
         return {'drafts':agent_state.list_drafts(scope,value[2].subject,{m['meeting_id'] for m in rows})}
 
     @app.post('/api/secretary/drafts/{identifier}/edit')
-    def edit_draft(identifier:str,body:DraftEdit,value=Depends(csrf)):
-        scope,rows,record=load_draft(value[2],identifier)
+    def edit_draft(identifier:str,body:DraftEdit,value=Depends(csrf),source_id=None):
+        scope,rows,record=load_draft(value[2],identifier,source_id)
         meeting=next(m for m in rows if m['meeting_id']==record['meeting_id'])
         try:
             payload=validate_edit(body.payload,record['payload'],candidate_owners(meeting,scope))
@@ -233,15 +236,15 @@ def register(app,authorized,csrf):
         except agent_workspace.RevisionConflict:raise HTTPException(409,'پیش‌نویس تغییر کرده یا تأیید شده است؛ دوباره بارگذاری کنید.')
 
     @app.post('/api/secretary/drafts/{identifier}/reopen')
-    def reopen_draft(identifier:str,body:Approval,value=Depends(csrf)):
+    def reopen_draft(identifier:str,body:Approval,value=Depends(csrf),source_id=None):
         if not body.confirmed:raise HTTPException(422,'بازگشایی نیازمند تأیید است.')
-        scope,rows,_=load_draft(value[2],identifier)
+        scope,rows,_=load_draft(value[2],identifier,source_id)
         try:return agent_state.reopen_draft(scope,value[2].subject,identifier,{m['meeting_id'] for m in rows},body.revision)
         except agent_workspace.RevisionConflict:raise HTTPException(409,'نسخه پیش‌نویس تغییر کرده است.')
 
     @app.get('/api/secretary/drafts/{identifier}/processmaker')
-    def native_export(identifier:str,value=Depends(authorized)):
-        scope,rows,record=load_draft(value[2],identifier)
+    def native_export(identifier:str,value=Depends(authorized),source_id=None):
+        scope,rows,record=load_draft(value[2],identifier,source_id)
         if record['status']!='approved':raise HTTPException(409,'ابتدا پیش‌نویس را تأیید کنید.')
         meeting=next(m for m in rows if m['meeting_id']==record['meeting_id'])
         try:payload=processmaker_export(record,meeting,candidate_owners(meeting,scope))
@@ -250,16 +253,16 @@ def register(app,authorized,csrf):
         return JSONResponse(payload,headers={'Content-Disposition':'attachment; filename="processmaker-actions.json"'})
 
     @app.post('/api/reports/actions')
-    def action_report(body:ActionQuery,value=Depends(csrf)):
+    def action_report(body:ActionQuery,value=Depends(csrf),source_id=None):
         from .agent_reports import report
-        scope,rows,complete=snapshot(value[2],3)
+        scope,rows,complete=snapshot(value[2],3,source_id=source_id)
         try:return report(rows,scope,complete,body)
         except ValueError:raise HTTPException(422,'بازه زمانی یا فیلتر گزارش معتبر نیست.')
 
     @app.post('/api/reports/actions/export')
-    def action_export(body:ActionQuery,value=Depends(csrf)):
+    def action_export(body:ActionQuery,value=Depends(csrf),source_id=None):
         from .agent_reports import export_csv
-        scope,rows,complete=snapshot(value[2],3)
+        scope,rows,complete=snapshot(value[2],3,source_id=source_id)
         try:data=export_csv(rows,scope,complete,body)
         except ValueError:raise HTTPException(422,'فیلتر گزارش معتبر نیست.')
         agent_state.audit(scope,value[2].subject,'ACTION_REPORT_EXPORTED',{'coverage_complete':complete})
@@ -294,10 +297,10 @@ def register(app,authorized,csrf):
         return {'acknowledged':True}
 
     @app.post('/api/voice/transcribe')
-    async def transcribe(request:Request,value=Depends(csrf)):
+    async def transcribe(request:Request,value=Depends(csrf),source_id=None):
         from starlette.concurrency import run_in_threadpool
         principal=value[2]
-        scope,rows,_=await run_in_threadpool(snapshot,principal,1)
+        scope,rows,_=await run_in_threadpool(snapshot,principal,1,None,source_id)
         try:agent_voice.configuration()
         except AgentUnavailable as exc:raise HTTPException(503,str(exc))
         data=bytearray()
@@ -310,23 +313,94 @@ def register(app,authorized,csrf):
                 except AgentInvalid:raise HTTPException(422,'فایل صوت معتبر نیست یا متن از حد مجاز بیشتر است.')
                 from .production_app import _oidc_config
                 _oidc_config()[4].authenticate('Bearer '+value[1]['access_token'])
-                ensure_still_authorized(principal,scope,rows,1)
+                ensure_still_authorized(principal,scope,rows,1,source_id=source_id)
                 agent_state.audit(scope,principal.subject,'VOICE_TRANSCRIBED',{})
                 return {'text':content,'requires_review':True}
         return await run_in_threadpool(guard_model,work)
 
     @app.post('/api/voice/speech')
-    def speech(body:SpeechRequest,value=Depends(csrf)):
+    def speech(body:SpeechRequest,value=Depends(csrf),source_id=None):
         principal=value[2]
         def work():
             with run_slot((str(principal.tenant_id),principal.subject)):
-                scope,rows,record=load_conversation(principal,body.conversation_id)
+                scope,rows,record=load_conversation(principal,body.conversation_id,source_id)
                 turn=next((t for t in record['turns'] if t['id']==body.turn_id),None)
                 if not turn:raise HTTPException(404,'پاسخ ذخیره‌شده موجود نیست.')
                 audio,parts=agent_voice.speak(turn['answer'],body.part)
                 from .production_app import _oidc_config
                 _oidc_config()[4].authenticate('Bearer '+value[1]['access_token'])
-                ensure_still_authorized(principal,scope,rows,1)
+                ensure_still_authorized(principal,scope,rows,1,source_id=source_id)
                 agent_state.audit(scope,principal.subject,'VOICE_GENERATED',{})
                 return Response(audio,media_type='audio/mpeg',headers={'X-AVAN-Audio-Parts':str(parts)})
         return guard_model(work)
+
+
+    # Explicit per-source routes. They reuse the same authorization logic but
+    # force every data read and persisted Agent scope through the selected BPMS binding.
+    @app.get('/api/sources/{source_id}/agent/status')
+    def source_status(source_id:str,value=Depends(authorized)):
+        return status(value,source_id)
+
+    @app.post('/api/sources/{source_id}/ask')
+    def source_ask(source_id:str,body:Question,value=Depends(csrf)):
+        return ask(body,value,source_id)
+
+    @app.get('/api/sources/{source_id}/conversations')
+    def source_conversations(source_id:str,value=Depends(authorized)):
+        return conversations(value,source_id)
+
+    @app.get('/api/sources/{source_id}/conversations/{identifier}')
+    def source_conversation(source_id:str,identifier:str,value=Depends(authorized)):
+        return conversation(identifier,value,source_id)
+
+    @app.post('/api/sources/{source_id}/conversations/{identifier}/delete')
+    def source_remove_conversation(source_id:str,identifier:str,value=Depends(csrf)):
+        return remove_conversation(identifier,value,source_id)
+
+    @app.post('/api/sources/{source_id}/secretary/drafts')
+    def source_draft(source_id:str,body:DraftRequest,value=Depends(csrf)):
+        return draft(body,value,source_id)
+
+    @app.get('/api/sources/{source_id}/secretary/drafts')
+    def source_drafts(source_id:str,value=Depends(authorized)):
+        return drafts(value,source_id)
+
+    @app.get('/api/sources/{source_id}/secretary/drafts/{identifier}')
+    def source_read_draft(source_id:str,identifier:str,value=Depends(authorized)):
+        return read_draft(identifier,value,source_id)
+
+    @app.post('/api/sources/{source_id}/secretary/drafts/{identifier}/approve')
+    def source_approve_draft(source_id:str,identifier:str,body:Approval,value=Depends(csrf)):
+        return approve(identifier,body,value,source_id)
+
+    @app.get('/api/sources/{source_id}/secretary/drafts/{identifier}/export')
+    def source_export_draft(source_id:str,identifier:str,value=Depends(authorized)):
+        return export(identifier,value,source_id)
+
+    @app.post('/api/sources/{source_id}/secretary/drafts/{identifier}/edit')
+    def source_edit_draft(source_id:str,identifier:str,body:DraftEdit,value=Depends(csrf)):
+        return edit_draft(identifier,body,value,source_id)
+
+    @app.post('/api/sources/{source_id}/secretary/drafts/{identifier}/reopen')
+    def source_reopen_draft(source_id:str,identifier:str,body:Approval,value=Depends(csrf)):
+        return reopen_draft(identifier,body,value,source_id)
+
+    @app.get('/api/sources/{source_id}/secretary/drafts/{identifier}/processmaker')
+    def source_native_export(source_id:str,identifier:str,value=Depends(authorized)):
+        return native_export(identifier,value,source_id)
+
+    @app.post('/api/sources/{source_id}/reports/actions')
+    def source_action_report(source_id:str,body:ActionQuery,value=Depends(csrf)):
+        return action_report(body,value,source_id)
+
+    @app.post('/api/sources/{source_id}/reports/actions/export')
+    def source_action_export(source_id:str,body:ActionQuery,value=Depends(csrf)):
+        return action_export(body,value,source_id)
+
+    @app.post('/api/sources/{source_id}/voice/transcribe')
+    async def source_transcribe(source_id:str,request:Request,value=Depends(csrf)):
+        return await transcribe(request,value,source_id)
+
+    @app.post('/api/sources/{source_id}/voice/speech')
+    def source_speech(source_id:str,body:SpeechRequest,value=Depends(csrf)):
+        return speech(body,value,source_id)
