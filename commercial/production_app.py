@@ -723,6 +723,7 @@ def current_user(request:Request):
                     "license_expires_at":None,"license_mode":"platform"}
         raise HTTPException(status_code=403,detail="لایسنس AVAN برای این سازمان معتبر نیست.")
 
+    effective_modules=native_access.effective_modules(stored,license_data["modules"])
     from .user_bpms_bindings import (
         list_bindings,source_catalog,active_processmaker_source_id
     )
@@ -738,7 +739,7 @@ def current_user(request:Request):
             "external_user_id":binding.get("external_user_id"),
             "external_username":binding.get("external_username"),
             "external_display_name":binding.get("external_display_name"),
-            "capabilities":_source_capabilities(source,license_data["modules"]),
+            "capabilities":_source_capabilities(source,effective_modules),
         })
 
     active_pm=active_processmaker_source_id()
@@ -749,7 +750,7 @@ def current_user(request:Request):
             "company":data["company_name"],
             "role":stored.get("role"),"department":stored.get("department_name"),
             "csrf":session["csrf"],"subject":principal.subject,
-            "modules":sorted(license_data["modules"]),
+            "modules":sorted(effective_modules),
             "license_expires_at":license_data["expires_at"],
             "license_mode":license_data.get("mode","licensed"),
             "is_godadmin":godadmin,"bootstrap_mode":False,
