@@ -991,6 +991,40 @@ async function renderUsers(m){
   },"secondary"));
  append(p,toolbar,feedback);
 
+ const createUser=panel("ساخت کاربر AVAN",
+  "این حساب فقط در سامانه AVAN ساخته می‌شود و به هیچ BPMS متصل نیست. کاربر در اولین ورود باید رمز موقت را تغییر دهد و Authenticator را فعال کند.");
+ const createForm=node("form","grid"),createOut=node("div","full");
+ append(createForm,
+  field("نام کاربری AVAN","username",""),
+  field("نام و نام خانوادگی","name",""),
+  field("ایمیل سازمانی","email","",{type:"email"}),
+  field("رمز موقت حداقل ۱۶ کاراکتر","temporary_password","",{secret:true}));
+ const createRoleLabel=node("label","","نقش اولیه AVAN"),createRole=node("select");createRole.name="role";
+ for(const [value,label] of [["Expert","کارشناس"],["Manager","مدیر"],["SysAdmin","مدیر سیستم"]]){
+  const opt=node("option","",label);opt.value=value;append(createRole,opt)
+ }
+ append(createRoleLabel,createRole);append(createForm,createRoleLabel);
+ const createSubmit=node("button","","ساخت حساب AVAN");createSubmit.type="submit";
+ append(createForm,createSubmit,createOut);
+ createForm.addEventListener("submit",async e=>{
+  e.preventDefault();busy(createForm,true);createOut.replaceChildren();
+  try{
+   const result=await api("users/create-identity",{
+    username:formValue(createForm,"username"),
+    name:formValue(createForm,"name"),
+    email:formValue(createForm,"email"),
+    role:formValue(createForm,"role"),
+    temporary_password:formValue(createForm,"temporary_password")
+   });
+   const pw=createForm.elements.namedItem("temporary_password");if(pw)pw.value="";
+   append(createOut,info("حساب «"+result.username+"» ساخته شد. کاربر باید وارد شود، رمز را تغییر دهد و MFA را فعال کند؛ سپس درخواست تأیید AVAN در همین صفحه ظاهر می‌شود."));
+  }catch(err){
+   const pw=createForm.elements.namedItem("temporary_password");if(pw)pw.value="";
+   showError(createOut,err)
+  }finally{busy(createForm,false)}
+ });
+ append(createUser,createForm);append(p,createUser);
+
  let mapped=[],sources=[];
  try{
   const [usersResult,sourceResult]=await Promise.all([
