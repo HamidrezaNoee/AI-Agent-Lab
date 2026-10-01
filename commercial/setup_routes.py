@@ -795,6 +795,8 @@ def organization_save(body:OrganizationSave,session=Depends(_ready)):
     rows=state["organizations"]
     now=datetime.now(timezone.utc).isoformat()
     name=body.company_name.strip()
+    if len(name)<2:
+        raise HTTPException(422,"نام رسمی سازمان باید حداقل دو کاراکتر باشد.")
     if body.tenant_id:
         try:tenant_id=str(uuid.UUID(body.tenant_id))
         except ValueError:raise HTTPException(422,"Tenant ID سازمان معتبر نیست.")
