@@ -110,7 +110,7 @@ def create(client, issuer, secret, tenant, username, email, name, role, password
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Create a new AVAN identity; BPMS user binding is configured separately"
+        description="Create an AVAN-native identity; BPMS bindings are configured separately"
     )
     parser.add_argument("--username", required=True)
     parser.add_argument("--email", required=True)
@@ -119,11 +119,17 @@ def main():
         "--role", choices=["Expert", "Manager", "SysAdmin"], default="Expert"
     )
     args = parser.parse_args()
+    if not re.fullmatch(r"[A-Za-z0-9_.@-]{3,80}", args.username):
+        raise ValueError("Invalid AVAN username")
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", args.email):
+        raise ValueError("Invalid email")
+    if not 2 <= len(args.name.strip()) <= 240:
+        raise ValueError("Invalid display name")
     company = setup.get_setting("company") or {}
+    config = setup.get_setting("oidc") or {}
     tenant = company.get("tenant_id")
     if not tenant:
-        raise ValueError("Configure the AVAN organization first")
-    config = setup.get_setting("oidc") or {}
+        raise ValueError("Configure the AVAN organization before creating users")
     if not config.get("managed_by_product"):
         raise ValueError("Bundled identity configuration required")
     secret = (
@@ -154,8 +160,8 @@ def main():
     print(
         "AVAN identity created: "
         + subject
-        + ". User must change password, enroll MFA and sign in. "
-          "GodAdmin then approves the AVAN account and configures BPMS bindings separately."
+        + ". The user must change the temporary password and enroll MFA. "
+          "AVAN authorization and each BPMS binding are approved separately."
     )
 
 
