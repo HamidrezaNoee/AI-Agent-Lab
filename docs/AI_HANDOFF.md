@@ -82,3 +82,13 @@ once to slow complete orbit (0.22 speed); v5 choices remain editable. The orbit
 button is a fixed hit target. Only its pointer-events:none visual child scales on
 hover, preventing CSS individual scale from scaling the button's translated world
 position. Edge-pointer stability is covered by the browser regression test.
+
+
+## Identity architecture — multi-BPMS user bindings
+
+AVAN identities are independent from BPMS identities. Do not create AVAN accounts
+as a side effect of ProcessMaker synchronization. One AVAN user can bind to a
+different external user in each configured BPMS. Username/email matches are only
+suggestions and require explicit Admin approval. Effective source access requires
+both AVAN authorization and an active per-source binding. See
+`docs/ADR-001-AVAN-BPMS-USER-BINDINGS.md`.
