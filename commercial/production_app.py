@@ -651,6 +651,7 @@ def _source_capabilities(source:dict,modules)->list[str]:
         if 1 in modules:available.extend(["meetings","assistant"])
         if 2 in modules:available.append("secretary")
         if 3 in modules:available.extend(["bi","reports"])
+        if 4 in modules:available.append("monitor")
     return available
 
 
