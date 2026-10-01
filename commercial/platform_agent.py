@@ -27,7 +27,8 @@ Answer clearly in Persian; return the requested JSON schema."""
 
 
 def scope(principal):
-    return {"tenant_id":str(principal.tenant_id),"pm_uid":"platform",
+    return {"tenant_id":str(principal.tenant_id),
+            "source_id":"platform","external_user_id":"platform",
             "role":"GodAdmin","visible_uids":[bpms_registry.signature()],
             "license":{"modules":{1,3}}}
 
