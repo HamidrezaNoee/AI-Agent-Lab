@@ -113,7 +113,7 @@ window.addEventListener("storage",event=>{if(event.key==="avan-logout"&&app.user
 function select(page){
  const platformPage=page.startsWith("platform-");
  const adminPage=page==="system-management";
- const sourcePage=page==="source-overview";
+ const sourcePage=page.startsWith("source-");
  const orgPage=!platformPage&&!adminPage&&!sourcePage;
  if(platformPage&&(!app.user?.is_godadmin||app.user?.platform_access===false))return;
  if(adminPage&&!app.user?.is_godadmin)return;
@@ -123,12 +123,12 @@ function select(page){
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",
    b.dataset.page===page&&(!sourcePage||b.dataset.sourceId===app.selectedSourceId)));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
  if(work)work().catch(err=>{
   const target=root();
   if(orgPage&&app.user?.is_godadmin){
@@ -255,7 +255,7 @@ async function init(){
 }
 document.addEventListener("DOMContentLoaded",init);
 
-function boundSourceOverview(){
+async function boundSourceOverview(){
  const source=(app.user?.bpms_sources||[]).find(x=>x.source_id===app.selectedSourceId);
  const m=root();
  if(!source){add(m,note("اتصال BPMS برای این حساب در دسترس نیست.",true));return}
@@ -268,15 +268,49 @@ function boundSourceOverview(){
  ])add(stats,add(el("div","stat"),el("span","",label),el("strong","",value)));
  add(m,stats);
  const p=card("دسترسی منبع","نقش و مجوزهای AVAN مستقل هستند؛ این اتصال فقط دامنه داده و قابلیت‌های همین BPMS را مشخص می‌کند.");
- if(source.engine==="processmaker"&&app.user.workspace_access){
-  add(p,note("این اتصال ProcessMaker منبع فعال فضای کاری فعلی است."),
-   link("نمای کلی جلسات",()=>select("overview"),"button primary"),
-   link("جلسات و مصوبات",()=>select("meetings")),
-   link("BI فرایندها",()=>select("bi")));
+ if(source.engine==="processmaker"){
+  add(p,note("داده‌های این ProcessMaker با Source ID خودش و Binding همین حساب خوانده می‌شود."),
+   link("BI همین ProcessMaker",()=>select("source-bi"),"button primary"));
+  add(m,p);
+  const recent=card("جلسات اخیر این ProcessMaker","فقط جلساتی که کاربر متناظر این Binding مجاز به مشاهده آن‌هاست نمایش داده می‌شوند.");
+  add(m,recent);
+  try{
+   const page=await request("/api/sources/"+encodeURIComponent(source.source_id)+"/meetings?limit=8");
+   for(const meeting of page.meetings||[]){
+    const row=el("div","meeting-row"),details=el("div");
+    add(details,el("strong","",meeting.title),
+     el("small","",meeting.meeting_no+" · "+meeting.meeting_status+" · "+(meeting.meeting_date_utc||"تاریخ ثبت نشده")));
+    add(row,details,link("نمایش جزئیات",()=>showSourceMeeting(source.source_id,meeting.meeting_id)));
+    add(recent,row);
+   }
+   if(!(page.meetings||[]).length)add(recent,el("p","muted","جلسه‌ای در دامنه مجاز این Binding یافت نشد."));
+  }catch(err){add(recent,note(err.message,true))}
  }else{
-  add(p,note("اتصال هویتی این منبع فعال است. منوهای عملیاتی فقط زمانی نمایش داده می‌شوند که آداپتر این BPMS قابلیت متناظر و مجوز کاربر را اعلام کند."));
+  add(p,note("Binding این منبع فعال است. منوی عملیاتی زمانی نمایش داده می‌شود که آداپتر BPMS قرارداد User-Scoped مربوط به آن قابلیت را ارائه کند."));
+  add(m,p);
  }
- add(m,p);
+}
+
+async function showSourceMeeting(sourceId,id){
+ try{
+  const meeting=await request("/api/sources/"+encodeURIComponent(sourceId)+"/meetings/"+encodeURIComponent(id));
+  cleanMedia();app.page="source-detail";
+  const m=root();heading(m,meeting.title,"جلسه "+meeting.meeting_no+" · "+dateText(meeting.meeting_date_utc));
+  add(m,link("بازگشت به BPMS",()=>select("source-overview")));
+  if(meeting.discussion)add(m,card("خلاصه مباحث",meeting.discussion));
+  if(meeting.parking_lot)add(m,card("موضوعات باز",meeting.parking_lot));
+  const table=el("table"),head=el("tr");
+  for(const x of ["اقدام","شرح","مسئول / واحد","وضعیت","پیشرفت","موعد"])add(head,el("th","",x));
+  add(table,add(el("thead"),head));const body=el("tbody");
+  for(const a of meeting.actions||[]){
+   const row=el("tr");
+   for(const v of [a.action_no,a.description,(a.owner_name||"نامشخص")+" / "+(a.owner_unit||"نامشخص"),
+    a.is_closed?"بسته‌شده":a.status,a.progress_percent==null?"نامشخص":fmt(a.progress_percent)+"٪",
+    dateText(a.due_at_utc)])add(row,el("td","",v));
+   add(body,row)
+  }
+  add(table,body);add(m,add(el("div","table-scroll panel"),table));
+ }catch(e){toast(e.message)}
 }
 
 async function systemManagement(){
