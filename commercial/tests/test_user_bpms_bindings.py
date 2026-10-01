@@ -119,7 +119,8 @@ def test_avan_account_approval_does_not_require_bpms_user():
             role="Expert",department_name="Sales",manager_subject=None)
     assert result["approved"] is True
     assert state["users"][0]["username"]=="amin.t"
-    assert state["users"][0]["pm_uid"] is None
+    assert "pm_uid" not in state["users"][0]
+    assert "pm_active" not in state["users"][0]
 
 
 def test_processmaker_scope_uses_binding_of_selected_source_only():
@@ -129,7 +130,7 @@ def test_processmaker_scope_uses_binding_of_selected_source_only():
     external_b="2"*32
     organization={"tenant_id":TENANT,"company_name":"ACME","users":[{
         "subject":"sub-1","username":"amin.t","name":"Amin","role":"Expert",
-        "department_name":"Sales","enabled":True,"pm_uid":None,"pm_active":False
+        "department_name":"Sales","enabled":True
     }]}
     profiles={
         source_a:{"id":source_a,"name":"PM A","mysql":{"timezone":"Asia/Tehran"}},
@@ -160,11 +161,30 @@ def test_processmaker_scope_uses_binding_of_selected_source_only():
         scope_a=processmaker_store.verified_scope(object(),principal,source_id=source_a)
         scope_b=processmaker_store.verified_scope(object(),principal,source_id=source_b)
 
-    assert scope_a["pm_uid"]==external_a
+    assert scope_a["external_user_id"]==external_a
     assert scope_a["source_id"]==source_a
     assert scope_a["timezone"]=="Asia/Tehran"
-    assert scope_b["pm_uid"]==external_b
+    assert scope_b["external_user_id"]==external_b
     assert scope_b["source_id"]==source_b
     assert scope_b["timezone"]=="UTC"
     assert scope_a["visible_uids"]=={external_a}
     assert scope_b["visible_uids"]=={external_b}
+
+
+def test_legacy_pm_uid_never_authorizes_without_explicit_binding():
+    source="c"*24
+    legacy_uid="3"*32
+    organization={"tenant_id":TENANT,"company_name":"ACME","users":[{
+        "subject":"sub-legacy","username":"legacy","name":"Legacy User",
+        "role":"Expert","enabled":True,"pm_uid":legacy_uid,"pm_active":True
+    }]}
+    principal=Principal(UUID(TENANT),"sub-legacy",frozenset())
+    profile={"id":source,"name":"PM","mysql":{"timezone":"Asia/Tehran"}}
+    with patch.object(native_access,"read",return_value=organization), \
+         patch.object(user_bpms_bindings,"active_processmaker_source_id",return_value=source), \
+         patch.object(user_bpms_bindings,"bindings_by_source",return_value={}), \
+         patch.object(user_bpms_bindings,"processmaker_profile",return_value=profile), \
+         patch.object(processmaker_store,"directory",
+                      return_value={legacy_uid:{"name":"Legacy","active":True,"unit":""}}):
+        with pytest.raises(processmaker_store.EmployeeMappingRequired):
+            processmaker_store.verified_scope(object(),principal,source_id=source)
