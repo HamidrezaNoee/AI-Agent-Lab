@@ -448,8 +448,8 @@ async function platformBI(){
 }
 
 
-function renderAnalysis(target,result){
- if(app.voiceEnabled&&result.conversation_id&&result.turn_id)attachSpeech(target,result);
+function renderAnalysis(target,result,sourceId=null){
+ if(app.voiceEnabled&&result.conversation_id&&result.turn_id)attachSpeech(target,result,sourceId);
  for(const message of result.notes||[])add(target,note(message));
  add(target,el("p","muted","مدل: "+(result.model||"—")+(result.report_type==="platform"?" · راهنمای پلتفرم":result.report_type==="bpms_bi"||result.report_type==="process_bi"?" · تحلیل گردش کار فرایندها":" · بررسی "+fmt(result.meetings_considered)+" جلسه و "+fmt(result.actions_considered)+" اقدام")));
  if(result.clarification)add(target,note(result.clarification));
@@ -576,12 +576,13 @@ async function showMeeting(id){
   for(const a of meeting.actions){const row=el("tr");for(const v of [a.action_no,a.description,(a.owner_name||"نامشخص")+" / "+(a.owner_unit||"نامشخص"),a.is_closed?"بسته‌شده":a.status,a.progress_percent==null?"نامشخص":fmt(a.progress_percent)+"٪",dateText(a.due_at_utc)])add(row,el("td","",v));add(body,row)}add(table,body);add(m,add(el("div","table-scroll panel"),table));
  }catch(e){toast(e.message)}
 }
-function attachVoiceInput(target,input,platform=false){
+function attachVoiceInput(target,input,platform=false,sourceId=null){
  const wrap=el("div","voice-bar"),status=el("span","muted");let recorder=null,stream=null,timer=null,discard=false,busy=false;
  const cleanup=()=>{discard=true;if(timer)clearTimeout(timer);if(recorder?.state==="recording")recorder.stop();stream?.getTracks().forEach(t=>t.stop())};app.cleanup.push(cleanup);
  async function convert(blob){
   if(busy||discard)return;if(blob.size>8*1024*1024){status.textContent="حداکثر حجم صوت ۸ مگابایت است.";return}busy=true;button.disabled=true;upload.disabled=true;status.textContent="در حال تبدیل صوت؛ سپس متن را بازبینی کنید...";
-  try{const r=await request(platform?"/api/platform/voice/transcribe":"/api/voice/transcribe",{method:"POST",headers:{"Content-Type":blob.type||"audio/mpeg"},body:blob});if(!input.isConnected)return;
+  try{const endpoint=platform?"/api/platform/voice/transcribe":sourceApi(sourceId,"/voice/transcribe");
+   const r=await request(endpoint,{method:"POST",headers:{"Content-Type":blob.type||"audio/mpeg"},body:blob});if(!input.isConnected)return;
    if(r.text.length>input.maxLength){status.textContent="متن از ظرفیت این کادر بیشتر است؛ فایل کوتاه‌تری انتخاب کنید.";return}input.value=r.text;input.dispatchEvent(new Event("input",{bubbles:true}));status.textContent="متن آماده است؛ قبل از ارسال بازبینی کنید.";
   }catch(e){status.textContent=e.message}finally{busy=false;button.disabled=false;upload.disabled=false}
  }
@@ -598,11 +599,12 @@ function attachVoiceInput(target,input,platform=false){
  const upload=el("input");upload.type="file";upload.accept="audio/webm,audio/ogg,audio/wav,audio/mpeg,audio/mp4,.m4a";upload.setAttribute("aria-label","انتخاب فایل صوت برای تبدیل به متن");upload.addEventListener("change",()=>{if(upload.files[0])convert(upload.files[0])});
  add(wrap,button,upload,el("small","muted","برای تبدیل، صوت انتخابی به سرویس هوش مصنوعی ارسال می‌شود."),status);add(target,wrap);
 }
-function attachSpeech(target,result){
+function attachSpeech(target,result,sourceId=null){
  const area=el("div","voice-bar"),status=el("span","muted","صدای تولیدشده توسط هوش مصنوعی"),player=el("audio");player.controls=true;let part=0,parts=1,url=null;
  app.cleanup.push(()=>{player.pause();player.removeAttribute("src");if(url)URL.revokeObjectURL(url)});
  const play=link("شنیدن پاسخ",async()=>{play.disabled=true;try{
-  const response=await request(app.user?.is_godadmin?"/api/platform/voice/speech":"/api/voice/speech",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({conversation_id:result.conversation_id,turn_id:result.turn_id,part}),binary:true});
+  const endpoint=result.report_type==="platform"?"/api/platform/voice/speech":sourceApi(sourceId,"/voice/speech");
+  const response=await request(endpoint,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({conversation_id:result.conversation_id,turn_id:result.turn_id,part}),binary:true});
   const blob=await response.blob();if(!area.isConnected)return;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);player.src=url;parts=Number(response.headers.get("X-AVAN-Audio-Parts"))||1;status.textContent="صدای هوش مصنوعی · بخش "+fmt(part+1)+" از "+fmt(parts);add(area,player);await player.play();
   part=(part+1)%parts;play.textContent=parts>1?"شنیدن بخش "+fmt(part+1):"پخش دوباره";
  }catch(e){status.textContent=e.message}finally{play.disabled=false}});add(area,play,status);add(target,area);
