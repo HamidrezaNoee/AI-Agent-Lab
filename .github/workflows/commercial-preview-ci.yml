@@ -82,7 +82,7 @@ jobs:
         run: python -m pip install -r commercial/requirements-production.txt pytest
       - name: Check source and authenticated installation lifecycle
         run: |
-          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/login_appearance.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py infra/antibot/server.py
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/user_bpms_bindings.py commercial/setup_console.py commercial/setup_routes.py commercial/login_appearance.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py infra/antibot/server.py
           python -m pytest commercial/tests -q
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
@@ -99,22 +99,19 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import base64
           roots=[
               Path("commercial/web/admin/scene-data"),
               Path("infra/keycloak/themes/avan/login/resources/scene-data"),
           ]
-          decoded=[]
+          pairs=[]
           for root in roots:
-              background="".join((root/f"bg-{i}.b64").read_text().strip() for i in range(5))
-              globe="".join((root/f"globe-{i}.b64").read_text().strip() for i in range(2))
-              b=base64.b64decode(background,validate=True)
-              g=base64.b64decode(globe,validate=True)
-              assert b[:4]==b"RIFF" and b[8:12]==b"WEBP" and len(b)>10000
-              assert g[:4]==b"RIFF" and g[8:12]==b"WEBP" and len(g)>5000
-              decoded.append((b,g))
-          assert decoded[0]==decoded[1], "Bootstrap and Keycloak login scene assets differ"
-          print("Approved AVAN Live Login V2 assets are valid and synchronized.")
+              background=(root/"boardroom-v5.webp").read_bytes()
+              globe=(root/"globe-v5.webp").read_bytes()
+              assert background[:4]==b"RIFF" and background[8:12]==b"WEBP" and len(background)>10000
+              assert globe[:4]==b"RIFF" and globe[8:12]==b"WEBP" and len(globe)>5000
+              pairs.append((background,globe))
+          assert pairs[0]==pairs[1], "Bootstrap and Keycloak login scene assets differ"
+          print("Approved AVAN login WebP assets are valid and synchronized.")
           PY
       - name: Browser smoke test with isolated API fixtures
         run: |
