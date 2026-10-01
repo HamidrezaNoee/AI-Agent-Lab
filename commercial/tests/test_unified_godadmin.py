@@ -186,14 +186,25 @@ class UnifiedGodAdminTests(unittest.TestCase):
             "expires":time.time()+1800,"idle_expires":time.time()+600,
             "access_expires":time.time()+1500,"subject":"operator","tenant_id":TENANT}
         self.client.cookies.set("avan_session","god")
-        scope={
-            "name":"مدیر سازمان","company":"ایران رور","role":"Manager",
-            "department":"مدیریت","license":{
-                "modules":{1,2,3,4},"expires_at":"2027-01-01T00:00:00Z",
-                "mode":"licensed"
-            }
-        }
-        with patch.object(app,"_store_response",return_value=scope):
+        source_id="a"*24
+        organization={"tenant_id":TENANT,"company_name":"ایران رور","users":[{
+            "subject":"operator","username":"operator","name":"مدیر سازمان",
+            "role":"Manager","department_name":"مدیریت","enabled":True,
+            "pm_uid":None,"pm_active":False
+        }]}
+        entitlement={"modules":frozenset({1,2,3,4}),
+                     "expires_at":"2027-01-01T00:00:00Z","mode":"licensed"}
+        bindings=[{"tenant_id":TENANT,"avan_subject":"operator",
+                   "source_id":source_id,"external_user_id":"b"*32,
+                   "external_username":"pm.operator","external_display_name":"مدیر سازمان",
+                   "status":"active"}]
+        source={"id":source_id,"name":"ProcessMaker اصلی","engine":"processmaker",
+                "connection_type":"processmaker","enabled":True,"active":True}
+        with patch.object(native_access,"read",return_value=organization), \
+             patch.object(production_license,"entitlement",return_value=entitlement), \
+             patch.object(user_bpms_bindings,"list_bindings",return_value=bindings), \
+             patch.object(user_bpms_bindings,"source_catalog",return_value=[source]), \
+             patch.object(user_bpms_bindings,"active_processmaker_source_id",return_value=source_id):
             me=self.client.get("/api/me").json()
         self.assertTrue(me["is_godadmin"])
         self.assertTrue(me["workspace_navigation"])
@@ -201,6 +212,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertFalse(me["workspace_degraded"])
         self.assertEqual(me["role"],"Manager")
         self.assertEqual(me["modules"],[1,2,3,4])
+        self.assertEqual(me["bpms_sources"][0]["external_username"],"pm.operator")
 
     def test_binding_requires_matching_issuer_and_host_recovery_unbinds(self):
         setup.bind_godadmin_identity(TENANT,"operator")
