@@ -128,12 +128,11 @@ def verified_scope(con, principal, source_id=None):
     bound = bindings_by_source(source_id)
 
     def external_uid(user):
+        # Runtime authorization is binding-only. Legacy pm_uid fields are never
+        # accepted as access evidence; they exist solely for one-time migration.
         binding = bound.get(user.get("subject"))
         if binding and binding.get("status") == "active":
             return str(binding.get("external_user_id") or "")
-        # Compatibility is permitted only for the former globally active source.
-        if source_id == active_source_id:
-            return str(user.get("pm_uid") or "")
         return ""
 
     current_uid = external_uid(current)
@@ -159,11 +158,7 @@ def verified_scope(con, principal, source_id=None):
                 if not uid or not users.get(uid, {}).get("active"):
                     continue
                 manager_subject = user.get("manager_subject")
-                legacy_manager_uid = (
-                    user.get("manager_pm_uid") if source_id == active_source_id else None
-                )
-                if ((manager_subject and manager_subject in visible_subjects) or
-                    (legacy_manager_uid and legacy_manager_uid in visible)):
+                if manager_subject and manager_subject in visible_subjects:
                     more_subjects.add(subject)
                     more_uids.add(uid)
             if more_subjects <= visible_subjects and more_uids <= visible:
@@ -199,7 +194,7 @@ def verified_scope(con, principal, source_id=None):
         "source_id": source_id,
         "source_name": profile.get("name") or "ProcessMaker",
         "timezone": mysql.get("timezone", "Asia/Tehran"),
-        "pm_uid": current_uid,
+        "external_user_id": current_uid,
         "name": current.get("name") or users[current_uid]["name"],
         "department": current.get("department_name") or users[current_uid].get("unit"),
         "role": role,
