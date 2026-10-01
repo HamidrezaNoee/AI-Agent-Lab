@@ -356,8 +356,17 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         return response
 
     # AVAN account authorization is independent from every BPMS binding.
+    # Platform GodAdmin must remain able to repair AVAN even if Agent storage is down.
     from . import native_access
-    organization=native_access.read()
+    from .agent_storage import AgentStorageUnavailable
+    try:
+        organization=native_access.read()
+    except AgentStorageUnavailable:
+        if not platform_admin:
+            raise HTTPException(status_code=503,
+                detail="بانک داخلی AVAN در دسترس نیست؛ مدیر سامانه باید اتصال Agent DB را بررسی کند.")
+        organization={"tenant_id":str(principal.tenant_id),
+                      "company_name":"آوان","users":[]}
     stored=next((u for u in organization.get("users",[])
                  if u.get("subject")==principal.subject),None)
     if not stored and not platform_admin:
@@ -636,7 +645,13 @@ def current_user(request:Request):
     godadmin=is_godadmin(principal)
 
     from . import native_access
-    data=native_access.read()
+    from .agent_storage import AgentStorageUnavailable
+    try:
+        data=native_access.read()
+    except AgentStorageUnavailable:
+        if not godadmin:
+            raise HTTPException(status_code=503,detail="بانک داخلی AVAN در دسترس نیست.")
+        data={"tenant_id":str(principal.tenant_id),"company_name":None,"users":[]}
     stored=next((u for u in data.get("users",[])
                  if u.get("subject")==principal.subject and u.get("enabled")),None)
 
