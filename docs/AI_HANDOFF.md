@@ -92,3 +92,22 @@ different external user in each configured BPMS. Username/email matches are only
 suggestions and require explicit Admin approval. Effective source access requires
 both AVAN authorization and an active per-source binding. See
 `docs/ADR-001-AVAN-BPMS-USER-BINDINGS.md`.
+
+
+## Multi-BPMS authorization implementation — 2026-10-02
+
+Runtime authorization no longer treats a globally active ProcessMaker as identity
+evidence. AVAN accounts are independent, and operational BPMS routes are scoped by
+an explicit active per-source binding.
+
+- zero ProcessMaker bindings -> unscoped legacy PM routes return 403;
+- exactly one active ProcessMaker binding -> legacy unscoped routes may resolve it
+  for backward compatibility;
+- more than one active ProcessMaker binding -> legacy unscoped routes return 409
+  and the caller must choose a source-specific route;
+- source-specific routes enforce the exact AVAN subject -> BPMS external user binding;
+- user-level AVAN module permissions narrow the organization license and are enforced
+  in backend scope construction;
+- the management UI edits AVAN module grants separately from BPMS bindings;
+- source menus are capability-aware and are derived from binding + implemented
+  user-scoped source routes + effective AVAN module grants.
