@@ -1345,6 +1345,44 @@ def refresh_processmaker_users(session=Depends(_ready)):
             "تازه‌سازی امن کاربران انجام نشد؛ هیچ دسترسی کاربری تغییر نکرد.")
 
 
+class AvanIdentityCreate(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    username:str=Field(min_length=3,max_length=80,pattern=r"^[A-Za-z0-9_.@-]+$")
+    email:str=Field(min_length=3,max_length=240)
+    name:str=Field(min_length=2,max_length=240)
+    role:Literal["Expert","Manager","SysAdmin"]="Expert"
+    temporary_password:str=Field(min_length=16,max_length=128)
+
+
+@router.post("/api/users/create-identity")
+def create_avan_identity(body:AvanIdentityCreate,session=Depends(_ready)):
+    company=setup.get_setting("company") or {}
+    tenant=company.get("tenant_id")
+    config=setup.get_setting("oidc") or {}
+    if not tenant:
+        raise HTTPException(409,"ابتدا اطلاعات سازمان را ثبت کنید.")
+    if not config.get("managed_by_product"):
+        raise HTTPException(409,"ساخت کاربر از داخل AVAN فقط با سرویس هویت داخلی آوان انجام می‌شود.")
+    secret_path=Path(os.getenv(
+        "AVAN_PROVISIONER_CLIENT_SECRET_PATH",
+        "/run/secrets/avan_provisioner_client_secret"))
+    try:secret=secret_path.read_text().strip()
+    except OSError:raise HTTPException(503,"کلید داخلی Provisioner در دسترس نیست.")
+    if len(secret)<16:raise HTTPException(503,"کلید داخلی Provisioner معتبر نیست.")
+    from .identity_operator import create
+    try:
+        with httpx.Client(timeout=15,follow_redirects=False,trust_env=False) as client:
+            subject=create(client,config["issuer"],secret,tenant,
+                           body.username,body.email.strip(),body.name.strip(),
+                           body.role,body.temporary_password)
+    except ValueError as exc:
+        raise HTTPException(409,str(exc))
+    setup.audit("AVAN_IDENTITY_CREATED_"+body.role.upper())
+    return {"created":True,"subject":subject,"username":body.username,
+            "name":body.name.strip(),"role":body.role,
+            "next_step":"user_must_change_password_enroll_mfa_and_sign_in"}
+
+
 class StaffApproval(BaseModel):
     model_config=ConfigDict(extra="forbid")
     tenant_id:str=Field(min_length=36,max_length=36)
