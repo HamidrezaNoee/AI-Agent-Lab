@@ -78,13 +78,13 @@ def test_saved_processmaker_checks_use_server_secrets_without_browser_echo():
     try:
         with patch.object(setup_console,"get_setting",side_effect=settings.get),\
              patch.object(setup_routes,"_mysql_check",return_value={"connected":True}) as mysql,\
-             patch.object(setup_routes,"_pm_check",return_value=200) as pm:
+             patch.object(setup_routes,"_pm_directory_check",return_value=200) as pm:
             client=TestClient(app,base_url="http://127.0.0.1:8188")
             try:
                 assert client.post("/admin/api/mysql/check-saved").json()=={"connected":True}
                 assert mysql.call_args.args[0].password=="secret"
                 assert client.post("/admin/api/processmaker/check-saved").json()["connected"]
-                assert pm.call_args.args[0].bearer_token=="secret-token"
+                assert pm.call_args.args==("https://pm.example.org","workflow","secret-token")
             finally:client.close()
     finally:app.dependency_overrides.clear()
 
