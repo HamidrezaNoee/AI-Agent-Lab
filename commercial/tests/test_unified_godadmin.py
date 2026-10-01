@@ -243,7 +243,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertFalse(me["workspace_navigation"])
         self.assertFalse(me["workspace_access"])
         self.assertEqual(me["bpms_sources"],[])
-        self.assertTrue(me["source_navigation"] is False)
+        self.assertFalse(me["source_navigation"])
 
 
     def test_binding_requires_matching_issuer_and_host_recovery_unbinds(self):
