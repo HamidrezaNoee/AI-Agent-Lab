@@ -1737,7 +1737,7 @@ def mapped_users(session=Depends(_ready)):
     from . import native_access
     data=native_access.read()
     fields=('subject','username','email','name','role','department_name',
-            'manager_subject','enabled','pm_uid','pm_active')
+            'manager_subject','enabled')
     return {'users':[{k:u.get(k) for k in fields} for u in data['users']]}
 
 
