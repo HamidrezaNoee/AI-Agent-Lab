@@ -7,7 +7,8 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from commercial import bpms_registry,platform_agent,production_app,setup_console,setup_routes
+from commercial import (bpms_registry,platform_agent,production_app,setup_console,
+                        setup_routes,user_bpms_bindings)
 
 
 TENANT="168418b2-8fa6-4414-a37f-83c9a26da332"
@@ -180,3 +181,40 @@ def test_source_deletion_is_blocked_while_any_user_binding_exists():
 
     with patch("commercial.user_bpms_bindings.list_bindings",return_value=[]):
         setup_routes._require_source_without_user_bindings("a"*24)
+
+
+def test_default_processmaker_source_is_binding_specific_and_never_global():
+    pm_a="a"*24
+    pm_b="b"*24
+    catalog=[
+        {"id":pm_a,"name":"PM A","engine":"processmaker","enabled":True},
+        {"id":pm_b,"name":"PM B","engine":"processmaker","enabled":True},
+        {"id":"c"*24,"name":"Other","engine":"camunda","enabled":True},
+    ]
+    one=[{"avan_subject":"amin","source_id":pm_a,"status":"active"}]
+    two=one+[{"avan_subject":"amin","source_id":pm_b,"status":"active"}]
+    with patch.object(user_bpms_bindings,"source_catalog",return_value=catalog),\
+         patch.object(user_bpms_bindings,"list_bindings",return_value=one):
+        assert user_bpms_bindings.default_processmaker_source_id("amin")==pm_a
+    with patch.object(user_bpms_bindings,"source_catalog",return_value=catalog),\
+         patch.object(user_bpms_bindings,"list_bindings",return_value=two):
+        assert user_bpms_bindings.default_processmaker_source_id("amin") is None
+
+
+def test_unscoped_processmaker_routes_reject_zero_or_ambiguous_bindings():
+    principal=SimpleNamespace(subject="amin",tenant_id=TENANT)
+    with patch("commercial.user_bpms_bindings.processmaker_bindings_for",return_value=[]),\
+         patch("commercial.user_bpms_bindings.default_processmaker_source_id",return_value=None):
+        with pytest.raises(HTTPException) as exc:
+            production_app._store_response(lambda _con,_scope:True,principal)
+        assert exc.value.status_code==403
+
+    rows=[
+        {"source_id":"a"*24,"status":"active"},
+        {"source_id":"b"*24,"status":"active"},
+    ]
+    with patch("commercial.user_bpms_bindings.processmaker_bindings_for",return_value=rows),\
+         patch("commercial.user_bpms_bindings.default_processmaker_source_id",return_value=None):
+        with pytest.raises(HTTPException) as exc:
+            production_app._store_response(lambda _con,_scope:True,principal)
+        assert exc.value.status_code==409
