@@ -16,6 +16,13 @@ def user_key(kind, scope, actor):
     return kind + ":" + hashlib.sha256(identity.encode()).hexdigest()
 
 
+def source_user_key(kind, scope, actor):
+    """Tenant/user storage key additionally isolated by the selected BPMS source."""
+    source_id=str(scope.get("source_id") or "default")
+    identity=json.dumps([str(scope["tenant_id"]),actor,source_id],ensure_ascii=False)
+    return kind+":"+hashlib.sha256(identity.encode()).hexdigest()
+
+
 def scope_stamp(scope):
     # Source identity is part of the authorization stamp. The same AVAN user may
     # bind to different external accounts in different BPMS instances.
@@ -38,7 +45,7 @@ def visible(turn, scope, meeting_ids):
 
 def conversations(scope, actor, meeting_ids):
     with agent_storage.transaction() as tx:
-        rows = tx.get(user_key("conversations", scope, actor), [])
+        rows = tx.get(source_user_key("conversations", scope, actor), [])
     # Hide the entire conversation if any retained answer is outside current scope.
     return [c for c in rows if all(visible(t, scope, meeting_ids) for t in c["turns"])]
 
@@ -52,7 +59,7 @@ def conversation(scope, actor, identifier, meeting_ids):
 
 
 def save_turn(scope, actor, identifier, question, answer, meeting_ids):
-    key = user_key("conversations", scope, actor)
+    key = source_user_key("conversations", scope, actor)
     with agent_storage.transaction() as tx:
         rows = tx.get(key, [], lock=True)
         row = (
@@ -92,7 +99,7 @@ def save_turn(scope, actor, identifier, question, answer, meeting_ids):
 
 
 def delete_conversation(scope, actor, identifier):
-    key = user_key("conversations", scope, actor)
+    key = source_user_key("conversations", scope, actor)
     with agent_storage.transaction() as tx:
         rows = tx.get(key, [], lock=True)
         tx.put(key, [r for r in rows if r["id"] != identifier])
