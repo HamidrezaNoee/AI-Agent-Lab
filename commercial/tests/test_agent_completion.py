@@ -259,3 +259,44 @@ def test_monitor_delegated_token_rotates_for_workspace_and_ends_on_logout(state_
     with agent_storage.transaction() as tx:
         job = tx.get(key)
         assert not job["enabled"] and job["refresh_token"] is None
+
+
+def test_drafts_and_alerts_are_isolated_between_bpms_sources(state_dir):
+    other={**SCOPE,"source_id":"b"*24,"external_user_id":"p1"}
+    draft=agent_state.save_draft(SCOPE,"actor",1,draft_data())
+    with pytest.raises(PermissionError):
+        agent_state.get_draft(other,"actor",draft,{1})
+    assert agent_state.list_drafts(other,"actor",{1})==[]
+
+    alert={"kind":"overdue","source":{"id":"M:1:A:1"}}
+    first=agent_state.alert_status(SCOPE,"actor",{"alerts":[deepcopy(alert)]})
+    identifier=first["alerts"][0]["id"]
+    agent_state.acknowledge(SCOPE,"actor",identifier)
+    second=agent_state.alert_status(other,"actor",{"alerts":[deepcopy(alert)]})
+    assert second["alerts"][0]["id"]==identifier
+    assert not second["alerts"][0]["acknowledged"]
+
+
+def test_monitor_keeps_independent_source_subscriptions_under_one_credential(state_dir):
+    first={**SCOPE,"source_id":"a"*24}
+    second={**SCOPE,"source_id":"b"*24}
+    session={"refresh_token":"shared-rotating-credential"}
+    with patch.object(agent_monitor,"binding",return_value="bound"):
+        a=agent_monitor.subscribe(first,"actor",session,True,300)
+        b=agent_monitor.subscribe(second,"actor",session,True,900)
+    assert a["enabled"] and b["enabled"]
+    assert "refresh_token" not in session
+    assert agent_monitor.status(first,"actor")["interval_seconds"]==300
+    assert agent_monitor.status(second,"actor")["interval_seconds"]==900
+
+    key=workspace.user_key("monitor_job",first,"actor")
+    with agent_storage.transaction() as tx:
+        job=tx.get(key)
+    assert set(job["subscriptions"])=={"a"*24,"b"*24}
+    assert job["enabled"] is True
+
+    with patch.object(agent_monitor,"binding",return_value="bound"):
+        agent_monitor.subscribe(first,"actor",session,False,300)
+    assert not agent_monitor.status(first,"actor")["enabled"]
+    assert agent_monitor.status(second,"actor")["enabled"]
+    assert session.get("monitor_delegated") is True
