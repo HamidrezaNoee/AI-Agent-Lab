@@ -582,38 +582,81 @@ def current_user(request:Request):
                 "role":"GodAdmin","department":"مدیریت سامانه",
                 "csrf":session["csrf"],"subject":"bootstrap-godadmin",
                 "modules":[],"is_godadmin":True,"bootstrap_mode":True,
-                "platform_access":False,"workspace_navigation":True,
+                "platform_access":False,"workspace_navigation":False,
                 "workspace_access":False,"workspace_degraded":True,
+                "bpms_sources":[],"source_navigation":False,
                 "license_expires_at":None,"license_mode":"bootstrap"}
-    value=_principal_for_request(request)
-    _,session,principal=value
+
+    _,session,principal=_principal_for_request(request)
     godadmin=is_godadmin(principal)
-    if godadmin:
-        try:
-            scope=_store_response(lambda con,scope:scope,principal)
-        except HTTPException:
-            scope=None
-        if scope is None:
+
+    from . import native_access
+    data=native_access.read()
+    stored=next((u for u in data.get("users",[])
+                 if u.get("subject")==principal.subject and u.get("enabled")),None)
+
+    if not stored:
+        if godadmin:
             company=get_setting("company") or {}
             return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
                     "role":"GodAdmin","department":"مدیریت سامانه",
                     "csrf":session["csrf"],"subject":principal.subject,
                     "modules":[1,3],"is_godadmin":True,"bootstrap_mode":False,
-                    "platform_access":True,"workspace_navigation":True,"workspace_access":False,
-                    "workspace_degraded":True,
+                    "platform_access":True,"workspace_navigation":False,
+                    "workspace_access":False,"workspace_degraded":True,
+                    "bpms_sources":[],"source_navigation":False,
                     "license_expires_at":None,"license_mode":"platform"}
-    else:
-        scope=_store_response(lambda con,scope:scope,principal)
-    license_data=scope["license"]
-    return {"name":scope["name"],"company":scope["company"],
-            "role":scope["role"],"department":scope["department"],
+        raise HTTPException(status_code=403,detail="حساب AVAN هنوز توسط مدیر سامانه تأیید نشده است.")
+
+    if data.get("tenant_id")!=str(principal.tenant_id):
+        raise HTTPException(status_code=403,detail="حساب AVAN متعلق به این سازمان نیست.")
+    if stored.get("role")=="SysAdmin" and "SysAdmin" not in principal.roles:
+        raise HTTPException(status_code=403,detail="نقش مدیر سیستم در سرویس هویت تأیید نشده است.")
+
+    from .production_license import entitlement,ProductionLicenseDenied
+    try:
+        license_data=entitlement(tenant_id=data["tenant_id"],company_name=data["company_name"])
+    except ProductionLicenseDenied:
+        raise HTTPException(status_code=403,detail="لایسنس AVAN برای این سازمان معتبر نیست.")
+
+    from .user_bpms_bindings import (
+        list_bindings,source_catalog,active_processmaker_source_id
+    )
+    catalog={x["id"]:x for x in source_catalog()}
+    active_bindings=[]
+    for binding in list_bindings(principal.subject):
+        source=catalog.get(binding.get("source_id"))
+        if not source or not source.get("enabled") or binding.get("status")!="active":
+            continue
+        active_bindings.append({
+            "source_id":source["id"],"source_name":source["name"],
+            "engine":source["engine"],"connection_type":source["connection_type"],
+            "external_user_id":binding.get("external_user_id"),
+            "external_username":binding.get("external_username"),
+            "external_display_name":binding.get("external_display_name"),
+        })
+
+    active_pm=active_processmaker_source_id()
+    pm_bound=any(b["source_id"]==active_pm for b in active_bindings) if active_pm else False
+    # Backward compatibility until every pre-ADR installation has migrated.
+    if not pm_bound and active_pm and stored.get("pm_uid"):
+        pm_bound=True
+
+    return {"name":stored.get("name") or stored.get("username") or principal.subject,
+            "username":stored.get("username"),
+            "company":data["company_name"],
+            "role":stored.get("role"),"department":stored.get("department_name"),
             "csrf":session["csrf"],"subject":principal.subject,
             "modules":sorted(license_data["modules"]),
             "license_expires_at":license_data["expires_at"],
-            "license_mode":license_data.get("mode", "licensed"),
+            "license_mode":license_data.get("mode","licensed"),
             "is_godadmin":godadmin,"bootstrap_mode":False,
-            "platform_access":godadmin,"workspace_navigation":True,
-            "workspace_access":True,"workspace_degraded":False}
+            "platform_access":godadmin,
+            "workspace_navigation":pm_bound,
+            "workspace_access":pm_bound,
+            "workspace_degraded":not pm_bound,
+            "bpms_sources":active_bindings,
+            "source_navigation":bool(active_bindings)}
 
 
 @app.get("/api/questions")
