@@ -159,8 +159,11 @@ def test_bound_source_capabilities_follow_engine_and_license_modules():
     assert production_app._source_capabilities(pm,frozenset({3}))==[
         "overview","bi","reports"
     ]
+    assert production_app._source_capabilities(pm,frozenset({4}))==[
+        "overview","monitor"
+    ]
     assert production_app._source_capabilities(pm,frozenset({1,2,3,4}))==[
-        "overview","meetings","assistant","secretary","bi","reports"
+        "overview","meetings","assistant","secretary","bi","reports","monitor"
     ]
     # Generic adapters expose only capabilities with an implemented user-scoped
     # AVAN route. Directory sync alone must not create operational menu access.
