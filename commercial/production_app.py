@@ -580,6 +580,23 @@ def heartbeat(value=Depends(_csrf)):
 
 
 def _store_response(action, principal):
+    # A platform-only GodAdmin is not implicitly an organizational BPMS user.
+    # Reject before opening any ProcessMaker connection when no explicit
+    # source binding exists.
+    from .setup_console import is_godadmin
+    if is_godadmin(principal):
+        from .user_bpms_bindings import active_processmaker_source_id,binding_for
+        from .agent_storage import AgentStorageUnavailable
+        source_id=active_processmaker_source_id()
+        bound=False
+        if source_id:
+            try:
+                bound=bool(binding_for(principal.subject,source_id))
+            except AgentStorageUnavailable:
+                bound=False
+        if not bound:
+            raise HTTPException(status_code=403,
+                                detail="ProcessMaker به حساب AVAN این GodAdmin متصل نیست.")
     try:
         with open_production() as con:
             scope=verified_scope(con,principal)
