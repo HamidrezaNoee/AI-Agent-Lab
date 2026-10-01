@@ -648,8 +648,9 @@ def _source_capabilities(source:dict,modules)->list[str]:
     """
     available=["overview"]
     if source.get("engine")=="processmaker":
-        if 1 in modules:available.append("meetings")
-        if 3 in modules:available.append("bi")
+        if 1 in modules:available.extend(["meetings","assistant"])
+        if 2 in modules:available.append("secretary")
+        if 3 in modules:available.extend(["bi","reports"])
     return available
 
 
@@ -763,6 +764,17 @@ def current_user(request:Request):
 def questions(value=Depends(_authorized)):
     _,_,principal=value
     _store_response(lambda con,scope:True,principal)
+    return {"questions":PROD_QUESTIONS}
+
+
+@app.get("/api/sources/{source_id}/questions")
+def source_questions(source_id:str,value=Depends(_authorized)):
+    _,_,principal=value
+    def read(_con,scope):
+        if 1 not in scope["license"]["modules"]:
+            raise ProductionAccessDenied("Meetings module not licensed")
+        return True
+    _source_store_response(source_id,read,principal)
     return {"questions":PROD_QUESTIONS}
 
 
