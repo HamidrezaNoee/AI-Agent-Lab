@@ -873,8 +873,23 @@ def identity_status(session=Depends(_ready)):
     config=setup.get_setting("oidc") or {}
     issuer=str(config.get("issuer","")).rstrip("/")
     managed=config.get("managed_by_product") is True
+    identity=setup.godadmin_identity() or {}
+    public={
+        "managed_by_product":managed,
+        "connected":False,
+        "realm":"avan",
+        "issuer":issuer or None,
+        "protocol":"OIDC",
+        "mfa":"TOTP / Authenticator",
+        "godadmin_bound":bool(identity),
+        "godadmin_subject":identity.get("subject"),
+        "godadmin_tenant_id":identity.get("tenant_id"),
+        "customer_secret_entry_required":False,
+    }
     if not managed:
-        raise HTTPException(503,"زیرساخت هویت داخلی آوان آماده نیست.")
+        return {**public,"detail":"زیرساخت هویت داخلی آوان آماده نیست."}
+    if not issuer:
+        return {**public,"detail":"OIDC Issuer تنظیم نشده است."}
     try:
         with httpx.Client(timeout=7,follow_redirects=False,trust_env=False) as http:
             response=http.get(issuer+"/.well-known/openid-configuration")
@@ -882,11 +897,9 @@ def identity_status(session=Depends(_ready)):
             data=response.json()
             if data.get("issuer")!=issuer:
                 raise ValueError("issuer mismatch")
-        return {"managed_by_product":True,"connected":True,
-                "realm":"avan","issuer":issuer,
-                "customer_secret_entry_required":False}
+        return {**public,"connected":True,"detail":None}
     except Exception:
-        raise HTTPException(503,"سرویس هویت داخلی آوان در دسترس نیست.")
+        return {**public,"detail":"سرویس هویت داخلی آوان در دسترس نیست."}
 
 
 class PMConfig(BaseModel):
