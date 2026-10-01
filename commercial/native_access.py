@@ -32,3 +32,19 @@ def seats(tenant_id):
         return 0
     # AVAN licensing counts active AVAN accounts, independently of BPMS bindings.
     return sum(u.get("enabled") is True for u in data["users"])
+
+
+def effective_modules(user,licensed_modules):
+    """AVAN user grants are independent from BPMS bindings and bounded by license.
+
+    Legacy users without an explicit grant retain licensed modules until edited.
+    New/edited users store an explicit module_permissions list.
+    """
+    licensed={int(x) for x in licensed_modules if int(x) in (1,2,3,4)}
+    raw=user.get("module_permissions")
+    if raw is None:
+        return frozenset(licensed)
+    if not isinstance(raw,list):
+        return frozenset()
+    granted={int(x) for x in raw if isinstance(x,int) and x in (1,2,3,4)}
+    return frozenset(licensed & granted)
