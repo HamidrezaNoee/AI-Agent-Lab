@@ -587,16 +587,24 @@ def _store_response(action, principal):
     ProcessMaker binding. Multi-BPMS users must use /api/sources/{source_id}/...
     so the external identity is always explicit.
     """
-    from .user_bpms_bindings import default_processmaker_source_id
+    from .user_bpms_bindings import (
+        default_processmaker_source_id,processmaker_bindings_for
+    )
     from .agent_storage import AgentStorageUnavailable
     try:
+        bindings=processmaker_bindings_for(principal.subject)
         source_id=default_processmaker_source_id(principal.subject)
     except AgentStorageUnavailable:
-        source_id=None
+        bindings=[];source_id=None
+    if not bindings:
+        raise HTTPException(
+            status_code=403,
+            detail="هیچ ProcessMaker فعالی به این حساب AVAN متصل نیست."
+        )
     if not source_id:
         raise HTTPException(
             status_code=409,
-            detail="برای این حساب ProcessMaker یکتای پیش‌فرض وجود ندارد؛ BPMS موردنظر را انتخاب کنید."
+            detail="چند ProcessMaker به این حساب متصل است؛ BPMS موردنظر را انتخاب کنید."
         )
     return _source_store_response(source_id,action,principal)
 
