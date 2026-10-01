@@ -86,6 +86,14 @@ const server=http.createServer((req,res)=>{
  const hit=await first.boundingBox();
  await page.mouse.move(hit.x+hit.width/2,hit.y+hit.height/2);
  await page.locator('.avan-scene-tooltip.is-visible').waitFor();
+ // A stationary pointer near the edge must not repeatedly leave/re-enter as the icon scales.
+ const bounds=await first.boundingBox();
+ await page.mouse.move(bounds.x+bounds.width-3,bounds.y+bounds.height/2);
+ const beforeHover=await first.boundingBox();
+ await page.waitForTimeout(700);
+ const afterHover=await first.boundingBox();
+ if(Math.abs(beforeHover.x-afterHover.x)>1||Math.abs(beforeHover.width-afterHover.width)>1)throw Error('Hover moved/scaled the hit target');
+ if(!await first.evaluate(el=>el.matches(':hover')))throw Error('Stationary pointer lost hover');
  await first.click();
  if(!await first.evaluate(el=>el.classList.contains('is-selected')))throw Error('Capability node selection failed');
  const before=await card.boundingBox();

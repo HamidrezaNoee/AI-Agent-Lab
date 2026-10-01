@@ -437,7 +437,7 @@ class AppearanceElement(BaseModel):
 
 class AppearanceConfig(BaseModel):
     model_config=ConfigDict(extra="forbid")
-    version:int=4
+    version:int=5
     background_image:str=Field(default="",max_length=8_000_000)
     background_fit:str=Field(default="cover",max_length=20)
     background_position_x:float=50
@@ -476,8 +476,8 @@ class AppearanceConfig(BaseModel):
     pause_on_hover:bool=True
     show_orbits:bool=True
     show_idle_cards:bool=True
-    orbit_speed:float=1.0
-    orbit_mode:str=Field(default="drift",max_length=10)
+    orbit_speed:float=0.22
+    orbit_mode:str=Field(default="orbit",max_length=10)
     orbit_line_width:float=1.15
     orbit_opacity:float=0.78
     orbit_glow:float=1.0

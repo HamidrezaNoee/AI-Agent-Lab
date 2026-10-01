@@ -788,8 +788,8 @@ async function renderAppearance(m){
   {value:"glow",label:"فقط Glow و بزرگ‌شدن"},
   {value:"none",label:"بدون واکنش Hover"}
  ],config.hover_mode||"card");
- const orbitMode=select("نحوه حرکت عناصر","orbit_mode",[{value:"drift",label:"شناوری آرام در جایگاه‌ها"},{value:"orbit",label:"گردش کامل دور کره"},{value:"static",label:"ثابت"}],config.orbit_mode||"drift");
- const orbitSpeed=range("سرعت کلی حرکت Nodeها","orbit_speed",config.orbit_speed??1,0,3,.1,"×");
+ const orbitMode=select("نحوه حرکت عناصر","orbit_mode",[{value:"drift",label:"شناوری آرام در جایگاه‌ها"},{value:"orbit",label:"گردش کامل دور کره"},{value:"static",label:"ثابت"}],config.orbit_mode||"orbit");
+ const orbitSpeed=range("سرعت کلی حرکت Nodeها","orbit_speed",config.orbit_speed??.22,0,3,.1,"×");
  const orbitWidth=range("ضخامت خطوط مدار","orbit_line_width",config.orbit_line_width??1.15,.2,4,.1,"px");
  const orbitOpacity=range("Opacity خطوط مدار","orbit_opacity",config.orbit_opacity??.78,0,1,.05);
  const orbitGlow=range("Glow خطوط مدار","orbit_glow",config.orbit_glow??1,0,2.5,.05,"×");
@@ -907,7 +907,7 @@ async function renderAppearance(m){
      radius:Number(val("radius")?.value||1.25),ellipse:Number(val("ellipse")?.value||.7),angle:Number(val("angle")?.value||0),speed:Number(val("speed")?.value||.00015),
      card_side:val("card_side")?.value||"auto",label_mode:val("label_mode")?.value||"inherit"};
    });
-   const payload={version:4,background_image:background,background_fit:v("background_fit"),background_position_x:n("background_position_x"),background_position_y:n("background_position_y"),
+   const payload={version:5,background_image:background,background_fit:v("background_fit"),background_position_x:n("background_position_x"),background_position_y:n("background_position_y"),
     background_brightness:n("background_brightness"),background_contrast:n("background_contrast"),background_saturation:n("background_saturation"),background_blur:n("background_blur"),
     background_dim:n("background_dim"),overlay_color:v("overlay_color"),overlay_opacity:n("overlay_opacity"),background_parallax:n("background_parallax"),
     globe_image:globeImage,globe_visible:b("globe_visible"),globe_x:n("globe_x"),globe_y:n("globe_y"),globe_scale:n("globe_scale"),globe_opacity:n("globe_opacity"),

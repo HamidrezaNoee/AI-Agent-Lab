@@ -106,3 +106,11 @@ body.avan-live-login-enabled .avan-captcha-challenge:has(.captcha-turnstile-slot
 .avan-globe-halo{box-shadow:none;background:radial-gradient(circle,rgba(30,199,229,.08),transparent 66%)}
 .avan-globe-canvas{opacity:.22}
 .avan-orbit-node::before{content:"";position:absolute;inset:4px;border:1px solid color-mix(in srgb,var(--node-accent) 45%,transparent);border-radius:50%;pointer-events:none}
+
+/* Keep the hit target and orbital translation fixed; scale only its visual child.
+   Individual CSS scale on the translated button also scales its world position. */
+.avan-live-scene .avan-orbit-node,.avan-live-scene .avan-orbit-node:hover,.avan-live-scene .avan-orbit-node:focus-visible,.avan-live-scene .avan-orbit-node.is-selected{scale:1!important;background:transparent!important;border:0!important;box-shadow:none!important;filter:none!important;transition:none;will-change:transform}
+.avan-orbit-node::before{display:none}
+.avan-orbit-surface{position:absolute;inset:0;display:grid;place-items:center;border-radius:50%;border:var(--node-border-width,1px) solid var(--node-accent);background:linear-gradient(160deg,rgba(8,51,75,.96),rgba(4,25,43,.98));box-shadow:0 0 0 5px color-mix(in srgb,var(--node-accent) 8%,transparent),0 0 var(--node-glow-blur,28px) color-mix(in srgb,var(--node-accent) 30%,transparent);pointer-events:none;transform:scale(1);transform-origin:center;transition:transform var(--hover-duration,180ms) ease,filter var(--hover-duration,180ms) ease}
+.avan-orbit-surface::before{content:"";position:absolute;inset:4px;border:1px solid color-mix(in srgb,var(--node-accent) 45%,transparent);border-radius:50%}
+.avan-live-scene:not(.hover-none) .avan-orbit-node:hover .avan-orbit-surface,.avan-live-scene:not(.hover-none) .avan-orbit-node:focus-visible .avan-orbit-surface,.avan-live-scene:not(.hover-none) .avan-orbit-node.is-selected .avan-orbit-surface{transform:scale(var(--node-hover-local,1.24));filter:brightness(1.14)}

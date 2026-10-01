@@ -10,7 +10,7 @@ def test_default_appearance_is_vivid_and_configurable():
     assert cfg["globe_scale"] > 1.0
     assert cfg["hover_mode"] == "card"
     assert cfg["show_idle_cards"] is True
-    assert cfg["version"] == 4
+    assert cfg["version"] == 5
     assert cfg["background_contrast"] >= 1.0
     assert cfg["globe_opacity"] == 1.0
     assert cfg["orbit_primary"].startswith("#")
@@ -93,4 +93,11 @@ def test_orbit_mode_and_public_roundtrip(tmp_path,monkeypatch):
     assert appearance.sync_public(config)
     import json
     assert json.loads((tmp_path/'appearance.json').read_text()) == config
-    assert appearance.normalize({'orbit_mode':'bad'})['orbit_mode'] == 'drift'
+    assert appearance.normalize({'orbit_mode':'bad'})['orbit_mode'] == 'orbit'
+
+
+def test_v4_default_drift_upgrades_to_slow_orbit():
+    config=appearance.normalize({'version':4,'orbit_mode':'drift','orbit_speed':1})
+    assert config['orbit_mode']=='orbit'
+    assert config['orbit_speed']==0.22
+    assert appearance.normalize({'version':5,'orbit_mode':'drift','orbit_speed':1})['orbit_mode']=='drift'

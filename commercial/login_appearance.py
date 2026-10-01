@@ -72,7 +72,7 @@ DEFAULT_ELEMENTS=[
 ]
 
 DEFAULT={
-    "version":4,
+    "version":5,
     "background_image":"",
     "background_fit":"cover",
     "background_position_x":50,
@@ -111,8 +111,8 @@ DEFAULT={
     "pause_on_hover":True,
     "show_orbits":True,
     "show_idle_cards":True,
-    "orbit_speed":1.0,
-    "orbit_mode":"drift",
+    "orbit_speed":0.22,
+    "orbit_mode":"orbit",
     "orbit_line_width":1.15,
     "orbit_opacity":0.78,
     "orbit_glow":1.0,
@@ -232,7 +232,11 @@ def _element(raw:dict,index:int)->dict:
     }
 
 def normalize(raw:dict|None)->dict:
-    raw=raw if isinstance(raw,dict) else {}
+    raw=dict(raw) if isinstance(raw,dict) else {}
+    # Upgrade the former default drifting preset once; retain custom/static modes.
+    if raw.get("version",5)==4 and raw.get("orbit_mode","drift")=="drift":
+        raw["orbit_mode"]="orbit"
+        if raw.get("orbit_speed",1)==1:raw["orbit_speed"]=0.22
     items=raw.get("elements",DEFAULT_ELEMENTS)
     if not isinstance(items,list):items=DEFAULT_ELEMENTS
     items=items[:MAX_ELEMENTS]
@@ -256,7 +260,7 @@ def normalize(raw:dict|None)->dict:
     orbit_secondary=_text(raw.get("orbit_secondary"),DEFAULT["orbit_secondary"],7)
     if not _HEX.fullmatch(orbit_secondary):orbit_secondary=DEFAULT["orbit_secondary"]
     return {
-        "version":4,
+        "version":5,
         "background_image":validate_image(raw.get("background_image","")),
         "background_fit":fit,
         "background_position_x":_number(raw.get("background_position_x"),DEFAULT["background_position_x"],0,100),
@@ -296,7 +300,7 @@ def normalize(raw:dict|None)->dict:
         "show_orbits":bool(raw.get("show_orbits",DEFAULT["show_orbits"])),
         "show_idle_cards":bool(raw.get("show_idle_cards",DEFAULT["show_idle_cards"])),
         "orbit_speed":_number(raw.get("orbit_speed"),DEFAULT["orbit_speed"],0.0,3.0),
-        "orbit_mode":raw.get("orbit_mode") if raw.get("orbit_mode") in {"orbit","drift","static"} else "drift",
+        "orbit_mode":raw.get("orbit_mode") if raw.get("orbit_mode") in {"orbit","drift","static"} else "orbit",
         "orbit_line_width":_number(raw.get("orbit_line_width"),DEFAULT["orbit_line_width"],0.2,4.0),
         "orbit_opacity":_number(raw.get("orbit_opacity"),DEFAULT["orbit_opacity"],0.0,1.0),
         "orbit_glow":_number(raw.get("orbit_glow"),DEFAULT["orbit_glow"],0.0,2.5),

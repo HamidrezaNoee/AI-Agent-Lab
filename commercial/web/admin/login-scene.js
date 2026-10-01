@@ -24,14 +24,14 @@
   ["security","هویت و امنیت","مدیریت کاربران و دسترسی‌ها","#67F1D0",1.45,.62,2.25,-.00013]
  ];
  const fallback={
-  version:4,background_image:"",background_fit:"cover",background_position_x:50,background_position_y:50,
+  version:5,background_image:"",background_fit:"cover",background_position_x:50,background_position_y:50,
   background_brightness:1.12,background_contrast:1.08,background_saturation:1.08,background_blur:0,background_dim:.03,
   overlay_color:"#031522",overlay_opacity:.05,background_parallax:6,
   globe_image:"",globe_visible:true,globe_x:29,globe_y:44,globe_scale:1.22,globe_opacity:1,globe_brightness:1.32,
   globe_contrast:1.10,globe_saturation:1.22,globe_hue:0,globe_glow:1.30,globe_wobble:1,globe_rotation_speed:1,
   globe_point_density:1,globe_point_size:1,globe_point_opacity:1,
   node_size:70,node_opacity:1,node_border_width:1,node_glow:1,hover_scale:1.24,hover_duration:180,
-  hover_mode:"card",pause_on_hover:true,show_orbits:true,show_idle_cards:true,orbit_speed:1,orbit_mode:"drift",
+  hover_mode:"card",pause_on_hover:true,show_orbits:true,show_idle_cards:true,orbit_speed:.22,orbit_mode:"orbit",
   orbit_line_width:1.15,orbit_opacity:.78,orbit_glow:1,orbit_primary:"#50EAF7",orbit_secondary:"#FF7053",
   card_width:176,card_opacity:.94,
   elements:baseElements.map(([id,title,subtitle,accent,radius,ellipse,angle,speed])=>({
@@ -154,7 +154,7 @@
    const tagBox=document.createElement("span");tagBox.className="avan-cap-card-tags";
    for(const tag of (Array.isArray(cap.tags)?cap.tags:[]).slice(0,8)){const t=document.createElement("em");t.textContent=safeText(tag);tagBox.append(t)}
    const description=document.createElement("span");description.className="avan-cap-description";description.textContent=safeText(cap.description);
-   cardBox.append(title,sub,description,tagBox);el.append(icon,label,cardBox);
+   cardBox.append(title,sub,description,tagBox);const surface=document.createElement("span");surface.className="avan-orbit-surface";surface.append(icon);el.append(surface,label,cardBox);
    const mode=cap.label_mode||"inherit";if(mode!=="inherit")el.classList.add("label-"+mode);
    const node={half:(num(cap.size,0)||num(config.node_size,70))/2,side:"",phase:0,cap:{...cap,r:num(cap.radius,1.2),e:num(cap.ellipse,.7),a:num(cap.angle,0),s:num(cap.speed,.00015)},el,pause:false};
    el.addEventListener("mouseenter",()=>{if(config.pause_on_hover)node.pause=true;if(config.hover_mode==="tooltip")showTip(node)});

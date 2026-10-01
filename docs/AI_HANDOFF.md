@@ -74,3 +74,11 @@ run live account checks after deployment (enrolled/non-enrolled and each role).
 Use the current installation checkout, same Compose overlays, secrets and volumes.
 Pull this branch; rebuild AVAN and recreate Keycloak so theme caches refresh.
 See `docs/LOGIN_APPEARANCE_FA.md`. Do not reset customized Appearance by default.
+
+## Hover correction — 2026-10-01
+
+Appearance schema is now version 5. The former v4 default drifting preset migrates
+once to slow complete orbit (0.22 speed); v5 choices remain editable. The orbit
+button is a fixed hit target. Only its pointer-events:none visual child scales on
+hover, preventing CSS individual scale from scaling the button's translated world
+position. Edge-pointer stability is covered by the browser regression test.
