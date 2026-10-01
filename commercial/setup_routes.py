@@ -1331,18 +1331,17 @@ def pending_staff(session=Depends(_ready)):
 
 @router.get("/api/processmaker/users")
 def processmaker_users(session=Depends(_ready)):
-    from .production_onboarding import ProvisioningDenied,visible_pm_users
-    try:return {"users":visible_pm_users()}
-    except ProvisioningDenied:
-        raise HTTPException(503,"فهرست کاربران فعال ProcessMaker قابل دریافت نیست.")
+    raise HTTPException(
+        410,
+        "این API تک-ProcessMaker منسوخ شده است؛ فهرست کاربر را از BPMS انتخاب‌شده در «سازمان و دسترسی» دریافت کنید."
+    )
 
 @router.post("/api/processmaker/refresh-users")
 def refresh_processmaker_users(session=Depends(_ready)):
-    from .production_onboarding import ProvisioningDenied,refresh_employee_statuses
-    try:return refresh_employee_statuses()
-    except ProvisioningDenied:
-        raise HTTPException(503,
-            "تازه‌سازی امن کاربران انجام نشد؛ هیچ دسترسی کاربری تغییر نکرد.")
+    raise HTTPException(
+        410,
+        "همگام‌سازی سراسری ProcessMaker منسوخ شده است؛ هر BPMS را جداگانه از Binding همان Source همگام‌سازی کنید."
+    )
 
 
 class AvanIdentityCreate(BaseModel):
