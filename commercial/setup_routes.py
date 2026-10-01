@@ -1406,6 +1406,7 @@ class StaffApproval(BaseModel):
     role:str=Field(min_length=6,max_length=8)
     manager_subject:str|None=Field(default=None,max_length=180)
     department_name:str|None=Field(default=None,max_length=160)
+    modules:list[int]|None=Field(default=None,max_length=4)
 
 @router.post("/api/users/approve")
 def approve_staff(body:StaffApproval,session=Depends(_ready)):
@@ -1414,7 +1415,8 @@ def approve_staff(body:StaffApproval,session=Depends(_ready)):
         tenant_id=body.tenant_id,subject=body.subject,
         company_name=body.company_name,role=body.role,
         manager_subject=body.manager_subject,
-        department_name=body.department_name)
+        department_name=body.department_name,
+        module_permissions=body.modules)
     except ProvisioningDenied as exc:
         raise HTTPException(409,str(exc))
 
@@ -1766,8 +1768,38 @@ def mapped_users(session=Depends(_ready)):
     from . import native_access
     data=native_access.read()
     fields=('subject','username','email','name','role','department_name',
-            'manager_subject','enabled')
+            'manager_subject','module_permissions','enabled')
     return {'users':[{k:u.get(k) for k in fields} for u in data['users']]}
+
+
+class UserModules(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    subject:str=Field(min_length=1,max_length=180)
+    modules:list[int]=Field(default_factory=list,max_length=4)
+
+
+@router.post('/api/users/modules')
+def user_modules(body:UserModules,session=Depends(_ready)):
+    from . import native_access
+    from .production_license import entitlement,ProductionLicenseDenied
+    requested=set(body.modules)
+    if len(requested)!=len(body.modules) or any(
+        not isinstance(x,int) or x not in (1,2,3,4) for x in body.modules
+    ):
+        raise HTTPException(422,'مجوز ماژول AVAN معتبر نیست.')
+    with native_access.edit() as data:
+        user=next((u for u in data['users'] if u.get('subject')==body.subject),None)
+        if not user:raise HTTPException(404,'کاربر AVAN ثبت نشده است.')
+        try:
+            licensed=entitlement(tenant_id=data['tenant_id'],company_name=data['company_name'])
+        except ProductionLicenseDenied:
+            raise HTTPException(409,'لایسنس معتبر برای تغییر دسترسی ماژول لازم است.')
+        allowed=set(int(x) for x in licensed['modules'])
+        if not requested<=allowed:
+            raise HTTPException(409,'یک یا چند ماژول انتخاب‌شده در لایسنس سازمان فعال نیست.')
+        user['module_permissions']=sorted(requested)
+    setup.audit('AVAN_USER_MODULE_PERMISSIONS_UPDATED')
+    return {'saved':True,'subject':body.subject,'modules':sorted(requested)}
 
 
 class UserEnabled(BaseModel):
