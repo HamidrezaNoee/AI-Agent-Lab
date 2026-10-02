@@ -843,5 +843,7 @@ async def agent_storage_unavailable(request,exc):
     return JSONResponse(status_code=503,content={'detail':'بانک اختصاصی Agent در دسترس نیست؛ تنظیمات SQL Server آوان بررسی شود.'})
 
 
-from .secretary_routes import register as register_secretary_workflows
-register_secretary_workflows(app,_authorized,_csrf)
+# Configured native task inbox replaces legacy owner-only workflow writes.
+
+from .secretary_inbox_routes import register as register_secretary_inbox
+register_secretary_inbox(app,_authorized,_csrf)

@@ -203,7 +203,7 @@ def submit(scope,actor,identifier,revision,*,pm=None):
     pm.assigned(row['case_uid'],MONITOR,scope['external_user_id'])
     pm.call('PUT',f"/cases/{row['case_uid']}/execute-trigger/{BEFORE_MONITOR}")
     vars=pm.variables(row['case_uid'])
-    if int(vars.get('MTG_OpenActionCount',-1))!=0:raise ValueError('اختتام تا بسته‌شدن تمام اقدامات مجاز نیست.')
+    # The current PMX allows closing the parent after reviewing open actions.
    pm.submit(row['case_uid'],task,scope['external_user_id'],labelled(row['values'],row['stage'],scope['directory']))
    row['status']={'invitation':'awaiting_invitation_approval','minutes':'awaiting_minutes_approval','monitoring':'submitted_for_closure'}[row['stage']]
    row['last_error']=None

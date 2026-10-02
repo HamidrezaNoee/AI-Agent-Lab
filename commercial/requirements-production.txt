@@ -11,3 +11,7 @@ qrcode>=8,<9
 openai>=1.68,<3
 
 pyodbc>=5,<6
+
+
+# Text-only evidence PDFs, parsed in a bounded subprocess.
+pypdf>=6,<7

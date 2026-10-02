@@ -79,8 +79,9 @@ def test_monitoring_exactly_one_day_before_planned_end(store):
  due_row=f.refresh(S,'actor',w['id'],pm=pm,now=due)
  assert due_row['stage']=='monitoring' and due_row['status']=='monitoring_ready'
  assert 'دو اقدام باز' in due_row['values']['MTG_ClosingNote']
- with pytest.raises(ValueError):f.submit(S,'actor',w['id'],due_row['revision'],pm=pm)
- assert not any(x==('submit',f.MONITOR) for x in pm.calls)
+ result=f.submit(S,'actor',w['id'],due_row['revision'],pm=pm)
+ assert result['status']=='submitted_for_closure'
+ assert ('submit',f.MONITOR) in pm.calls
 
 def test_grid_labels_preserve_uids():
  x=f.labelled(V,'invitation',S['directory'])

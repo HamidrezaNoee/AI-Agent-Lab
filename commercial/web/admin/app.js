@@ -1466,6 +1466,7 @@ async function renderBPMS(m){
     catch(err){showError(out,err)}finally{remove.disabled=false}
   },"secondary danger");
   append(actions,test,edit,copy);
+  if(isPm)append(actions,btn("فرایندهای دبیر هوشمند",()=>secretaryProcessSettings(c,out),"secondary"));
 
   if(isPm&&!c.active){
     append(actions,btn("فعال‌سازی",async()=>{
@@ -1782,3 +1783,30 @@ function showConnectionEditor(parent,current){
   }),btn("انصراف",()=>box.remove(),"secondary"),out);append(box,f);parent.append(box);
 }
 
+
+
+async function secretaryProcessSettings(connection,target){
+ target.replaceChildren(info("در حال دریافت فرایندهای اتصال..."));
+ try{
+  const data=await api("secretary/processes/"+encodeURIComponent(connection.id));target.replaceChildren();
+  const box=panel("دبیر هوشمند · "+connection.name,"بسته اختصاصی جلسه و اقدامات را به فرایندهای نصب‌شده همین اتصال متصل کنید.");
+  const listing=node("details");append(listing,node("summary","","فرایندهای این BPMS ("+data.processes.length+")"));
+  for(const p of data.processes)append(listing,node("p","",p.title+" · "+p.process_uid));append(box,listing);
+  for(const pack of data.packs)append(box,info(pack.meeting.title+" · "+(pack.enabled?"فعال":"غیرفعال")+" · نسخه "+pack.revision+" · پایش "+pack.monitor_lead_minutes+" دقیقه پیش از پایان"));
+  const f=node("form"),select=node("select");select.name="pack";append(select,node("option","","بسته جدید"));for(const p of data.packs){const o=node("option","",p.meeting.title);o.value=p.id;append(select,o)}
+  append(f,node("label","","بسته قابل تنظیم"),select);
+  const meeting=field("PMX مدیریت جلسات","meeting","",{type:"file"}),action=field("PMX اجرای اقدامات","action","",{type:"file"});for(const w of [meeting,action]){w.querySelector("input").accept=".pmx";append(f,w)}
+  append(f,field("یادآوری پایش چند دقیقه قبل از پایان؟ (۱۴۴۰ = یک روز)","monitor",1440,{type:"number"}),field("یادآوری اقدام چند دقیقه قبل از مهلت؟","lead",60,{type:"number"}));
+  const enabled=selectField("وضعیت دبیر این فرایند","enabled",[{value:"true",label:"فعال"},{value:"false",label:"غیرفعال"}],"true");append(f,enabled);
+  select.addEventListener("change",()=>{const p=data.packs.find(x=>x.id===select.value);if(p){f.elements.monitor.value=p.monitor_lead_minutes;f.elements.lead.value=p.action_lead_minutes;f.elements.enabled.value=String(p.enabled)}});
+  append(f,info("ابزارها: استخراج و پرسش تکمیلی، دعوت‌نامه، تأیید رئیس، صورتجلسه، گزارش و بررسی اقدام، پایش و پیشنهاد جلسه پیگیری. PMX نامرتبط نیازمند آداپتور اختصاصی است."));
+  const out=node("div");append(f,btn("بررسی PMX و ذخیره تنظیم فرایند",async()=>{
+   busy(f,true);try{
+    const files=[f.elements.meeting.files[0],f.elements.action.files[0]];if(files.some(x=>!x||x.size>2500000))throw Error("هر دو فایل PMX لازم است؛ حداکثر هر فایل ۲٫۵ مگابایت.");
+    const [meeting_pmx,action_pmx]=await Promise.all(files.map(x=>x.text()));const old=data.packs.find(x=>x.id===select.value);
+    await api("secretary/packs/save",{source_id:connection.id,meeting_pmx,action_pmx,id:old?.id||null,revision:old?.revision||null,enabled:f.elements.enabled.value==="true",monitor_lead_minutes:Number(f.elements.monitor.value),action_lead_minutes:Number(f.elements.lead.value)});
+    await secretaryProcessSettings(connection,target);
+   }catch(e){showError(out,e)}finally{busy(f,false)}
+  }),out);append(box,f);append(target,box);
+ }catch(e){showError(target,e)}
+}

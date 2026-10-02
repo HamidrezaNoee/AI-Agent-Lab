@@ -1966,3 +1966,34 @@ def user_enabled(body:UserEnabled,session=Depends(_ready)):
         user['enabled']=body.enabled
     return {'saved':True,'enabled':body.enabled}
 
+
+
+# Secretary packs are configured only on the existing authenticated management surface.
+class SecretaryPackSave(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    source_id:str=Field(pattern=r'^[0-9a-f]{24}$')
+    meeting_pmx:str=Field(min_length=20,max_length=2500000)
+    action_pmx:str=Field(min_length=20,max_length=2500000)
+    id:str|None=Field(None,pattern=r'^[0-9a-f]{24}$')
+    revision:int|None=Field(None,ge=1)
+    enabled:bool=True
+    monitor_lead_minutes:int=Field(1440,ge=0,le=43200)
+    action_lead_minutes:int=Field(60,ge=0,le=43200)
+
+@router.get('/api/secretary/processes/{source_id}')
+def secretary_processes(source_id:str,session=Depends(_ready)):
+    from .secretary_catalog import discover,packs
+    from .user_bpms_bindings import BindingError
+    try:return {'processes':discover(source_id),'packs':packs(source_id)}
+    except BindingError:raise HTTPException(404,'اتصال BPMS پیدا نشد.')
+    except Exception:raise HTTPException(503,'فرایندهای این اتصال قابل دریافت نیستند.')
+
+@router.post('/api/secretary/packs/save')
+def secretary_pack_save(body:SecretaryPackSave,session=Depends(_ready)):
+    from .secretary_catalog import compile_pack,verify_installed,save
+    try:
+        pack=compile_pack(body.meeting_pmx,body.action_pmx)
+        verify_installed(body.source_id,pack)
+        return save(body.source_id,pack,_binding_admin_actor(session),identifier=body.id,revision=body.revision,
+                    enabled=body.enabled,monitor_lead_minutes=body.monitor_lead_minutes,action_lead_minutes=body.action_lead_minutes)
+    except ValueError as exc:raise HTTPException(422,str(exc))

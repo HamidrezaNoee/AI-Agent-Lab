@@ -113,17 +113,32 @@ an explicit active per-source binding.
   user-scoped source routes + effective AVAN module grants.
 
 
-## Conversational secretary — 2026-10-02
+## Configured secretary inbox — 2026-10-02
 
-See `docs/SECRETARY_WORKFLOW_FA.md` for behavior, exact PMX baseline, deployment and limitations.
-Source-bound workflow endpoints and production UI now collect invitation/minutes fields conversationally,
-validate gaps, preserve human chair approvals, send secretary stages through PM 3.2 REST, and prepare
-monitoring one day before the native planned end. SQL MySQL stays read-only. Native AFTER form
-triggers are explicitly invoked only for secretary stages. Durable operation claims block blind
-retries after ambiguous failures. OAuth profile token must belong to the assigned secretary for routing;
-per-user PM OAuth for multiple secretaries within one source is not implemented. Existing delegated
-monitor jobs poll workflow state with renewed AVAN identity and binding/module checks.
+See `docs/SECRETARY_WORKFLOW_FA.md` for supported PMX, configuration, accounts and deployment.
+The native task inbox supersedes the owner-only workflow REST registration. Existing legacy
+records are retained; there is no automatic draft migration. Current native cases remain visible
+by source + active UID assignment + task + delegation index. No administrator bypass.
 
-Validation: 65 selected backend tests passed; JS syntax passed. No live model/SQL/PM/Docker test.
-Chromium download returned a truncated archive; browser screenshot validation remains unperformed.
+`secretary_catalog.py` compiles reviewed meeting/action PMX into source-specific packs and checks
+installed task/form/trigger IDs. `secretary_credentials.py` stores encrypted personal PM OAuth
+(refreshable; no passwords) and invalidates grants after binding/endpoint changes. New runtime
+covers invitation, chair approval/edit, minutes, chair approval/edit, action report, secretary
+review and scheduled monitoring/follow-up. Native form BEFORE preparation is explicit;
+AFTER triggers run before native route. Claim-before-I/O prevents blind duplicate operations.
 
+`secretary_evidence.py` reads authorized native TXT/text PDF documents with bounded streaming
+and a memory/CPU/time-limited PDF subprocess, then returns advisory, quoted review suggestions.
+No automatic voting from recommendations, no OCR or upload of new BPMS attachments.
+Monitoring lead is configurable; current PMX permits parent closure with reviewed open actions
+(the previous zero-open assumption has been corrected). Inbox polling uses current license,
+binding and native assignment; background uses the existing delegated AVAN identity lifecycle.
+
+Production/admin JS add process setup, role inbox, forms, text/voice, speech, notifications,
+review suggestions and follow-up. Docker copies new modules and installs bounded PDF dependency.
+MySQL remains read-only; native writes are exclusively PM REST. No changed login assets/secrets.
+
+Validation: 91 selected backend tests passed, 1 unrelated binary font-asset test excluded from
+partial local checkout. JS DOM integration with mocked APIs passed; both JS syntax/Python
+compile passed. Chromium installation returned truncated archives, so screenshot QA remains
+unperformed. No live model/SQL/PM/Docker/Keycloak verification. See FA guide for acceptance flow.

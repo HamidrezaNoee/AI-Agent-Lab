@@ -270,7 +270,7 @@ def run_job(key,now=None):
             try:
                 # Each licensed module is independent. Secretary-only users can run
                 # workflow polling without acquiring the monitoring-report license.
-                from .secretary_workflow import background as secretary_background
+                from .secretary_runtime import background as secretary_background
                 secretary_ok=False
                 try:
                     secretary_background(principal,source_arg)

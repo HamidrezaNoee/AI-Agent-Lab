@@ -14,15 +14,16 @@ def uid(value):
  return value
 
 class PM:
- def __init__(self,source_id):
+ def __init__(self,source_id,*,process_uid=None,bearer=None):
   profile=processmaker_profile(source_id);api=profile.get('api') or {}
-  if api.get('token_managed') and float(api.get('access_token_expires_at') or 0)<=time.time()+90:
+  if not bearer and api.get('token_managed') and float(api.get('access_token_expires_at') or 0)<=time.time()+90:
    profile=_pm_profile_refresh(profile,_pm_profiles_state());api=profile['api']
   base,workspace=_pm_target(api.get('base_url',''),api.get('workspace',''))
-  if not api.get('bearer_token'):raise HTTPException(409,'توکن API پروسس‌میکر تنظیم نشده است.')
+  if not bearer and not api.get('bearer_token'):raise HTTPException(409,'توکن API پروسس‌میکر تنظیم نشده است.')
+  self.process_uid=process_uid or CONTRACT['process_uid']
   self.base=base+'/api/1.0/'+workspace
   self.client=httpx.Client(timeout=20,follow_redirects=False,trust_env=False,
-    headers={'Authorization':'Bearer '+api['bearer_token']})
+    headers={'Authorization':'Bearer '+(bearer or api['bearer_token'])})
  def close(self):self.client.close()
  def call(self,method,path,data=None):
   try:
@@ -34,7 +35,7 @@ class PM:
   except (httpx.HTTPError,ValueError) as exc:raise HTTPException(502,'پاسخ عملیات مشخص نیست؛ پیش از تکرار، پرونده در ProcessMaker بررسی شود.') from exc
  def info(self,case):
   result=self.call('GET','/cases/'+uid(case))
-  if result.get('pro_uid')!=CONTRACT['process_uid']:raise PermissionError('Wrong process')
+  if result.get('pro_uid')!=getattr(self,'process_uid',CONTRACT['process_uid']):raise PermissionError('Wrong process')
   return result
  def variables(self,case):return self.call('GET','/cases/'+uid(case)+'/variables')
  def assigned(self,case,task,person):
@@ -50,4 +51,15 @@ class PM:
   # Dynaform AFTER triggers do not fire merely by setting variables via REST.
   # Execute only the exact secretary-stage trigger from the selected PMX.
   self.call('PUT',f'/cases/{uid(case)}/execute-trigger/{AFTER[task]}')
+  self.call('PUT',f'/cases/{uid(case)}/route-case',{'del_index':index})
+
+ def create_for(self,task,values):
+  result=self.call('POST','/cases',{'pro_uid':self.process_uid,'tas_uid':uid(task),'variables':[values]})
+  return uid(result['app_uid'])
+ def submit_stage(self,case,stage,person,values,expected_index):
+  index=self.assigned(case,stage['task_uid'],person)
+  if index!=expected_index:raise ValueError('نسخه وظیفه در فرایند تغییر کرده است.')
+  self.call('PUT',f'/cases/{uid(case)}/variable?del_index={index}',values)
+  for trigger in stage['after']:
+   self.call('PUT',f'/cases/{uid(case)}/execute-trigger/{uid(trigger)}')
   self.call('PUT',f'/cases/{uid(case)}/route-case',{'del_index':index})
