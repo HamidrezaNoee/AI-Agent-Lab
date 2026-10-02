@@ -841,3 +841,7 @@ from .agent_storage import AgentStorageUnavailable
 @app.exception_handler(AgentStorageUnavailable)
 async def agent_storage_unavailable(request,exc):
     return JSONResponse(status_code=503,content={'detail':'بانک اختصاصی Agent در دسترس نیست؛ تنظیمات SQL Server آوان بررسی شود.'})
+
+
+from .secretary_routes import register as register_secretary_workflows
+register_secretary_workflows(app,_authorized,_csrf)

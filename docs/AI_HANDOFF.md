@@ -111,3 +111,19 @@ an explicit active per-source binding.
 - the management UI edits AVAN module grants separately from BPMS bindings;
 - source menus are capability-aware and are derived from binding + implemented
   user-scoped source routes + effective AVAN module grants.
+
+
+## Conversational secretary — 2026-10-02
+
+See `docs/SECRETARY_WORKFLOW_FA.md` for behavior, exact PMX baseline, deployment and limitations.
+Source-bound workflow endpoints and production UI now collect invitation/minutes fields conversationally,
+validate gaps, preserve human chair approvals, send secretary stages through PM 3.2 REST, and prepare
+monitoring one day before the native planned end. SQL MySQL stays read-only. Native AFTER form
+triggers are explicitly invoked only for secretary stages. Durable operation claims block blind
+retries after ambiguous failures. OAuth profile token must belong to the assigned secretary for routing;
+per-user PM OAuth for multiple secretaries within one source is not implemented. Existing delegated
+monitor jobs poll workflow state with renewed AVAN identity and binding/module checks.
+
+Validation: 65 selected backend tests passed; JS syntax passed. No live model/SQL/PM/Docker test.
+Chromium download returned a truncated archive; browser screenshot validation remains unperformed.
+

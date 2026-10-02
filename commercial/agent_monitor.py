@@ -268,7 +268,21 @@ def run_job(key,now=None):
         for sid,sub in due:
             source_arg=None if sid=="default" else sid
             try:
-                result=monitor_for(principal,source_arg)
+                # Each licensed module is independent. Secretary-only users can run
+                # workflow polling without acquiring the monitoring-report license.
+                from .secretary_workflow import background as secretary_background
+                secretary_ok=False
+                try:
+                    secretary_background(principal,source_arg)
+                    secretary_ok=True
+                except HTTPException as exc:
+                    if exc.status_code!=403:raise
+                try:
+                    result=monitor_for(principal,source_arg)
+                except HTTPException as exc:
+                    if exc.status_code==403 and secretary_ok:
+                        result={"total":0}
+                    else:raise
                 sub.update({
                     "last_count":result["total"],
                     "last_error":None,
@@ -320,3 +334,4 @@ async def worker():
             await run_in_threadpool(tick)
         except Exception:
             logging.getLogger(__name__).warning("Monitoring database unavailable")
+

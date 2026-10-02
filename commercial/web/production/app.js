@@ -506,6 +506,7 @@ async function secretaryPage(sourceId=null){
  heading(m,scoped?("دبیر هوشمند · "+source.source_name):"دبیر هوشمند جلسه",
   scoped?"پیش‌نویس و اقدامات فقط در دامنه همین BPMS و Binding فعلی ساخته می‌شوند.":"استخراج، ویرایش، تأیید و آماده‌سازی اقدامات برای فرم جلسه");
  if(!app.user.modules.includes(2)){add(m,note("ماژول دبیر هوشمند در لایسنس فعال نیست."));return}
+ if(scoped)await secretaryWorkflowPanel(m,sourceId);
  const draftBase=sourceApi(sourceId,"/secretary/drafts");
  const panel=card("تهیه پیش‌نویس","شماره دقیق جلسه و متن گفتگو یا یادداشت دبیر را وارد کنید.");
  const number=el("input");number.placeholder="شماره جلسه";number.maxLength=80;number.setAttribute("aria-label","شماره جلسه");
@@ -679,7 +680,7 @@ async function reportsPage(sourceId=null){
   const stats=el("div","stats");for(const [label,value] of [["کل اقدامات",r.metrics.total],["باز",r.metrics.open],["تأخیردار",r.metrics.overdue]])add(stats,add(el("div","stat"),el("span","",label),el("strong","",fmt(value))));add(result,stats);
   if(!r.coverage_complete)add(result,note("پوشش داده ناقص است؛ آمار فقط مربوط به داده‌های بازیابی‌شده است."));
   for(const g of r.groups||[])add(result,el("p","",g.group.join(" · ")+": "+fmt(g.total)+" اقدام، "+fmt(g.overdue)+" تأخیردار"));
-  const table=el("table"),head=el("tr");for(const label of ["جلسه / اقدام","شرح","مسئول","وضعیت","پیشرفت","موعد"])add(head,el("th","",label));add(table,head);
+  const table=el("table"),head=el("tr");for(const label of ["جلسه / اقدام","شرح","مسئول","وضعیت","پیشرفت","موعد"])add(head,el("th","",label));add(head,el("th","","حذف"));add(table,head);
   for(const a of r.rows){const row=el("tr");for(const value of [a.source.meeting_no+" / "+a.source.action_no,a.description,a.owner_name,a.is_closed?"بسته‌شده":a.status,a.progress_percent==null?"نامشخص":fmt(a.progress_percent)+"٪",dateText(a.due_at_utc)])add(row,el("td","",value||"—"));add(table,row)}add(result,add(el("div","table-scroll"),table));
   if(offset>0)add(result,link("صفحه قبل",()=>{offset=Math.max(0,offset-30);load(false)}));if(r.has_more)add(result,link("صفحه بعد",()=>{offset+=30;load(false)}));
  }catch(e){result.replaceChildren(note(e.message,true))}}
@@ -720,3 +721,54 @@ async function biPage(sourceId=null){
  }catch(e){out.replaceChildren(note(e.message,true))}}
  add(panel,controls,link("نمایش BI",()=>load(),"button primary"),link("دریافت CSV فرایندها",async()=>{try{const r=await request(biBase+"/processes/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(query()),binary:true});const url=URL.createObjectURL(await r.blob()),a=el("a");a.href=url;a.download=scoped?"processmaker-source-bi.csv":"processmaker-bi.csv";document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}catch(e){toast(e.message)}}));add(m,panel,out);await load();
 }
+
+
+async function secretaryWorkflowPanel(target,sourceId){
+ const base=sourceApi(sourceId,"/secretary/workflows");
+ const area=card("دبیر جلسه از دعوت تا اختتام","اطلاعات را با متن یا ویس بدهید، به پرسش‌های تکمیلی پاسخ دهید و پیش‌نمایش را بازبینی کنید. تأیید رئیس و اجرای افراد در فرایند انجام می‌شود.");add(target,area);
+ const box=el("div"),list=el("div");add(area,list,box);
+ const data=await request(base);
+ const statuses={collecting:"تکمیل اطلاعات",ready:"آماده ارسال",executing:"در حال ارسال",awaiting_invitation_approval:"منتظر تأیید دعوت‌نامه",awaiting_minutes_approval:"منتظر تأیید صورتجلسه",actions_in_progress:"اجرای اقدامات",monitoring_ready:"پایش آماده بازبینی",completed:"مختومه",submitted_for_closure:"ارسال برای اختتام",reconciliation_required:"نیاز به بررسی نتیجه ارسال",native_state_unknown:"بررسی وضعیت فرایند"};
+ function choose(w){render(w)}
+ const create=link("جلسه جدید",async()=>{try{const w=await request(base,{method:"POST"});choose(w)}catch(e){toast(e.message)}},"button primary");add(area,create);
+ for(const w of data.workflows)add(list,link((w.values.MTG_MeetingTitle||"جلسه جدید")+" · "+(statuses[w.status]||w.status),()=>choose(w)));
+ function control(spec,value,id){
+  const choices=id.endsWith("UID")?data.people.map(p=>({value:p.uid,label:p.name})):(spec.options||[]);
+  const input=el(choices.length?"select":spec.type==="textarea"?"textarea":"input");
+  if(choices.length){add(input,new Option("انتخاب کنید",""));for(const o of choices)add(input,new Option(o.label,o.value))}
+  input.value=value??"";input.setAttribute("aria-label",spec.label||id);return input;
+ }
+ function render(w){
+  box.replaceChildren();add(box,el("h3","",statuses[w.status]||w.status));
+  if(w.case_uid)add(box,note("پرونده جلسه ثبت شده است."));
+  if(w.monitor_at)add(box,note("زمان آغاز پایش: "+new Date(w.monitor_at).toLocaleString("fa-IR")));
+  if(w.last_error)add(box,note(w.last_error,true));
+  const editable=["collecting","ready","monitoring_ready"].includes(w.status);
+  const notes=el("textarea");notes.rows=5;notes.maxLength=18000;notes.placeholder="اطلاعات جلسه یا پاسخ به پرسش‌های دبیر...";
+  const result=el("div");
+  async function post(action,body){return request(base+"/"+encodeURIComponent(w.id)+"/"+action,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}
+  for(const q of [...(w.missing||[]).map(x=>x.question),...(w.questions||[])])add(box,note(q));
+  if(editable){
+   const turn=link("بررسی و تکمیل",async()=>{turn.disabled=true;try{render(await post("turn",{revision:w.revision,text:notes.value}))}catch(e){result.replaceChildren(note(e.message,true))}finally{turn.disabled=false}},"button primary");
+   add(box,notes,turn);attachVoiceInput(box,notes,false,sourceId);
+   const values=structuredClone(w.values),editor=el("div"),fields=data.contract[w.stage];
+   for(const [id,spec] of Object.entries(fields)){
+    if(!secretaryWritable[w.stage].includes(id))continue;
+    const wrap=el("div","field");add(wrap,el("label","",spec.label||id));
+    if(spec.type==="grid"){
+     values[id]=values[id]||{};const grid=el("div");grid.style.overflowX="auto";const table=el("table");add(grid,table);add(wrap,grid);
+     const head=el("tr");for(const c of spec.columns)add(head,el("th","",c.label||c.id));add(head,el("th","","حذف"));add(table,head);
+     function row(n,r){const tr=el("tr");for(const c of spec.columns){const td=el("td"),input=control(c,r[c.id],c.id);input.style.minWidth="140px";input.onchange=()=>r[c.id]=input.value;add(td,input);add(tr,td)}const remove=el("td");add(remove,link("حذف",()=>{delete values[id][n];tr.remove()}));add(tr,remove);add(table,tr)}
+     for(const [n,r] of Object.entries(values[id]))row(n,r);
+     add(wrap,link("افزودن ردیف",()=>{const n=String(Math.max(0,...Object.keys(values[id]).map(Number))+1);values[id][n]={};row(n,values[id][n])}));
+    }else{const input=control(spec,values[id],id);input.onchange=()=>values[id]=input.value;add(wrap,input)}
+    add(editor,wrap);
+   }
+   add(box,editor,link("ذخیره اصلاحات",async()=>{try{render(await post("edit",{revision:w.revision,values}))}catch(e){result.replaceChildren(note(e.message,true))}},"button secondary"));
+   const send=link(w.stage==="monitoring"?"ارسال برای اختتام":"ثبت و ارسال برای تأیید",async()=>{send.disabled=true;try{const saved=await post("edit",{revision:w.revision,values});render(await post("submit",{revision:saved.revision,confirmed:true}))}catch(e){result.replaceChildren(note(e.message,true))}finally{send.disabled=false}},"button primary");add(box,send);
+  }
+  if(w.monitor_summary){const summary=card("گزارش پایش","وضعیت ثبت‌شده در فرایند");for(const [k,title] of [["MTG_OpenActionCount","اقدامات باز"],["MTG_ClosedActionCount","اقدامات بسته"],["MTG_OverdueActionCount","اقدامات سررسید گذشته"],["MTG_ActionSummary","جمع‌بندی"]])add(summary,el("p","",title+": "+(w.monitor_summary[k]??"ثبت نشده")));add(box,summary)}
+  add(box,link("بررسی تأیید و وضعیت فرایند",async()=>{try{render(await post("refresh",{}))}catch(e){result.replaceChildren(note(e.message,true))}},"button secondary"),result);
+ }
+}
+const secretaryWritable={invitation:["MTG_MeetingNo","MTG_MeetingTitle","MTG_Objective","MTG_Location","MTG_MeetingStartDateTime","MTG_MeetingStartTime","MTG_MeetingEndTime","MTG_SecretaryUserUID","MTG_ChairUserUID","MTG_Participants","MTG_Agenda"],minutes:["MTG_MeetingHeld","MTG_NotHeldReason","MTG_MeetingDiscussionSummary","MTG_ParkingLot","MTG_Decisions","MTG_Actions","MTG_MeetingEndDateTime","MTG_PlannedActionEndTime","MTG_Participants"],monitoring:["MTG_ClosingNote"]};
