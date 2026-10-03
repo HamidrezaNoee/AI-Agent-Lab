@@ -40,6 +40,7 @@
 در پوشه checkout واقعی پروژه، تغییرات محلی را پیش از دریافت نسخه بررسی کنید:
 
 ```powershell
+Set-Location 'D:\A Project\17 meeting ai agent\Azure\AVAN-Git-Live-20260927'
 git status --short
 git switch feature/pm-native-agent-store-20260922
 git pull --ff-only
@@ -50,3 +51,19 @@ docker compose -f compose.yaml up -d --build avan
 همان مجموعه فایل‌های `-f` نصب فعلی را در دستور آخر استفاده کنید. Volumeها و
 secretهای فعلی را حفظ کنید؛ برای به‌روزرسانی، راه‌اندازی امنیت از ابتدا لازم نیست.
 سپس با حساب رئیس، دبیر و مجری، گردش یک پرونده آزمایشی را روی اتصال واقعی بررسی کنید.
+
+## مبنای نسخه و شاخه‌های قدیمی — ۳ اکتبر ۲۰۲۶
+
+شاخه توسعه و نصب Live، `feature/pm-native-agent-store-20260922` است؛ نام پوشه محلی
+نسخه را تعیین نمی‌کند. تغییرات این گفتگو ادامه مستقیم `320f9386`، سپس `da14de17`
+و `9336bb8` هستند. انتقال مجدد یا بازنویسی همان تغییرات لازم نیست. `main` هنوز
+این نسخه را ندارد.
+
+چهار شاخه `feature/avan-pm-local-http-20260921`، `feature/local-totp-qr-20260921`،
+`fix/avan-ardalan-oidc-onboarding-20260921` و `fix/avan-organizational-login-sql-20260921`
+همگی اجداد شاخه Live هستند؛ کامیت منحصر به فردی بیرون از آن ندارند. PRهای قدیمی
+۱ تا ۴ هنوز باز هستند. شاخه `feature/avan-pm-token-tool-20260921` دارای ۹ کامیت
+مستقل است و باید حفظ شود. `main` و شاخه Live نیز حفظ شوند.
+
+دسترسی مستقیم به checkout ویندوز در این بازبینی وجود نداشت؛ تفاوت فایل‌های محلی
+یا commitهای pushنشده باید با `git status --short` و `git log` همان پوشه بررسی شود.
