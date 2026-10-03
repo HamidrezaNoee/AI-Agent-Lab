@@ -3,13 +3,13 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {JSDOM}=require('jsdom');
 const dom=new JSDOM('<main id="main"></main>',{url:'http://127.0.0.1:8188/admin/',runScripts:'outside-only'}),w=dom.window;
 const uid='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',source='1'.repeat(24),calls=[];
-const user={subject:uid,username:'person',name:'Person',email:'p@example.com',enabled:true,role:'Expert'};
+const user={subject:uid,username:'person',name:'Person',email:'p@example.com',enabled:true,role:'Expert'},legacy={subject:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',username:'legacy',name:'Legacy User',email:'legacy@example.com',identity_enabled:true};
 w.fetch=async(url,options={})=>{
  calls.push({url,options});let data={};
  const name=url.replace('/admin/api/','').split('?')[0];
- const fixtures={'users/mapped':{users:[user]},'users/identities':{users:[user]},'users/pending':{pending:[]},'user-bindings/sources':{sources:[{id:source,name:'ProcessMaker',engine:'processmaker'}]},'license/status':{valid:true,modules:[1,2]},'identity/status':{godadmin_local:true,godadmin_username:'godadmin'},'company':{company_name:'Company'},'user-bindings/list':{bindings:[]},'user-bindings/directory':{users:[{external_user_id:'p'.repeat(32),display_name:'BPMS Person',username:'person',active:true}],suggestions:[]}};
+ const fixtures={'users/mapped':{users:[user]},'users/identities':{users:[user,legacy]},'users/pending':{pending:[]},'user-bindings/sources':{sources:[{id:source,name:'ProcessMaker',engine:'processmaker'}]},'license/status':{valid:true,modules:[1,2]},'identity/status':{godadmin_local:true,godadmin_username:'godadmin'},'company':{company_name:'Company'},'user-bindings/list':{bindings:[]},'user-bindings/directory':{users:[{external_user_id:'p'.repeat(32),display_name:'BPMS Person',username:'person',active:true}],suggestions:[]}};
  if(fixtures[name])data=fixtures[name];
- else if(!['users/create-identity','users/password','users/profile','users/delete','user-bindings/bind'].includes(name))throw Error('Unexpected '+url);
+ else if(!['users/create-identity','users/activate-managed','users/password','users/profile','users/delete','user-bindings/bind'].includes(name))throw Error('Unexpected '+url);
  return {ok:true,json:async()=>data};
 };
 let code=fs.readFileSync(path.join(__dirname,'../web/admin/app.js'),'utf8').replace('document.addEventListener("DOMContentLoaded",start);','');
@@ -48,6 +48,12 @@ const person=()=>[...w.document.querySelectorAll('.connection-list > section')].
  button(person(),'دسترسی‌ها').click();await tick();assert(w.document.body.textContent.includes('ProcessMaker'));
  button(person(),'انتخاب کاربر BPMS').click();await tick();assert(w.document.querySelector('select[name=external_user_id]'));
  button(person(),'انصراف').click();await tick();
+ const legacyCard=[...w.document.querySelectorAll('.avan-user-card')].find(p=>p.querySelector('h2').textContent==='Legacy User');
+ assert(legacyCard.textContent.includes('هویت بدون دسترسی AVAN'));
+ w.confirm=()=>true;
+ button(legacyCard,'فعال‌سازی حساب موجود').click();await tick();
+ const activated=calls.find(c=>c.url.endsWith('/users/activate-managed'));
+ assert(activated);assert.equal(JSON.parse(activated.options.body).subject,legacy.subject);
  const local=[...w.document.querySelectorAll('.avan-user-card')].find(p=>p.querySelector('h2').textContent==='GodAdmin');
  assert(!button(local,'حذف کاربر'));
  button(person(),'حذف کاربر').click();assert(button(person(),'حذف قطعی کاربر'));
