@@ -2,7 +2,7 @@ import json
 from uuid import UUID
 import httpx
 import pytest
-from commercial.identity_operator import create
+from commercial.identity_operator import ManagedIdentityService,create
 
 
 def test_new_identity_is_login_ready_only_after_tenant_and_role_are_confirmed():
@@ -80,3 +80,56 @@ def test_existing_identity_cannot_be_overwritten():
                 "temporary-password",
             )
     assert not writes
+
+
+def test_existing_identity_role_comes_from_keycloak_realm_mapping():
+    tenant=str(UUID(int=1))
+    subject=str(UUID(int=2))
+    def respond(request):
+        if request.url.path.endswith('/token'):
+            return httpx.Response(200,json={'access_token':'test'})
+        if request.url.path.endswith('/users/'+subject):
+            return httpx.Response(200,json={
+                'id':subject,
+                'username':'person',
+                'attributes':{'tenant_id':[tenant]},
+            })
+        if request.url.path.endswith('/users/'+subject+'/role-mappings/realm'):
+            return httpx.Response(200,json=[
+                {'id':'offline','name':'offline_access'},
+                {'id':'expert','name':'Expert'},
+            ])
+        return httpx.Response(404)
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        service=ManagedIdentityService(
+            client,'https://auth.test/realms/avan',
+            '0123456789abcdef',tenant
+        )
+        assert service.avan_role(subject)=='Expert'
+
+
+def test_existing_identity_with_ambiguous_avan_roles_is_rejected():
+    tenant=str(UUID(int=1))
+    subject=str(UUID(int=2))
+    def respond(request):
+        if request.url.path.endswith('/token'):
+            return httpx.Response(200,json={'access_token':'test'})
+        if request.url.path.endswith('/users/'+subject):
+            return httpx.Response(200,json={
+                'id':subject,
+                'username':'person',
+                'attributes':{'tenant_id':[tenant]},
+            })
+        if request.url.path.endswith('/users/'+subject+'/role-mappings/realm'):
+            return httpx.Response(200,json=[
+                {'id':'expert','name':'Expert'},
+                {'id':'manager','name':'Manager'},
+            ])
+        return httpx.Response(404)
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        service=ManagedIdentityService(
+            client,'https://auth.test/realms/avan',
+            '0123456789abcdef',tenant
+        )
+        with pytest.raises(ValueError,match='دقیقاً یک نقش'):
+            service.avan_role(subject)
