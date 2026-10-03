@@ -1603,6 +1603,13 @@ class UserBpmsBindingSave(BaseModel):
                          "display_name_suggestion"]="manual"
 
 
+class UserBpmsUsernameBindingSave(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    subject:str=Field(min_length=1,max_length=180)
+    source_id:str=Field(pattern=r"^[0-9a-f]{24}$")
+    external_username:str=Field(min_length=1,max_length=120)
+
+
 class UserBpmsBindingRef(BaseModel):
     model_config=ConfigDict(extra="forbid")
     subject:str=Field(min_length=1,max_length=180)
@@ -1621,8 +1628,8 @@ def user_binding_sources(session=Depends(_ready)):
 
 
 @router.get("/api/user-bindings/list")
-def user_binding_list(subject:str,session=Depends(_ready)):
-    if not 1<=len(subject)<=180:
+def user_binding_list(subject:str|None=None,session=Depends(_ready)):
+    if subject is not None and not 1<=len(subject)<=180:
         raise HTTPException(422,"شناسه کاربر AVAN معتبر نیست.")
     from .user_bpms_bindings import list_bindings
     return {"bindings":list_bindings(subject)}
@@ -1651,6 +1658,20 @@ def user_binding_save(body:UserBpmsBindingSave,session=Depends(_ready)):
                                external_user_id=body.external_user_id,
                                match_method=body.match_method,
                                approved_by=_binding_admin_actor(session))}
+    except BindingError as exc:
+        raise HTTPException(409,str(exc))
+
+
+@router.post("/api/user-bindings/bind-username")
+def user_binding_save_by_username(body:UserBpmsUsernameBindingSave,session=Depends(_ready)):
+    from .user_bpms_bindings import BindingError,bind_by_username
+    try:
+        return {"binding":bind_by_username(
+            subject=body.subject,
+            source_id=body.source_id,
+            external_username=body.external_username,
+            approved_by=_binding_admin_actor(session),
+        )}
     except BindingError as exc:
         raise HTTPException(409,str(exc))
 
