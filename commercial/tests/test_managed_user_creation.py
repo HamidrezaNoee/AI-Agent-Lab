@@ -112,3 +112,49 @@ def test_failed_avan_authorization_rolls_back_new_identity(monkeypatch):
 
     assert exc.value.status_code == 409
     assert service.deleted == [SUBJECT]
+
+
+def test_register_managed_identity_creates_active_license_scoped_access(monkeypatch):
+    from contextlib import contextmanager
+    from commercial import native_access
+    from commercial import production_license
+
+    data={"tenant_id":None,"company_name":None,"users":[]}
+
+    @contextmanager
+    def edit():
+        yield data
+
+    monkeypatch.setattr(native_access,"edit",edit)
+    monkeypatch.setattr(
+        production_license,
+        "capacity",
+        lambda tenant_id,company_name,used:{"modules":[1,3],"max_users":10},
+    )
+    monkeypatch.setattr(production_onboarding.setup,"audit",lambda *_:None)
+
+    result=production_onboarding.register_managed_identity(
+        tenant_id=TENANT,
+        subject=SUBJECT,
+        company_name="Test Company",
+        username="person",
+        email="person@example.com",
+        name="Person User",
+        role="Expert",
+    )
+
+    assert result["approved"] is True
+    assert result["modules"]==[1,3]
+    assert data["tenant_id"]==TENANT
+    assert data["company_name"]=="Test Company"
+    assert data["users"]==[{
+        "subject":SUBJECT,
+        "username":"person",
+        "email":"person@example.com",
+        "name":"Person User",
+        "department_name":None,
+        "role":"Expert",
+        "manager_subject":None,
+        "module_permissions":[1,3],
+        "enabled":True,
+    }]
