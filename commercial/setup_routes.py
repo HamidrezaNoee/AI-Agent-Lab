@@ -1525,7 +1525,7 @@ def refresh_processmaker_users(session=Depends(_ready)):
 class AvanIdentityCreate(BaseModel):
     model_config=ConfigDict(extra="forbid")
     username:str=Field(min_length=3,max_length=80,pattern=r"^[A-Za-z0-9_.@-]+$")
-    email:str=Field(min_length=3,max_length=240,pattern=r"^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+    email:str=Field(min_length=3,max_length=240,pattern=r"^[^@ ]+@[^@ ]+[.][^@ ]+$")
     name:str=Field(min_length=2,max_length=240)
     role:Literal["Expert","Manager","SysAdmin"]="Expert"
     # Kept for API compatibility; this is now a permanent login password.
