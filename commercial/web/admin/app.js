@@ -932,7 +932,8 @@ async function renderAppearance(m){
  const pause=check("توقف همان Node هنگام Hover","pause_on_hover",config.pause_on_hover!==false);
  const orbits=check("نمایش خطوط مدار","show_orbits",config.show_orbits!==false);
  const idleCards=check("نمایش کم‌رنگ Card حتی بدون Hover","show_idle_cards",!!config.show_idle_cards);
- append(behaviorChecks,pause.label,orbits.label,idleCards.label);append(behavior,behaviorControls,behaviorChecks);
+ const loginCollapse=check("باز و بسته‌شدن خودکار مستطیل ورود؛ در حالت خاموش فرم همیشه باز است","login_auto_collapse",config.login_auto_collapse!==false);
+ append(behaviorChecks,pause.label,orbits.label,idleCards.label,loginCollapse.label);append(behavior,behaviorControls,behaviorChecks);
 
  // Elements
  const elementSection=node("section","appearance-card full");
@@ -1043,7 +1044,7 @@ async function renderAppearance(m){
     globe_brightness:n("globe_brightness"),globe_contrast:n("globe_contrast"),globe_saturation:n("globe_saturation"),globe_hue:n("globe_hue"),globe_glow:n("globe_glow"),
     globe_wobble:n("globe_wobble"),globe_rotation_speed:n("globe_rotation_speed"),globe_point_density:n("globe_point_density"),globe_point_size:n("globe_point_size"),globe_point_opacity:n("globe_point_opacity"),
     node_size:n("node_size"),node_opacity:n("node_opacity"),node_border_width:n("node_border_width"),node_glow:n("node_glow"),hover_scale:n("hover_scale"),hover_duration:n("hover_duration"),
-    hover_mode:v("hover_mode"),pause_on_hover:b("pause_on_hover"),show_orbits:b("show_orbits"),show_idle_cards:b("show_idle_cards"),orbit_speed:n("orbit_speed"),orbit_mode:v("orbit_mode"),
+    hover_mode:v("hover_mode"),pause_on_hover:b("pause_on_hover"),login_auto_collapse:b("login_auto_collapse"),show_orbits:b("show_orbits"),show_idle_cards:b("show_idle_cards"),orbit_speed:n("orbit_speed"),orbit_mode:v("orbit_mode"),
     orbit_line_width:n("orbit_line_width"),orbit_opacity:n("orbit_opacity"),orbit_glow:n("orbit_glow"),orbit_primary:v("orbit_primary"),orbit_secondary:v("orbit_secondary"),
     card_width:n("card_width"),card_opacity:n("card_opacity"),elements:savedElements};
    out.replaceChildren();

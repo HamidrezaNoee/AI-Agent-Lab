@@ -1,5 +1,21 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-03: identity recovery and login panel option
+
+Continue branch `feature/pm-native-agent-store-20260922` from `8d2112d`.
+Add persisted `login_auto_collapse` through Appearance normalization/schema/editor
+and canonical scene; false keeps the password panel expanded. OTP remains open.
+Synchronize canonical scene to Keycloak resources. Add Docker-host-only
+`commercial.identity_recovery` for exact-user unlock and optional hidden-input
+temporary-password reset in bundled realm; preserve OTP/roles/tenant/bindings,
+reject disabled accounts and wrong bound GodAdmin, revoke sessions on password reset.
+No public reset route, weakened CAPTCHA, or rate-limit bypass added.
+Reported live login rejection has not been reproduced: bootstrap vs Keycloak must
+be distinguished, and wrong-password root cause needs local identity events.
+See `IDENTITY_RECOVERY_FA.md`. Mock recovery tests do not certify live Keycloak.
+Full commercial tests and JS syntax are rerun; rendered screenshots and actual
+Docker login remain unavailable in this environment.
+
 ## Update 2026-10-03: process workspaces and audit
 
 Starting upstream: `da14de175025efc39da50b534be9889ad3000577`, same feature branch.

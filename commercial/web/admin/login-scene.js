@@ -31,7 +31,7 @@
   globe_contrast:1.10,globe_saturation:1.22,globe_hue:0,globe_glow:1.30,globe_wobble:1,globe_rotation_speed:1,
   globe_point_density:1,globe_point_size:1,globe_point_opacity:1,
   node_size:70,node_opacity:1,node_border_width:1,node_glow:1,hover_scale:1.24,hover_duration:180,
-  hover_mode:"card",pause_on_hover:true,show_orbits:true,show_idle_cards:true,orbit_speed:.22,orbit_mode:"orbit",
+  hover_mode:"card",pause_on_hover:true,login_auto_collapse:true,show_orbits:true,show_idle_cards:true,orbit_speed:.22,orbit_mode:"orbit",
   orbit_line_width:1.15,orbit_opacity:.78,orbit_glow:1,orbit_primary:"#50EAF7",orbit_secondary:"#FF7053",
   card_width:176,card_opacity:.94,
   elements:baseElements.map(([id,title,subtitle,accent,radius,ellipse,angle,speed])=>({
@@ -117,6 +117,7 @@
   if(root)return;
   const [appearance,assets]=await Promise.all([loadConfig(),loadAssets()]);
   config=mergeConfig(appearance);
+  card?._avanReveal?.(!card.classList.contains("is-collapsed"));
   if(!document.querySelector(loginSelector))return;
   root=document.createElement("div");root.className="avan-live-scene avan-v4-scene";root.setAttribute("data-avan-live-scene","configurable-v4");
   backdrop=document.createElement("div");backdrop.className="avan-live-backdrop";
@@ -265,11 +266,13 @@
   panel.dataset.revealReady="1";
   let timer=null,inside=false;
   const expand=open=>{
+   if(config.login_auto_collapse===false)open=true;
    if(!open&&panel.dataset.submitting==="1")return;
    panel.classList.toggle("is-expanded",open);panel.classList.toggle("is-collapsed",!open);
    toggle.setAttribute("aria-expanded",String(open));form.inert=!open;
    if(open)window.dispatchEvent(new CustomEvent("avan-login-expanded"));
   };
+  panel._avanReveal=expand;
   const closeSoon=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(!inside&&panel.dataset.dragging!=="1")expand(false)},160)};
   panel.addEventListener("pointerenter",e=>{if(e.pointerType!=="touch"){inside=true;clearTimeout(timer);expand(true)}});
   panel.addEventListener("pointerleave",e=>{if(e.pointerType!=="touch"){inside=false;closeSoon()}});

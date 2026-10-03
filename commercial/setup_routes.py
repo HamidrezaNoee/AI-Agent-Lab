@@ -474,6 +474,7 @@ class AppearanceConfig(BaseModel):
     hover_duration:int=180
     hover_mode:str=Field(default="card",max_length=20)
     pause_on_hover:bool=True
+    login_auto_collapse:bool=True
     show_orbits:bool=True
     show_idle_cards:bool=True
     orbit_speed:float=0.22

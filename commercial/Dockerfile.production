@@ -70,6 +70,7 @@ COPY --chown=10001:10001 commercial/agent_reports.py /app/commercial/agent_repor
 COPY --chown=10001:10001 commercial/process_bi.py /app/commercial/process_bi.py
 COPY --chown=10001:10001 commercial/process_bi_routes.py /app/commercial/process_bi_routes.py
 COPY --chown=10001:10001 commercial/identity_operator.py /app/commercial/identity_operator.py
+COPY --chown=10001:10001 commercial/identity_recovery.py /app/commercial/identity_recovery.py
 COPY --chown=10001:10001 commercial/secretary_workflow.py commercial/secretary_processmaker.py commercial/secretary_routes.py commercial/secretary_pmx.json /app/commercial/
 COPY --chown=10001:10001 commercial/secretary_catalog.py commercial/secretary_credentials.py commercial/secretary_runtime.py commercial/secretary_inbox_routes.py commercial/secretary_evidence.py commercial/process_workspace.py commercial/process_context.py /app/commercial/
 USER 10001:10001
@@ -77,4 +78,3 @@ EXPOSE 8188
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
  CMD python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8188/health',timeout=3); assert r.status==200" || exit 1
 CMD ["python","-m","uvicorn","commercial.production_app:app","--host","0.0.0.0","--port","8188","--workers","1","--no-proxy-headers"]
-
