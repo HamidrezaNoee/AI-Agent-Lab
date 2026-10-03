@@ -24,6 +24,22 @@ class FakeIdentity:
     def delete(self, subject):
         self.deleted.append(subject)
 
+    def get(self, subject):
+        assert subject == SUBJECT
+        return {
+            "id": SUBJECT,
+            "username": "person",
+            "email": "person@example.com",
+            "emailVerified": True,
+            "enabled": True,
+            "firstName": "Person",
+            "lastName": "User",
+        }
+
+    def avan_role(self, subject):
+        assert subject == SUBJECT
+        return "Expert"
+
 
 def _body():
     return setup_routes.AvanIdentityCreate(
@@ -158,3 +174,42 @@ def test_register_managed_identity_creates_active_license_scoped_access(monkeypa
         "module_permissions":[1,3],
         "enabled":True,
     }]
+
+
+def test_legacy_identity_can_be_activated_without_pending_login(monkeypatch):
+    service=FakeIdentity()
+
+    @contextmanager
+    def directory():
+        yield service
+
+    monkeypatch.setattr(setup_routes.setup,"get_setting",_settings)
+    monkeypatch.setattr(setup_routes.setup,"audit",lambda *_:None)
+    monkeypatch.setattr(user_accounts,"directory",directory)
+
+    seen={}
+    def register_managed_identity(**kwargs):
+        seen.update(kwargs)
+        return {"modules":[1]}
+
+    monkeypatch.setattr(
+        production_onboarding,
+        "register_managed_identity",
+        register_managed_identity,
+    )
+
+    result=setup_routes.activate_managed_identity(
+        setup_routes.ManagedIdentityActivation(subject=SUBJECT),
+        session=("sid",{"subject":"godadmin"}),
+    )
+
+    assert result=={
+        "activated":True,
+        "subject":SUBJECT,
+        "username":"person",
+        "role":"Expert",
+        "modules":[1],
+    }
+    assert seen["role"]=="Expert"
+    assert seen["tenant_id"]==TENANT
+    assert seen["email"]=="person@example.com"
