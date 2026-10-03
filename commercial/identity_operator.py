@@ -224,6 +224,28 @@ class ManagedIdentityService:
         self.call("PUT", "/users/" + subject, json={"enabled": True})
         return subject
 
+    def avan_role(self, subject: str) -> str:
+        """Return the one AVAN realm role already assigned to this identity."""
+        subject = str(UUID(str(subject)))
+        self.get(subject)
+        rows = self.call(
+            "GET", "/users/" + subject + "/role-mappings/realm"
+        ).json()
+        if not isinstance(rows, list):
+            raise IdentityError("نقش‌های حساب در سرویس هویت معتبر نیست.")
+        roles = [
+            str(row.get("name"))
+            for row in rows
+            if isinstance(row, dict)
+            and row.get("name") in {"Expert", "Manager", "SysAdmin"}
+        ]
+        roles = list(dict.fromkeys(roles))
+        if len(roles) != 1:
+            raise IdentityError(
+                "حساب باید دقیقاً یک نقش AVAN در Keycloak داشته باشد."
+            )
+        return roles[0]
+
     def update(self, subject: str, username: str, name: str, email: str):
         username = str(username or "").strip()
         name = str(name or "").strip()
