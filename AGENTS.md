@@ -3,7 +3,9 @@
 Read `docs/AI_HANDOFF.md` before changing this project. For login or Appearance work,
 read `docs/skills/avan-login/SKILL.md` and `docs/LOGIN_APPEARANCE_FA.md`.
 
-- Keep production identity in Keycloak. Normal users, Admin and bound GodAdmin use
+- Keep normal-user production identity in Keycloak. At the owner's explicit request,
+  the existing local GodAdmin may remain the permanent system-management account;
+  retain CAPTCHA, current-password proof and Authenticator. Normal users, Admin and bound GodAdmin use
   the same `/auth/login` route. `/admin/` is the installation bootstrap/recovery
   surface; never create a second public role-specific login.
 - Never issue a session before required OTP verification. Keep CAPTCHA verification

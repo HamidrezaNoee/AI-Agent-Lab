@@ -250,6 +250,9 @@ def font_asset(name:str):
 
 @app.get("/auth/login")
 def login(request:Request):
+    from .setup_console import get_setting,godadmin_identity
+    if (get_setting('godadmin_account') or {}).get('permanent') and not godadmin_identity():
+        return RedirectResponse('/admin/',status_code=303)
     # OIDC state cookie is host-only. Normalize localhost to the configured
     # 127.0.0.1 redirect origin BEFORE setting it, otherwise the callback
     # cannot receive the cookie and valid authorization is rejected.

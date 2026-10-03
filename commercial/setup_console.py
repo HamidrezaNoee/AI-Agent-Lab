@@ -120,7 +120,7 @@ def _unseal(name:str,blob:bytes)->dict:
 
 ALLOWED_SETTINGS=frozenset({
     "installation","mysql","oidc","processmaker","processmaker_profiles",
-    "company","organizations","license","ai","agent_sql","agent_sql_pending",
+    "company","organizations","license","ai","agent_sql","agent_sql_pending","godadmin_account",
     "agent_sql_connections","bpms_connections","appearance"
 })
 
@@ -193,6 +193,26 @@ def password_ok(password:str)->bool:
     with _db() as con:
         row=con.execute("SELECT password_hash,salt FROM godadmin WHERE username='godadmin'").fetchone()
     return bool(row and hmac.compare_digest(row[0],_hash(password,row[1])))
+
+def godadmin_username():
+    return (get_setting('godadmin_account') or {}).get('username','godadmin')
+
+def update_godadmin_account(username,current,new,otp):
+    import re
+    if godadmin_identity():raise SetupError('Use host recovery to retain the local GodAdmin first')
+    if not re.fullmatch(r'[A-Za-z0-9_.@-]{3,40}',username):raise SetupError('Invalid username')
+    if not password_ok(current) or not totp_ok(otp):raise SetupError('Current password or Authenticator invalid')
+    if new and (not 16<=len(new)<=128 or new==current):raise SetupError('Invalid new password')
+    config={'username':username,'permanent':True}
+    with _db() as con:
+        con.execute('BEGIN IMMEDIATE')
+        if new:
+            salt=secrets.token_bytes(16)
+            con.execute("UPDATE godadmin SET password_hash=?,salt=?,password_changed=1 WHERE username='godadmin'",(_hash(new,salt),salt))
+        con.execute('INSERT OR REPLACE INTO settings(name,ciphertext,modified_utc) VALUES (?,?,?)',
+                    ('godadmin_account',_seal('godadmin_account',config),datetime.now(timezone.utc).isoformat()))
+        con.commit()
+    audit('GODADMIN_ACCOUNT_UPDATED')
 
 def change_password(current:str,new:str):
     if not password_ok(current):raise SetupError("Current password invalid")

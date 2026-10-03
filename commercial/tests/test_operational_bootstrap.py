@@ -42,6 +42,31 @@ class GodAdminBootTests(unittest.TestCase):
         app.include_router(routes.router)
         self.client=TestClient(app,base_url="http://127.0.0.1:8188")
 
+    def test_existing_account_can_change_username_without_losing_mfa(self):
+        password='local-password-12345'
+        setup.change_password(self.initial,password)
+        secret=setup.totp_enrollment()
+        code=setup._totp(secret,int(time.time()))
+        setup.confirm_totp(code)
+        setup.update_godadmin_account('newadmin',password,'replacement-password-123',code)
+        self.assertEqual(setup.godadmin_username(),'newadmin')
+        self.assertTrue(setup.password_ok('replacement-password-123'))
+        self.assertFalse(setup.password_ok(password))
+        self.assertTrue(setup.password_state()['totp'])
+        denied=self.client.post('/admin/api/login',json={'username':'godadmin','password':'replacement-password-123','captcha_token':'x'})
+        self.assertEqual(denied.status_code,401)
+        allowed=self.client.post('/admin/api/login',json={'username':'newadmin','password':'replacement-password-123','captcha_token':'x'})
+        self.assertEqual(allowed.status_code,200)
+        self.assertTrue(allowed.json()['mfa_required'])
+
+    def test_invalid_otp_cannot_rename_local_godadmin(self):
+        password='local-password-12345'
+        setup.change_password(self.initial,password)
+        with self.assertRaises(setup.SetupError):
+            setup.update_godadmin_account('newadmin',password,'replacement-password-123','000000')
+        self.assertEqual(setup.godadmin_username(),'godadmin')
+        self.assertTrue(setup.password_ok(password))
+
     def tearDown(self):
         routes._pending_mfa.clear()
         self.client.close()

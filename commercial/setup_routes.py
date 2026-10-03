@@ -268,7 +268,7 @@ def login(request:Request,body:Login):
         setup.audit("CAPTCHA_LOGIN_DENIED")
         raise HTTPException(401,"اعتبارسنجی ضدربات نامعتبر یا منقضی شده است.")
     state=setup.password_state()
-    valid=(hmac.compare_digest(body.username,"godadmin") and
+    valid=(hmac.compare_digest(body.username.encode(),setup.godadmin_username().encode()) and
            setup.password_ok(body.password))
     if not valid:
         attempts.append(time.time())
@@ -323,6 +323,22 @@ class NewPassword(BaseModel):
     model_config=ConfigDict(extra="forbid")
     current:str=Field(min_length=1,max_length=512)
     updated:str=Field(min_length=16,max_length=128)
+
+class GodAdminCredentials(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    username:str=Field(min_length=3,max_length=40,pattern=r'^[A-Za-z0-9_.@-]+$')
+    current:str=Field(min_length=1,max_length=512)
+    updated:str=Field(default='',max_length=128)
+    otp:str=Field(pattern=r'^[0-9]{6}$')
+
+@router.post('/api/identity/godadmin-credentials')
+def godadmin_credentials(body:GodAdminCredentials,session=Depends(_ready)):
+    try:setup.update_godadmin_account(body.username,body.current,body.updated,body.otp)
+    except setup.SetupError:raise HTTPException(400,'نام کاربری، رمز فعلی، رمز جدید یا کد Authenticator معتبر نیست؛ اگر هویت سازمانی متصل است ابتدا انتقال محلی را انجام دهید.')
+    _sessions.clear();_pending_mfa.clear()
+    response=JSONResponse({'updated':True,'login_again':True})
+    response.delete_cookie('avan_godadmin',path='/');response.delete_cookie('avan_godadmin',path='/admin')
+    return response
 
 @router.post("/api/change-password")
 def change_password(body:NewPassword,session=Depends(_required)):
@@ -883,6 +899,8 @@ def identity_status(session=Depends(_ready)):
         "protocol":"OIDC",
         "mfa":"TOTP / Authenticator",
         "godadmin_bound":bool(identity),
+        "godadmin_username":setup.godadmin_username(),
+        "godadmin_local":not bool(identity),
         "godadmin_subject":identity.get("subject"),
         "godadmin_tenant_id":identity.get("tenant_id"),
         "customer_secret_entry_required":False,

@@ -561,81 +561,22 @@ async function renderIdentity(m){
  append(infra,btn("بررسی دوباره سرویس هویت",()=>showSettings("identity"),"secondary"));
  append(p,infra);
 
- const god=panel("GodAdmin سازمانی",
-  "Bootstrap GodAdmin فقط برای راه‌اندازی اولیه است. مدیریت دائمی سامانه باید به یک هویت واقعی OIDC/Keycloak متصل شود.");
- if(status.godadmin_bound){
-  const bound=node("div","identity-bound-summary");
-  const subjectRow=node("div","identity-kv");
-  append(subjectRow,node("span","","Subject"),node("code","",status.godadmin_subject||"—"));
-  const tenantRow=node("div","identity-kv");
-  append(tenantRow,node("span","","Tenant"),node("code","",status.godadmin_tenant_id||"—"));
-  append(bound,subjectRow,tenantRow);
-  append(god,bound,info("GodAdmin به هویت سازمانی متصل است. ورود مدیریتی از مسیر OIDC و MFA انجام می‌شود."));
+ const god=panel("حساب اصلی GodAdmin","همان حساب ساخته‌شده هنگام نصب برای مدیریت سامانه کافی است. نام کاربری و رمز آن را در این بخش تغییر دهید.");
+ if(!status.godadmin_local){
+  append(god,info("این نصب هنوز به هویت سازمانی قبلی متصل است. فرمان انتقال محلی را از میزبان Docker اجرا کنید؛ حساب فعلی نصب و Authenticator آن حفظ می‌شوند.",true));
  }else{
-  const primary=organizations.find(x=>x.is_primary)||organizations[0]||null;
-  append(god,info("GodAdmin هنوز به حساب سازمانی Bind نشده است.",true));
-  if(primary){
-   append(god,node("p","hint","سازمان سازگار فعلی: "+primary.company_name+" · "+primary.tenant_id));
-  }else{
-   append(god,info("ابتدا در تب «سازمان‌ها» حداقل یک سازمان ایجاد کنید.",true));
-  }
-
-  const createBox=panel("ساخت حساب GodAdmin در Keycloak",
-   "یک حساب واقعی GodAdmin بسازید. رمز واردشده در AVAN ذخیره نمی‌شود و باید در اولین ورود تغییر کند.");
   const f=node("form","grid"),out=node("div","full");
-  append(f,
-   field("نام کاربری GodAdmin","username","godadmin"),
-   field("نام و نام خانوادگی","name",""),
-   field("ایمیل سازمانی","email","",{type:"email"}),
-   field("رمز موقت حداقل ۱۶ کاراکتر","password","",{secret:true}),
-   field("کد ۶ رقمی Authenticator فعلی Bootstrap","otp","",{help:"کد جاری Authenticator مربوط به GodAdmin اولیه."}));
-  const create=node("button","","ساخت حساب GodAdmin");create.type="submit";
-  append(f,create,out);
+  append(f,field("نام کاربری","username",status.godadmin_username||"godadmin"),
+   field("رمز فعلی همین حساب","current","",{secret:true}),
+   field("رمز جدید؛ خالی یعنی حفظ رمز فعلی","updated","",{secret:true,required:false}),
+   field("کد Authenticator همین حساب","otp",""));
+  const save=node("button","","ذخیره نام کاربری و رمز");save.type="submit";append(f,save,out);
   f.addEventListener("submit",async e=>{
-   e.preventDefault();busy(f,true);out.replaceChildren();
-   try{
-    const result=await api("identity/create-godadmin-account",{
-     username:formValue(f,"username"),
-     name:formValue(f,"name"),
-     email:formValue(f,"email"),
-     password:formValue(f,"password"),
-     otp:formValue(f,"otp")
-    });
-    const pw=f.elements.namedItem("password");if(pw)pw.value="";
-    append(out,info("حساب ساخته شد. در یک تب جدید با همین حساب وارد شوید، رمز موقت را تغییر دهید و MFA را کامل کنید؛ سپس به این صفحه برگردید و Binding را تأیید کنید."));
-    append(out,(()=>{const a=node("a","visit","باز کردن ورود سازمانی در تب جدید");a.href="/auth/login";a.target="_blank";a.rel="noopener noreferrer";return a})());
-   }catch(err){showError(out,err)}
-   finally{busy(f,false)}
-  });
-  if(primary)append(god,createBox);append(createBox,f);
-
-  const candidates=panel("حساب‌های آماده اتصال",
-   "فقط هویت‌هایی که ورود OIDC معتبر انجام داده‌اند اینجا دیده می‌شوند. اتصال نهایی نیازمند کد Authenticator فعلی Bootstrap است.");
-  const eligible=pending.filter(x=>!primary||x.tenant_id===primary.tenant_id);
-  if(!eligible.length)append(candidates,info("هنوز حساب سازمانی آماده Binding نیست. ابتدا با حساب GodAdmin جدید وارد شوید."));
-  for(const account of eligible){
-   const row=node("div","identity-candidate");
-   const meta=node("div");
-   append(meta,node("strong","",account.name||account.username||account.subject),
-    node("span","hint",(account.username||"بدون نام کاربری")+" · "+(account.email||"ایمیل ثبت نشده")));
-   const action=node("div","identity-bind-action");
-   const otp=field("کد Authenticator","otp_"+account.subject,"",{required:true});
-   const input=otp.querySelector("input");input.inputMode="numeric";input.maxLength=6;
-   const out=node("div");
-   append(action,otp,btn("اتصال به GodAdmin",async()=>{
-    out.replaceChildren();
-    const code=input.value.trim();
-    if(!/^[0-9]{6}$/.test(code)){showError(out,Error("کد شش‌رقمی معتبر وارد کنید."));return}
-    try{
-     const result=await api("identity/bind-godadmin",{
-      tenant_id:account.tenant_id,subject:account.subject,otp:code
-     });
-     window.location.assign(result.login_url||"/auth/login");
-    }catch(err){showError(out,err)}
-   }),out);
-   append(row,meta,action);append(candidates,row);
-  }
-  append(god,candidates);
+   e.preventDefault();busy(f,true);
+   try{await api("identity/godadmin-credentials",{username:formValue(f,"username"),current:f.elements.namedItem("current").value,updated:f.elements.namedItem("updated").value,otp:formValue(f,"otp")});
+    window.location.assign("/auth/login");
+   }catch(err){showError(out,err)}finally{busy(f,false)}
+  });append(god,f);
  }
  append(p,god);
 

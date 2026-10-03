@@ -1,5 +1,22 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-03: retain local GodAdmin by owner request
+
+Continue from `6203116` on the same feature branch. Owner explicitly overrides the
+previous bootstrap-only GodAdmin policy: retain the installed local account for
+permanent system management, offer current-password+TOTP protected username/password
+updates, and remove the forced create/bind UI. Internal singleton row remains stable;
+display/login username is stored in encrypted `godadmin_account` settings. Revoke
+local sessions after credentials change. Permanent local `/auth/login` uses existing
+admin sign-in; normal users remain Keycloak identities. Local GodAdmin does not
+gain an impersonated BPMS Principal.
+Host-only `commercial.local_godadmin` validates the existing local password/TOTP,
+restores local access and optionally deletes other human AVAN realm identities,
+preserving service accounts and business history. Restart AVAN afterward to clear
+old live sessions. It has NOT been run on the owner's machine. No secrets or volumes
+regenerated. See `LOCAL_GODADMIN_FA.md`. Identity cleanup and credential tests are
+mock/local tests; live Docker/Keycloak deletion remains user-executed and unverified.
+
 ## Update 2026-10-03: identity recovery and login panel option
 
 Continue branch `feature/pm-native-agent-store-20260922` from `8d2112d`.
