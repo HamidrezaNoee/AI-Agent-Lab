@@ -115,8 +115,12 @@ body.avan-live-login-enabled .avan-captcha-challenge:has(.captcha-turnstile-slot
 .avan-orbit-surface::before{content:"";position:absolute;inset:4px;border:1px solid color-mix(in srgb,var(--node-accent) 45%,transparent);border-radius:50%}
 .avan-live-scene:not(.hover-none) .avan-orbit-node:hover .avan-orbit-surface,.avan-live-scene:not(.hover-none) .avan-orbit-node:focus-visible .avan-orbit-surface,.avan-live-scene:not(.hover-none) .avan-orbit-node.is-selected .avan-orbit-surface{transform:scale(var(--node-hover-local,1.24));filter:brightness(1.14)}
 
-/* Hover reveal restored on the first login panel; OTP remains independently open. */
-body.avan-live-login-enabled .login-reveal-card.is-collapsed .login-expand-body{max-height:0;overflow:hidden;opacity:0;visibility:hidden;pointer-events:none;margin:0;transform:translateY(-8px)}
-body.avan-live-login-enabled .login-reveal-card.is-collapsed .login-reveal-toggle{display:inline-flex;align-self:center;justify-content:center;align-items:center;gap:8px;margin:16px auto 4px;min-width:126px;max-height:50px;padding:10px 22px;opacity:1;visibility:visible;background:linear-gradient(110deg,#5bfcf2,#47daff);color:#022a3c;border-radius:999px}
-body.avan-live-login-enabled .login-reveal-card .login-expand-body{transition:max-height .3s ease,opacity .2s ease,transform .3s ease}
-body.avan-live-login-enabled .login-reveal-card.is-expanded .login-expand-body{max-height:750px;visibility:visible;opacity:1}
+/* AVAN login card is intentionally fixed: no hover collapse, resize jump or drag state. */
+body.avan-live-login-enabled .login-reveal-card,
+body.avan-live-login-enabled .login-reveal-card.is-collapsed,
+body.avan-live-login-enabled .login-reveal-card.is-expanded{translate:0 0!important}
+body.avan-live-login-enabled .login-reveal-card .login-expand-body,
+body.avan-live-login-enabled .login-reveal-card.is-collapsed .login-expand-body,
+body.avan-live-login-enabled .login-reveal-card.is-expanded .login-expand-body{max-height:none!important;overflow:visible!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important;margin-top:14px!important;transform:none!important;transition:none!important}
+body.avan-live-login-enabled .login-reveal-card .login-reveal-toggle{display:none!important}
+body.avan-live-login-enabled .login-reveal-card.is-login-dragging{cursor:default!important}
