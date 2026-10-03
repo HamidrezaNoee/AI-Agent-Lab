@@ -202,15 +202,25 @@ def health():
 
 @app.get("/")
 def home(request:Request):
-    from .setup_console import get_setting,godadmin_identity
+    from .setup_console import get_setting,godadmin_identity,password_state
+
+    # /admin/ is the host-local bootstrap/maintenance surface. The public root
+    # must never send an organizational user to that password verifier once the
+    # identity service is ready, otherwise a valid Keycloak username/password is
+    # misleadingly reported as a wrong local GodAdmin credential.
     if not godadmin_identity():
         from .setup_routes import bootstrap_workspace_session
         if bootstrap_workspace_session(request):
             return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
-        if request.cookies.get("avan_session","") not in sessions:
+
+        oidc=get_setting("oidc")
+        bootstrap=password_state()
+        if not oidc or not bootstrap["changed"] or not bootstrap["totp"]:
             return RedirectResponse("/admin/",status_code=303)
+
     if not get_setting("oidc"):
         return RedirectResponse("/admin/",status_code=303)
+
     _purge()
     if request.cookies.get("avan_session","") not in sessions:
         return RedirectResponse("/auth/login",status_code=303)
