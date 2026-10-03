@@ -38,7 +38,12 @@ def recover(client, secret, username, password=None, expected_subject=None):
         raise ValueError('Account is disabled; this command does not enable disabled accounts.')
     if password is not None:
         call('PUT',prefix+'/users/'+subject+'/reset-password',headers=headers,
-             json={'type':'password','value':password,'temporary':True})
+             json={'type':'password','value':password,'temporary':False})
+        required=list(users[0].get('requiredActions') or [])
+        cleaned=[x for x in required if x not in ('UPDATE_PASSWORD','CONFIGURE_TOTP')]
+        if cleaned!=required:
+            call('PUT',prefix+'/users/'+subject,headers=headers,
+                 json={'requiredActions':cleaned,'enabled':True})
         call('POST',prefix+'/users/'+subject+'/logout',headers=headers)
     call('DELETE',prefix+'/attack-detection/brute-force/users/'+subject,headers=headers)
     return subject
@@ -55,15 +60,15 @@ def main():
                           '/run/secrets/avan_provisioner_client_secret')).read_text().strip()
     password=None
     if args.reset_password:
-        password=getpass.getpass('New TEMPORARY password (16+ characters): ')
-        if password!=getpass.getpass('Repeat temporary password: '):
+        password=getpass.getpass('New login password (16+ characters): ')
+        if password!=getpass.getpass('Repeat login password: '):
             raise ValueError('Passwords differ; no account changed.')
     bound=setup.godadmin_identity() or {}
     with httpx.Client(timeout=15,follow_redirects=False,trust_env=False) as client:
         recover(client,secret,args.username,password,bound.get('subject'))
     setup.audit('IDENTITY_HOST_PASSWORD_RECOVERY' if password else 'IDENTITY_HOST_UNLOCK')
     print('Account unlocked. Authenticator, roles, tenant and AVAN bindings were preserved.')
-    if password:print('Sign in with the temporary password and existing Authenticator, then choose a permanent password.')
+    if password:print('Sign in with the new password. Existing Authenticator credentials are preserved and remain conditional.')
 
 if __name__=='__main__':
     try:main()
