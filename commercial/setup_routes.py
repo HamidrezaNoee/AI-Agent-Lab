@@ -1524,9 +1524,10 @@ def refresh_processmaker_users(session=Depends(_ready)):
 class AvanIdentityCreate(BaseModel):
     model_config=ConfigDict(extra="forbid")
     username:str=Field(min_length=3,max_length=80,pattern=r"^[A-Za-z0-9_.@-]+$")
-    email:str=Field(min_length=3,max_length=240)
+    email:str=Field(min_length=3,max_length=240,pattern=r"^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
     name:str=Field(min_length=2,max_length=240)
     role:Literal["Expert","Manager","SysAdmin"]="Expert"
+    # Kept for API compatibility; this is now a permanent login password.
     temporary_password:str=Field(min_length=16,max_length=128)
 
 
@@ -1534,29 +1535,75 @@ class AvanIdentityCreate(BaseModel):
 def create_avan_identity(body:AvanIdentityCreate,session=Depends(_ready)):
     company=setup.get_setting("company") or {}
     tenant=company.get("tenant_id")
+    company_name=(company.get("company_name") or "").strip()
     config=setup.get_setting("oidc") or {}
-    if not tenant:
-        raise HTTPException(409,"ابتدا اطلاعات سازمان را ثبت کنید.")
+    if not tenant or not company_name:
+        raise HTTPException(409,"ابتدا اطلاعات سازمان را کامل ثبت کنید.")
     if not config.get("managed_by_product"):
-        raise HTTPException(409,"ساخت کاربر از داخل AVAN فقط با سرویس هویت داخلی آوان انجام می‌شود.")
-    secret_path=Path(os.getenv(
-        "AVAN_PROVISIONER_CLIENT_SECRET_PATH",
-        "/run/secrets/avan_provisioner_client_secret"))
-    try:secret=secret_path.read_text().strip()
-    except OSError:raise HTTPException(503,"کلید داخلی Provisioner در دسترس نیست.")
-    if len(secret)<16:raise HTTPException(503,"کلید داخلی Provisioner معتبر نیست.")
-    from .identity_operator import create
-    try:
-        with httpx.Client(timeout=15,follow_redirects=False,trust_env=False) as client:
-            subject=create(client,config["issuer"],secret,tenant,
-                           body.username,body.email.strip(),body.name.strip(),
-                           body.role,body.temporary_password)
-    except ValueError as exc:
-        raise HTTPException(409,str(exc))
+        raise HTTPException(
+            409,
+            "ساخت کاربر از داخل AVAN فقط با سرویس هویت داخلی آوان انجام می‌شود."
+        )
+
+    from .user_accounts import directory
+    from .production_onboarding import (
+        ProvisioningDenied,
+        register_managed_identity,
+    )
+
+    subject=None
+    with directory() as service:
+        subject=service.create(
+            body.username,
+            body.email.strip(),
+            body.name.strip(),
+            body.role,
+            body.temporary_password,
+        )
+        try:
+            access=register_managed_identity(
+                tenant_id=tenant,
+                subject=subject,
+                company_name=company_name,
+                username=body.username,
+                email=body.email.strip(),
+                name=body.name.strip(),
+                role=body.role,
+            )
+        except ProvisioningDenied as exc:
+            try:
+                service.delete(subject)
+            except Exception:
+                setup.audit("AVAN_USER_CREATE_ROLLBACK_FAILED")
+                raise HTTPException(
+                    500,
+                    "هویت کاربر ساخته شد اما ثبت دسترسی AVAN و Rollback کامل نشد؛ "
+                    "قبل از تلاش مجدد حساب را از بخش کاربران بررسی کنید."
+                ) from exc
+            raise HTTPException(409,str(exc)) from exc
+        except Exception as exc:
+            try:
+                service.delete(subject)
+            except Exception:
+                setup.audit("AVAN_USER_CREATE_ROLLBACK_FAILED")
+            raise HTTPException(
+                503,
+                "ثبت دسترسی AVAN کامل نشد؛ هویت نیمه‌کاره Rollback شد."
+            ) from exc
+
     setup.audit("AVAN_IDENTITY_CREATED_"+body.role.upper())
-    return {"created":True,"subject":subject,"username":body.username,
-            "name":body.name.strip(),"role":body.role,
-            "next_step":"user_must_change_password_enroll_mfa_and_sign_in"}
+    return {
+        "created":True,
+        "authorized":True,
+        "subject":subject,
+        "username":body.username,
+        "name":body.name.strip(),
+        "role":body.role,
+        "modules":access["modules"],
+        "password_temporary":False,
+        "mfa_required":False,
+        "next_step":"sign_in",
+    }
 
 
 class StaffApproval(BaseModel):
