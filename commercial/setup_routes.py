@@ -11,6 +11,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
+from uuid import UUID
 import hmac
 import os
 import re
