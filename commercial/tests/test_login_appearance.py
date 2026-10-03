@@ -17,8 +17,9 @@ def test_default_appearance_is_vivid_and_configurable():
     assert len(cfg["elements"]) == 8
 
 
-def test_login_auto_collapse_preserves_saved_false():
-    assert appearance.normalize(None)['login_auto_collapse'] is True
+def test_login_card_is_always_fixed_open():
+    assert appearance.normalize(None)['login_auto_collapse'] is False
+    assert appearance.normalize({'login_auto_collapse':True})['login_auto_collapse'] is False
     config=appearance.normalize({'login_auto_collapse':False})
     assert appearance.normalize(config)['login_auto_collapse'] is False
     from commercial.setup_routes import AppearanceConfig
