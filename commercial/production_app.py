@@ -207,7 +207,8 @@ def home(request:Request):
         from .setup_routes import bootstrap_workspace_session
         if bootstrap_workspace_session(request):
             return FileResponse(ROOT/"index.html",media_type="text/html; charset=utf-8")
-        return RedirectResponse("/admin/",status_code=303)
+        if request.cookies.get("avan_session","") not in sessions:
+            return RedirectResponse("/admin/",status_code=303)
     if not get_setting("oidc"):
         return RedirectResponse("/admin/",status_code=303)
     _purge()
@@ -251,7 +252,7 @@ def font_asset(name:str):
 @app.get("/auth/login")
 def login(request:Request):
     from .setup_console import get_setting,godadmin_identity
-    if (get_setting('godadmin_account') or {}).get('permanent') and not godadmin_identity():
+    if request.query_params.get('account')=='godadmin' and not godadmin_identity():
         return RedirectResponse('/admin/',status_code=303)
     # OIDC state cookie is host-only. Normalize localhost to the configured
     # 127.0.0.1 redirect origin BEFORE setting it, otherwise the callback
@@ -350,7 +351,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     from .setup_console import godadmin_identity,is_godadmin
     bound=godadmin_identity()
     platform_admin=bool(bound and is_godadmin(principal))
-    if not bound:
+    if not bound and not _organization_login_ready():
         # Setup owner selects this already signature-verified identity in the
         # admin console. Until then no OIDC user obtains an application session.
         _stage_verified_identity(principal,claims,access)
@@ -528,10 +529,17 @@ def signed_out():
     return RedirectResponse("/",status_code=303)
 
 
+def _organization_login_ready():
+    from . import setup_console as setup
+    if setup.godadmin_identity():return True
+    state=setup.password_state()
+    return state["changed"] and state["totp"]
+
+
 def _authorized(request:Request):
     from .setup_console import godadmin_identity
     value=_principal_for_request(request)
-    if not godadmin_identity():
+    if not _organization_login_ready():
         raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
     # GodAdmin is a platform capability, not an automatic data entitlement.
     # Organization routes still pass through verified_scope(), so a GodAdmin
@@ -543,7 +551,7 @@ def _authorized(request:Request):
 def _csrf(request:Request):
     from .setup_console import godadmin_identity
     sid,value,principal=_principal_for_request(request)
-    if not godadmin_identity():
+    if not _organization_login_ready():
         raise HTTPException(status_code=403,detail="راه‌اندازی GodAdmin هنوز تکمیل نشده است.")
     got=request.headers.get("X-AVAN-CSRF","")
     if not got or not hmac.compare_digest(got,value["csrf"]):
@@ -660,18 +668,17 @@ def current_user(request:Request):
     if not godadmin_identity():
         from .setup_routes import bootstrap_workspace_session
         bootstrap=bootstrap_workspace_session(request)
-        if not bootstrap:
-            raise HTTPException(status_code=401,detail="ورود GodAdmin لازم است.")
-        _,session=bootstrap
-        company=get_setting("company") or {}
-        return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
-                "role":"GodAdmin","department":"مدیریت سامانه",
-                "csrf":session["csrf"],"subject":"bootstrap-godadmin",
-                "modules":[],"is_godadmin":True,"bootstrap_mode":True,
-                "platform_access":False,"workspace_navigation":False,
-                "workspace_access":False,"workspace_degraded":True,
-                "bpms_sources":[],"source_navigation":False,
-                "license_expires_at":None,"license_mode":"bootstrap"}
+        if bootstrap:
+            _,session=bootstrap
+            company=get_setting("company") or {}
+            return {"name":"GodAdmin","company":company.get("company_name") or "آوان",
+                    "role":"GodAdmin","department":"مدیریت سامانه",
+                    "csrf":session["csrf"],"subject":"bootstrap-godadmin",
+                    "modules":[],"is_godadmin":True,"bootstrap_mode":True,
+                    "platform_access":False,"workspace_navigation":False,
+                    "workspace_access":False,"workspace_degraded":True,
+                    "bpms_sources":[],"source_navigation":False,
+                    "license_expires_at":None,"license_mode":"bootstrap"}
 
     _,session,principal=_principal_for_request(request)
     godadmin=is_godadmin(principal)

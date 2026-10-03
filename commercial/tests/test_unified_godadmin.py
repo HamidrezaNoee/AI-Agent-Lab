@@ -70,6 +70,25 @@ class UnifiedGodAdminTests(unittest.TestCase):
         admin._sessions.clear();admin._pending_mfa.clear();app.sessions.clear();app.pending.clear()
         self.client=TestClient(app.app,base_url="http://127.0.0.1:8188")
 
+    def test_approved_oidc_user_can_sign_in_with_local_godadmin(self):
+        from contextlib import contextmanager
+        setup.change_password(setup.INITIAL.read_text().strip(),'A-long-local-admin-password!')
+        secret=setup.totp_enrollment()
+        setup.confirm_totp(setup._totp(secret,int(time.time())))
+        organization={'tenant_id':TENANT,'company_name':'Company','users':[
+            {'subject':'staff','enabled':True,'role':'Expert'}]}
+        @contextmanager
+        def edit():yield organization
+        with patch('commercial.native_access.read',return_value=organization),\
+             patch('commercial.native_access.edit',edit),\
+             patch('commercial.production_license.entitlement',return_value={}):
+            response=self.oidc_login('staff')
+        self.assertEqual(response.status_code,303)
+        self.assertEqual(response.headers['location'],'/')
+        self.assertIsNone(setup.godadmin_identity())
+        self.assertEqual(self.client.get('/',follow_redirects=False).status_code,200)
+        self.assertEqual(self.client.get('/admin/api/settings').status_code,401)
+
     def tearDown(self):
         self.client.close()
         admin._sessions.clear();admin._pending_mfa.clear();app.sessions.clear();app.pending.clear()
@@ -104,7 +123,8 @@ class UnifiedGodAdminTests(unittest.TestCase):
         setup.confirm_totp(code)
 
         # A signed account is staged, with no PM data or workspace session.
-        self.assertEqual(self.oidc_login("operator").headers["location"],"/auth/pending")
+        with patch('commercial.native_access.read',return_value={'tenant_id':TENANT,'users':[]}):
+            self.assertEqual(self.oidc_login("operator").headers["location"],"/auth/pending")
         self.assertFalse(app.sessions)
         signed=self.bootstrap_login(rotated,code)
         self.assertEqual(signed.status_code,200)

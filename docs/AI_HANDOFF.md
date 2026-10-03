@@ -1,5 +1,30 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-03: unified user administration
+
+Replace the explanatory identity screen and always-open account forms with one
+searchable Users list. Include local GodAdmin, mapped/pending users and paginated
+tenant-scoped Keycloak users. Create/profile/password/access editors open on demand,
+one at a time; saves/cancels clear password fields. Keep per-source native identity
+selection and license-scoped AVAN module grants. Identity provider failure is visible
+without hiding the local account. New user_accounts.py APIs use current admin/CSRF
+dependencies, tenant checks, temporary passwords, session revocation and no OTP removal.
+Email changes invalidate prior email verification. Docker COPY updated.
+
+Fix organizational login previously blocked by permanent local GodAdmin: OIDC entry,
+callback, home, me and organization authorization now coexist with the local session.
+Local administrator remains at /admin/; normal user /auth/login remains OIDC. No
+automatic business-data entitlement added to local GodAdmin. Legacy identity/status
+API retained for other diagnostics; obsolete duplicate safe-status assertion removed.
+Management browser smoke selectors updated; meaningful authorization/MFA tests retained.
+
+Validation: full commercial suite 347 tests plus 55 subtests passed with writable
+temporary state directories; focused final account/release tests and mocked Users
+DOM passed. Actual Keycloak writes and rendered browser screenshots were not available.
+Owner's earlier service-account authorization failure is not proven resolved: new
+account APIs report HTTP failure and use the configured issuer, without regenerating
+secrets. See USERS_FA.md.
+
 ## Update 2026-10-03: retain local GodAdmin by owner request
 
 Continue from `6203116` on the same feature branch. Owner explicitly overrides the

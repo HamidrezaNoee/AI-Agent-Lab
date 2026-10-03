@@ -2046,3 +2046,7 @@ def process_pack_enabled(body:ProcessPackEnabled,session=Depends(_ready)):
     try:return save(body.source_id,pack,_binding_admin_actor(session),identifier=body.pack_id,revision=body.revision,
                     enabled=body.enabled,monitor_lead_minutes=pack['monitor_lead_minutes'],action_lead_minutes=pack['action_lead_minutes'])
     except ValueError as exc:raise HTTPException(409,str(exc))
+
+
+from .user_accounts import register as register_user_accounts
+register_user_accounts(router,_ready)

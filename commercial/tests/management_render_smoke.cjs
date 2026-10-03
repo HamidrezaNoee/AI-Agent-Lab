@@ -130,9 +130,10 @@ const server=http.createServer((req,res)=>{
 
   // ADR-001 regression: exact username is a suggestion only; Admin may bind another BPMS user.
   await page.getByRole('button',{name:'سازمان و دسترسی',exact:true}).click();
-  await page.getByRole('button',{name:'کاربران و دسترسی',exact:true}).click();
+  await page.getByRole('button',{name:'کاربران',exact:true}).click();
   const userCard=page.locator('.avan-user-card').filter({hasText:'amin.t'}).first();
   await userCard.waitFor();
+  await userCard.getByRole('button',{name:'دسترسی‌ها',exact:true}).click();
   await userCard.getByRole('button',{name:'انتخاب کاربر BPMS',exact:true}).click();
   const externalSelect=userCard.locator('select[name="external_user_id"]');
   await externalSelect.waitFor();

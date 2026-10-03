@@ -521,82 +521,12 @@ function settingsSubnav(items,active,onChange){
  return nav;
 }
 
-async function renderIdentity(m){
- const p=panel("هویت و ورود",
-  "ورود AVAN با زیرساخت هویت داخلی Keycloak/OIDC انجام می‌شود. این بخش فقط Authentication را مدیریت می‌کند؛ نقش AVAN و اتصال کاربر به BPMS در «کاربران و دسترسی» جدا هستند.");
- append(m,p);
-
- const [identityResult,orgResult,pendingResult]=await Promise.allSettled([
-  api("identity/status"),api("organizations"),api("users/pending")
- ]);
- const status=identityResult.status==="fulfilled"?identityResult.value:{
-  connected:false,managed_by_product:false,detail:identityResult.reason?.message||"وضعیت هویت قابل دریافت نیست."
- };
- const organizations=orgResult.status==="fulfilled"?(orgResult.value.organizations||[]):[];
- const pending=pendingResult.status==="fulfilled"?(pendingResult.value.pending||[]):[];
-
- const stats=node("div","identity-status-grid");
- const stat=(label,value,ok=null)=>{
-  const card=node("div","identity-status-card");
-  append(card,node("span","",label),node("strong","",value||"—"));
-  if(ok!==null)card.classList.add(ok?"is-ok":"is-bad");
-  append(stats,card);
- };
- stat("سرویس هویت",status.connected?"متصل":"در دسترس نیست",!!status.connected);
- stat("پروتکل",status.protocol||"OIDC");
- stat("Realm",status.realm||"avan");
- stat("MFA",status.mfa||"TOTP / Authenticator");
- stat("GodAdmin سازمانی",status.godadmin_bound?"متصل":"هنوز Bind نشده",!!status.godadmin_bound);
- append(p,stats);
-
- const infra=panel("Keycloak / OIDC","تنظیمات Secret داخلی AVAN از مرورگر دریافت نمی‌شوند؛ این صفحه فقط وضعیت امن و عمومی سرویس هویت را نشان می‌دهد.");
- const issuer=node("div","identity-kv");
- append(issuer,node("span","","Issuer"),node("code","",status.issuer||"ثبت نشده"));
- const realm=node("div","identity-kv");
- append(realm,node("span","","Realm"),node("strong","",status.realm||"avan"));
- const protocol=node("div","identity-kv");
- append(protocol,node("span","","Protocol"),node("strong","",status.protocol||"OIDC"));
- append(infra,issuer,realm,protocol);
- if(status.detail)append(infra,info(status.detail,!status.connected));
- append(infra,btn("بررسی دوباره سرویس هویت",()=>showSettings("identity"),"secondary"));
- append(p,infra);
-
- const god=panel("حساب اصلی GodAdmin","همان حساب ساخته‌شده هنگام نصب برای مدیریت سامانه کافی است. نام کاربری و رمز آن را در این بخش تغییر دهید.");
- if(!status.godadmin_local){
-  append(god,info("این نصب هنوز به هویت سازمانی قبلی متصل است. فرمان انتقال محلی را از میزبان Docker اجرا کنید؛ حساب فعلی نصب و Authenticator آن حفظ می‌شوند.",true));
- }else{
-  const f=node("form","grid"),out=node("div","full");
-  append(f,field("نام کاربری","username",status.godadmin_username||"godadmin"),
-   field("رمز فعلی همین حساب","current","",{secret:true}),
-   field("رمز جدید؛ خالی یعنی حفظ رمز فعلی","updated","",{secret:true,required:false}),
-   field("کد Authenticator همین حساب","otp",""));
-  const save=node("button","","ذخیره نام کاربری و رمز");save.type="submit";append(f,save,out);
-  f.addEventListener("submit",async e=>{
-   e.preventDefault();busy(f,true);
-   try{await api("identity/godadmin-credentials",{username:formValue(f,"username"),current:f.elements.namedItem("current").value,updated:f.elements.namedItem("updated").value,otp:formValue(f,"otp")});
-    window.location.assign("/auth/login");
-   }catch(err){showError(out,err)}finally{busy(f,false)}
-  });append(god,f);
- }
- append(p,god);
-
- const rule=panel("مرز مسئولیت هویت",
-  "Authentication و Authorization در AVAN جدا هستند. Keycloak هویت و MFA را تأیید می‌کند؛ نقش، ماژول‌های AVAN و Binding هر BPMS در بخش «کاربران و دسترسی» تعیین می‌شوند.");
- const flow=node("div","identity-rule-flow");
- append(flow,
-  node("span","","Keycloak / OIDC"),node("b","","→"),
-  node("span","","AVAN User"),node("b","","→"),
-  node("span","","AVAN Permissions"),node("b","","→"),
-  node("span","","BPMS Bindings"));
- append(rule,flow);
- append(p,rule);
-}
-
 async function renderOrganizationHub(m){
- const items=[["company","سازمان‌ها"],["identity","هویت و ورود"],["users","کاربران و دسترسی"]];
+ const items=[["company","سازمان‌ها"],["users","کاربران"]];
+ if(state.orgSub==="identity")state.orgSub="users";
  append(m,settingsSubnav(items,state.orgSub,code=>{state.orgSub=code;showSettings("organization")}));
  if(state.orgSub==="company")await renderCompany(m);
- else if(state.orgSub==="identity")await renderIdentity(m);
+ 
  else await renderUsers(m);
 }
 async function showSettings(page=state.page){
@@ -710,7 +640,7 @@ async function renderConnections(m,settings){
  statusRow("هویت و دسترسی سازمانی",
    identity?.connected?("Keycloak · Realm "+identity.realm):"هویت سازمانی هنوز آماده یا قابل بررسی نیست.",
    !!identity?.connected,identity?.connected?"فعال":"نیازمند بررسی","organization",
-   ()=>{state.orgSub="identity";showSettings("organization")});
+   ()=>{state.orgSub="users";showSettings("organization")});
 
  const noteBox=node("div","settings-clean-note");
  append(noteBox,node("strong","","قاعده مدیریت تنظیمات"),
@@ -1046,70 +976,40 @@ async function renderLicense(m,settings){
    "کاربران فعال: "+status.active_users+" از "+status.max_users+" · ظرفیت باقی‌مانده: "+status.remaining_seats+" · اعتبار: "+(status.remaining_days===null?"بدون انقضا":status.remaining_days+" روز")+" · پایان: "+(status.expires_at||"بدون انقضا")));else append(p,info(status.reason,true))}catch(e){append(p,info(e.message,true))}
 }
 async function renderUsers(m){
- const p=panel("سازمان و دسترسی",
-  "حساب و نقش AVAN مستقل از حساب‌های BPMS است. برای هر کاربر می‌توانید به‌صورت جداگانه کاربر متناظر هر BPMS را انتخاب کنید؛ تطبیق نام کاربری یا ایمیل فقط پیشنهاد است و بدون تأیید مدیر دسترسی ایجاد نمی‌کند.");
- append(m,p);
-
- const toolbar=node("div","actions"),feedback=node("div");
- append(toolbar,
-  btn("به‌روزرسانی",()=>showSettings("users"),"secondary"),
-  btn("انتقال ارتباطات قدیمی ProcessMaker",async()=>{
-   feedback.replaceChildren();
-   try{
-    const r=await api("user-bindings/migrate-legacy",{});
-    append(feedback,info("انتقال قدیمی: "+r.migrated+" ارتباط منتقل شد · "+r.skipped+" مورد نیازمند بررسی است."));
-    await showSettings("users");
-   }catch(err){showError(feedback,err)}
-  },"secondary"));
- append(p,toolbar,feedback);
-
- const createUser=panel("ساخت کاربر AVAN",
-  "این حساب فقط در سامانه AVAN ساخته می‌شود و به هیچ BPMS متصل نیست. کاربر در اولین ورود باید رمز موقت را تغییر دهد و Authenticator را فعال کند.");
- const createForm=node("form","grid"),createOut=node("div","full");
- append(createForm,
-  field("نام کاربری AVAN","username",""),
-  field("نام و نام خانوادگی","name",""),
-  field("ایمیل سازمانی","email","",{type:"email"}),
-  field("رمز موقت حداقل ۱۶ کاراکتر","temporary_password","",{secret:true}));
- const createRoleLabel=node("label","","نقش اولیه AVAN"),createRole=node("select");createRole.name="role";
- for(const [value,label] of [["Expert","کارشناس"],["Manager","مدیر"],["SysAdmin","مدیر سیستم"]]){
-  const opt=node("option","",label);opt.value=value;append(createRole,opt)
+ const p=panel("کاربران","");append(m,p);
+ const toolbar=node("div","actions"),feedback=node("div"),createHost=node("div");
+ append(toolbar,btn("افزودن کاربر",()=>openCreate()),btn("به‌روزرسانی",()=>showSettings("users"),"secondary"));
+ append(p,toolbar,feedback,createHost);
+ const search=node("input");search.type="search";search.placeholder="جست‌وجوی نام یا نام کاربری";search.setAttribute("aria-label","جست‌وجوی کاربران");append(p,search);
+ const results=await Promise.allSettled([api("users/mapped"),api("user-bindings/sources"),api("license/status"),api("identity/status"),api("users/identities"),api("users/pending"),api("company")]);
+ const value=i=>results[i].status==="fulfilled"?results[i].value:{};
+ const mapped=value(0).users||[],sources=value(1).sources||[],licensedModules=value(2).valid?(value(2).modules||[]):[],status=value(3),pending=value(5).pending||[],company=value(6);
+ for(const i of [0,1,2,3,4,5,6])if(results[i].status==="rejected")append(feedback,info(results[i].reason.message,true));
+ if(value(4).truncated)append(feedback,info("فهرست کاربران بیش از حد مجاز است؛ همه نتایج نمایش داده نشده‌اند.",true));
+ const accounts=node("div","connection-list");append(p,accounts);
+ let activeEditor=null;
+ function open(host,render){if(activeEditor)activeEditor.replaceChildren();activeEditor=host;host.replaceChildren();render()}
+ function close(host){host.replaceChildren();if(activeEditor===host)activeEditor=null}
+ function saveForm(host,fields,submit){
+  const form=node("form","grid"),out=node("div","full");append(form,fields);
+  const save=node("button","","ذخیره");save.type="submit";append(form,save,btn("انصراف",()=>close(host),"secondary"),out);append(host,form);
+  form.addEventListener("submit",async e=>{e.preventDefault();busy(form,true);try{const result=await submit(form);close(host);if(result!==false)await showSettings("users")}catch(err){showError(out,err)}finally{busy(form,false)}});return form;
  }
- append(createRoleLabel,createRole);append(createForm,createRoleLabel);
- const createSubmit=node("button","","ساخت حساب AVAN");createSubmit.type="submit";
- append(createForm,createSubmit,createOut);
- createForm.addEventListener("submit",async e=>{
-  e.preventDefault();busy(createForm,true);createOut.replaceChildren();
-  try{
-   const result=await api("users/create-identity",{
-    username:formValue(createForm,"username"),
-    name:formValue(createForm,"name"),
-    email:formValue(createForm,"email"),
-    role:formValue(createForm,"role"),
-    temporary_password:formValue(createForm,"temporary_password")
-   });
-   const pw=createForm.elements.namedItem("temporary_password");if(pw)pw.value="";
-   append(createOut,info("حساب «"+result.username+"» ساخته شد. کاربر باید وارد شود، رمز را تغییر دهد و MFA را فعال کند؛ سپس درخواست تأیید AVAN در همین صفحه ظاهر می‌شود."));
-  }catch(err){
-   const pw=createForm.elements.namedItem("temporary_password");if(pw)pw.value="";
-   showError(createOut,err)
-  }finally{busy(createForm,false)}
- });
- append(createUser,createForm);append(p,createUser);
-
- let mapped=[],sources=[],licensedModules=[];
- try{
-  const [usersResult,sourceResult,licenseResult]=await Promise.all([
-   api("users/mapped"),api("user-bindings/sources"),api("license/status")
-  ]);
-  mapped=usersResult.users||[];
-  sources=sourceResult.sources||[];
-  licensedModules=licenseResult.valid?(licenseResult.modules||[]):[];
- }catch(err){
-  append(p,info("اطلاعات کاربران یا BPMSها قابل دریافت نیست: "+(err?.message||String(err)),true));
-  return;
- }
-
+ const raw=(form,name)=>form.elements.namedItem(name).value;
+ function openCreate(){open(createHost,()=>saveForm(createHost,[field("نام کاربری","username"),field("نام و نام خانوادگی","name"),field("ایمیل","email","",{type:"email"}),field("رمز موقت؛ حداقل ۱۶ نویسه","password","",{secret:true}),selectField("نقش","role",[{value:"Expert",label:"کارشناس"},{value:"Manager",label:"مدیر"},{value:"SysAdmin",label:"مدیر سیستم"}],"Expert")],async f=>{await api("users/create-identity",{username:formValue(f,"username"),name:formValue(f,"name"),email:formValue(f,"email"),role:formValue(f,"role"),temporary_password:raw(f,"password")})}))}
+ function edit(user,host,passwordOnly){open(host,()=>{
+  const local=user.local,fields=[];
+  if(!passwordOnly){fields.push(field("نام کاربری","username",user.username));if(!local)fields.push(field("نام و نام خانوادگی","name",user.name),field("ایمیل","email",user.email,{type:"email"}))}
+  if(local)fields.push(field("رمز فعلی","current","",{secret:true}),field("کد Authenticator","otp"));
+  if(passwordOnly)fields.push(field(local?"رمز جدید؛ حداقل ۱۶ نویسه":"رمز موقت جدید؛ حداقل ۱۶ نویسه","password","",{secret:true}),field("تکرار رمز جدید","repeat","",{secret:true}));
+  saveForm(host,fields,async f=>{
+   const password=passwordOnly?raw(f,"password"):"";
+   if(passwordOnly&&password!==raw(f,"repeat"))throw Error("تکرار رمز یکسان نیست.");
+   if(local){await api("identity/godadmin-credentials",{username:passwordOnly?user.username:formValue(f,"username"),current:raw(f,"current"),updated:password,otp:formValue(f,"otp")});window.location.assign("/admin/");return false}
+   if(passwordOnly)await api("users/password",{subject:user.subject,password});
+   else await api("users/profile",{subject:user.subject,username:formValue(f,"username"),name:formValue(f,"name"),email:formValue(f,"email")});
+  });
+ })}
  const moduleLabels={
   1:"جلسات و دستیار",
   2:"دبیر هوشمند",
@@ -1130,11 +1030,6 @@ async function renderUsers(m){
  };
  const selectedModules=host=>[...host.querySelectorAll("input[data-module-id]:checked")]
    .map(x=>Number(x.dataset.moduleId)).filter(x=>Number.isInteger(x));
-
- const accounts=panel("کاربران AVAN",
-  "فعال/غیرفعال‌بودن حساب AVAN به BPMS وابسته نیست. اتصال‌های BPMS فقط دامنه داده و قابلیت‌های همان منبع را تعیین می‌کنند.");
- append(p,accounts);
- if(!mapped.length)append(accounts,info("هنوز کاربر AVAN تأییدشده‌ای ثبت نشده است."));
 
  const reasonLabel=reason=>({
   username_exact:"نام کاربری یکسان",
@@ -1206,24 +1101,9 @@ async function renderUsers(m){
   }catch(err){host.replaceChildren();showError(host,err)}
  }
 
- for(const user of mapped){
-  const card=panel((user.name||user.username||user.subject),
-   "AVAN: "+(user.username||"نام کاربری ثبت نشده")+" · نقش "+(user.role||"—")+
-   " · "+(user.enabled?"فعال":"غیرفعال"));
-  card.classList.add("avan-user-card");
-  const identity=node("div","user-identity-summary");
-  append(identity,
-   node("span","hint","Subject: "+user.subject),
-   node("span","hint","ایمیل: "+(user.email||"ثبت نشده")),
-   node("span","hint","واحد: "+(user.department_name||"ثبت نشده")));
-  append(card,identity);
-  const accountActions=node("div","actions");
-  append(accountActions,btn(user.enabled?"غیرفعال‌کردن حساب AVAN":"فعال‌کردن حساب AVAN",async()=>{
-   try{await api("users/enabled",{subject:user.subject,enabled:!user.enabled});await showSettings("users")}
-   catch(err){showError(feedback,err)}
-  },user.enabled?"secondary":""));
-  append(card,accountActions);
 
+ async function buildAccess(card,user){
+  append(card,btn("بستن",()=>close(card),"secondary"));
   const permissionBox=node("div","avan-module-permissions");
   append(permissionBox,node("h3","","مجوزهای ماژول AVAN"),
    node("p","hint","این مجوزها مستقل از BPMS هستند و فقط می‌توانند زیرمجموعه ماژول‌های فعال لایسنس سازمان باشند."));
@@ -1247,7 +1127,7 @@ async function renderUsers(m){
   append(card,bindingTitle,bindingHost);
   let existing=[];
   try{existing=(await api("user-bindings/list?subject="+encodeURIComponent(user.subject))).bindings||[]}
-  catch(err){append(bindingHost,info(err.message,true));append(accounts,card);continue}
+  catch(err){append(bindingHost,info(err.message,true));return}
 
   for(const source of sources){
    const current=existing.find(x=>x.source_id===source.id);
@@ -1282,64 +1162,32 @@ async function renderUsers(m){
    append(row,actions,editor);append(bindingHost,row);
   }
   if(!sources.length)append(bindingHost,info("هنوز BPMS ثبت نشده است. ابتدا از تب «اتصالات BPMS» یک اتصال ایجاد کنید."));
-  append(accounts,card);
- }
 
- const pendingPanel=panel("درخواست‌های تأیید حساب AVAN",
-  "در این مرحله فقط خود حساب، نقش و ساختار سازمانی AVAN تأیید می‌شود. اتصال به BPMS بعد از ایجاد حساب و به‌صورت مستقل انجام می‌شود.");
- append(p,pendingPanel);
- let pending=[];
- try{pending=(await api("users/pending")).pending||[]}
- catch(err){append(pendingPanel,info(err.message,true));return}
- if(!pending.length)append(pendingPanel,info("درخواستی در انتظار تأیید نیست."));
- const loginLink=node("a","visit","باز کردن ورود سازمانی در برگه جدید");
- loginLink.href="/auth/login";loginLink.target="_blank";loginLink.rel="noopener noreferrer";
- append(pendingPanel,loginLink);
-
- for(const account of pending){
-  const section=panel("درخواست "+(account.name||account.username||account.subject),
-   "نام کاربری AVAN: "+(account.username||"ثبت نشده")+" · زمان ورود: "+account.seen_at_utc);
-  append(section,node("p","hint","ایمیل تأییدشده: "+
-    (account.email_verified?account.email||"ثبت نشده":"خیر")+
-    " · نقش‌های هویتی: "+(account.roles||[]).join("، ")));
-  const form=node("form","grid");
-  append(form,field("نام حقوقی سازمان (مطابق لایسنس)","company_name",""));
-  const roleLabel=node("label","","نقش AVAN"),roleSelect=node("select");roleSelect.name="role";
-  for(const [value,label] of [["Expert","کارشناس"],["Manager","مدیر"],["SysAdmin","مدیر سیستم"]]){
-   if(value==="SysAdmin"&&!(account.roles||[]).includes("SysAdmin"))continue;
-   const opt=node("option","",label);opt.value=value;append(roleSelect,opt);
-  }
-  append(roleLabel,roleSelect);append(form,roleLabel,
-   field("نام واحد سازمانی","department_name","",{required:false}));
-  const managerLabel=node("label","","مدیر مستقیم در AVAN"),manager=node("select");manager.name="manager_subject";
-  const none=node("option","","بدون مدیر مستقیم");none.value="";append(manager,none);
-  for(const candidate of mapped.filter(x=>x.enabled)){
-   const opt=node("option","",candidate.name||candidate.username||candidate.subject);
-   opt.value=candidate.subject;append(manager,opt);
-  }
-  append(managerLabel,manager);append(form,managerLabel);
-  const moduleLabel=node("label","full","مجوزهای اولیه AVAN");
-  const pendingModules=moduleSelector(licensedModules,"pending_module");
-  append(moduleLabel,pendingModules);append(form,moduleLabel);
-  const result=node("div","full"),submit=node("button","","تأیید حساب AVAN");submit.type="submit";
-  append(form,submit,result);
-  form.addEventListener("submit",async e=>{
-   e.preventDefault();busy(form,true);result.replaceChildren();
-   try{
-    const approved=await api("users/approve",{
-     tenant_id:account.tenant_id,subject:account.subject,
-     company_name:formValue(form,"company_name"),
-     role:formValue(form,"role"),
-     manager_subject:formValue(form,"manager_subject")||null,
-     department_name:formValue(form,"department_name")||null,
-     modules:selectedModules(pendingModules)
-    });
-    append(result,info("حساب AVAN برای "+approved.name+" ساخته شد. اکنون از بخش «اتصال به BPMSها» کاربر متناظر هر BPMS را تعیین کنید."));
-    await showSettings("users");
-   }catch(err){showError(result,err)}finally{busy(form,false)}
-  });
-  append(section,form);append(pendingPanel,section);
  }
+ const all=new Map();
+ for(const u of pending)all.set(u.subject,{...u,pending:true});
+ for(const u of mapped)all.set(u.subject,{...(all.get(u.subject)||{}),...u,approved:true});
+ for(const u of value(4).users||[])all.set(u.subject,{...(all.get(u.subject)||{}),...u});
+ if(status.godadmin_local)all.set("local-godadmin",{subject:"local-godadmin",username:status.godadmin_username||"godadmin",name:"GodAdmin",enabled:true,local:true});
+ const rows=[...all.values()].sort((a,b)=>Number(!!b.local)-Number(!!a.local));
+ for(const user of rows){
+  const card=panel(user.name||user.username,user.username||""),actions=node("div","actions"),host=node("div","editor-slot");
+  card.classList.add("avan-user-card");
+  card.dataset.search=[user.username,user.name,user.email].filter(Boolean).join(" ").toLowerCase();
+  append(card,node("span","connection-pill",user.local?"مدیر سامانه":user.approved?(user.enabled?"فعال":"غیرفعال"):user.pending?"در انتظار تأیید":"ورود اولیه انجام نشده"));
+  append(actions,btn("ویرایش",()=>edit(user,host,false),"secondary"),btn("تغییر رمز",()=>edit(user,host,true),"secondary"));
+  if(user.approved&&!user.local){
+   append(actions,btn("دسترسی‌ها",()=>open(host,()=>buildAccess(host,user)),"secondary"),btn(user.enabled?"غیرفعال‌کردن":"فعال‌کردن",async()=>{try{await api("users/enabled",{subject:user.subject,enabled:!user.enabled});await showSettings("users")}catch(err){showError(feedback,err)}},"secondary"));
+  }else if(user.pending&&!user.local){
+   append(actions,btn("فعال‌سازی",()=>open(host,()=>{
+    const options=moduleSelector(licensedModules,"approval_module");
+    saveForm(host,[selectField("نقش","role",[{value:"Expert",label:"کارشناس"},{value:"Manager",label:"مدیر"},...((user.roles||[]).includes("SysAdmin")?[{value:"SysAdmin",label:"مدیر سیستم"}]:[])],"Expert"),field("واحد","department_name","",{required:false}),options],f=>api("users/approve",{tenant_id:user.tenant_id,subject:user.subject,company_name:company.company_name,role:formValue(f,"role"),department_name:formValue(f,"department_name")||null,manager_subject:null,modules:selectedModules(options)}));
+   }),"secondary"));
+  }
+  append(card,actions,host);append(accounts,card);
+ }
+ if(!rows.length)append(accounts,info("کاربری ثبت نشده است."));
+ search.addEventListener("input",()=>{const q=search.value.trim().toLowerCase();for(const row of accounts.children)row.hidden=!!q&&!String(row.dataset.search||"").includes(q)});
 }
 async function renderBPMS(m){
  const section=panel("اتصالات BPMS",
