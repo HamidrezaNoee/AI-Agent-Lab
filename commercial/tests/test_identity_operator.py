@@ -67,7 +67,7 @@ def test_existing_identity_cannot_be_overwritten():
         return httpx.Response(200, json=[{"id": "existing"}])
 
     with httpx.Client(transport=httpx.MockTransport(respond)) as client:
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="از قبل وجود دارد"):
             create(
                 client,
                 "https://auth.test/realms/avan",
