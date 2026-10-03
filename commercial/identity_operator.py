@@ -251,12 +251,31 @@ class ManagedIdentityService:
         if not isinstance(password, str) or not 16 <= len(password) <= 128:
             raise IdentityError("رمز ورود باید بین ۱۶ تا ۱۲۸ نویسه باشد.")
         subject = str(UUID(str(subject)))
-        self.get(subject)
+        user = self.get(subject)
         self.call(
             "PUT",
             "/users/" + subject + "/reset-password",
             json={"type": "password", "value": password, "temporary": False},
         )
+
+        # Repair accounts created by older AVAN builds. Those builds forced both
+        # UPDATE_PASSWORD and CONFIGURE_TOTP even when the administrator wanted
+        # a directly usable password and optional MFA. Existing OTP credentials
+        # are NOT deleted; Keycloak's conditional OTP flow will still ask for
+        # the second factor when an OTP credential actually exists.
+        required = list(user.get("requiredActions") or [])
+        cleaned = [
+            action
+            for action in required
+            if action not in {"UPDATE_PASSWORD", "CONFIGURE_TOTP"}
+        ]
+        if cleaned != required:
+            self.call(
+                "PUT",
+                "/users/" + subject,
+                json={"requiredActions": cleaned, "enabled": True},
+            )
+
         if after_reset:
             after_reset()
         # Resetting a password revokes Keycloak and AVAN sessions, but does not
