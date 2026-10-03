@@ -1352,7 +1352,7 @@ async function renderUsers(m){
   const card=panel(user.name||user.username,user.username||""),actions=node("div","actions"),host=node("div","editor-slot");
   card.classList.add("avan-user-card");
   card.dataset.search=[user.username,user.name,user.email].filter(Boolean).join(" ").toLowerCase();
-  append(card,node("span","connection-pill",user.local?"مدیر سامانه":user.approved?(user.enabled?"فعال":"غیرفعال"):user.pending?"در انتظار تأیید":"ورود اولیه انجام نشده"));
+  append(card,node("span","connection-pill",user.local?"مدیر سامانه":user.approved?(user.enabled?"فعال":"غیرفعال"):user.pending?"در انتظار تأیید":"هویت بدون دسترسی AVAN"));
   append(actions,btn("ویرایش",()=>edit(user,host,false),"secondary"),btn("تغییر رمز",()=>edit(user,host,true),"secondary"));
   if(user.approved&&!user.local){
    append(actions,btn("دسترسی‌ها",()=>open(host,()=>buildAccess(host,user)),"secondary"),btn(user.enabled?"غیرفعال‌کردن":"فعال‌کردن",async()=>{try{await api("users/enabled",{subject:user.subject,enabled:!user.enabled});await showSettings("users")}catch(err){showError(feedback,err)}},"secondary"));
@@ -1361,6 +1361,14 @@ async function renderUsers(m){
     const options=moduleSelector(licensedModules,"approval_module");
     saveForm(host,[selectField("نقش","role",[{value:"Expert",label:"کارشناس"},{value:"Manager",label:"مدیر"},...((user.roles||[]).includes("SysAdmin")?[{value:"SysAdmin",label:"مدیر سیستم"}]:[])],"Expert"),field("واحد","department_name","",{required:false}),options],f=>api("users/approve",{tenant_id:user.tenant_id,subject:user.subject,company_name:company.company_name,role:formValue(f,"role"),department_name:formValue(f,"department_name")||null,manager_subject:null,modules:selectedModules(options)}));
    }),"secondary"));
+  }else if(!user.local){
+   append(actions,btn("فعال‌سازی حساب موجود",async()=>{
+    if(!confirm("هویت «"+(user.username||user.name)+"» با نقش ثبت‌شده در Keycloak به AVAN متصل شود؟"))return;
+    try{
+     await api("users/activate-managed",{subject:user.subject});
+     await showSettings("users");
+    }catch(err){showError(feedback,err)}
+   },"secondary"));
   }
   if(!user.local&&user.subject!==status.godadmin_subject)append(actions,btn("حذف کاربر",()=>open(host,()=>{
    const form=node("form","grid"),out=node("div","full"),remove=node("button","danger","حذف قطعی کاربر");remove.type="submit";
