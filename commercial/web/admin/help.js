@@ -26,6 +26,23 @@ const topics={
    ["Camunda / Appian / UiPath / ServiceNow / سایر","از آداپتر HTTPS مطابق قرارداد AVAN REST v1 استفاده می‌کنند."]
   ]
  },
+ userbpms:{
+  title:"اتصال کاربران به BPMS",lead:"هویت AVAN مستقل از BPMS می‌ماند؛ این صفحه فقط حساب متناظر هر کاربر را در هر اتصال فرایندی ثبت می‌کند.",
+  flow:["انتخاب کاربر AVAN","انتخاب BPMS","ورود username همان کاربر در BPMS","تأیید اتصال","بررسی یا قطع اتصال"],
+  steps:[
+   ["کاربر AVAN","کاربری را انتخاب کن که قبلاً در AVAN ایجاد و فعال شده است."],
+   ["BPMS","یکی از اتصال‌های فعال ProcessMaker/BPMS را انتخاب کن."],
+   ["Username BPMS","نام کاربری دقیق همان شخص را در BPMS وارد کن؛ AVAN آن را در Directory همان اتصال بررسی می‌کند."],
+   ["پیشنهادها","پیشنهادهای username، email یا نام فقط راهنما هستند و بدون تأیید مدیر اتصال ایجاد نمی‌کنند."],
+   ["اتصال","فقط کاربر فعال BPMS قابل اتصال است و یک حساب BPMS در هر Source نمی‌تواند هم‌زمان به دو کاربر AVAN متصل شود."],
+   ["قطع اتصال","قطع Binding فقط ارتباط AVAN↔BPMS را حذف می‌کند؛ کاربر و سوابق فرایندی در ProcessMaker حذف نمی‌شوند."]
+  ],
+  fields:[
+   ["کاربر AVAN","هویت داخلی AVAN؛ مستقل از حساب BPMS."],
+   ["BPMS / ProcessMaker","اتصال فرایندی که Directory کاربر از آن خوانده می‌شود."],
+   ["نام کاربری BPMS","username دقیق حساب همان شخص در آن BPMS."]
+  ]
+ },
  "bpms-processmaker":{
   title:"اتصال ProcessMaker",lead:"اتصال بومی ProcessMaker دو کانال دارد: MySQL برای خواندن داده فرایند و OAuth API برای Directory/Identity.",
   flow:["ساخت کاربر MySQL فقط‌خواندنی","ساخت OAuth Application","ورود اطلاعات در آوان","تست MySQL","دریافت و تست Token","ذخیره و Refresh خودکار"],
