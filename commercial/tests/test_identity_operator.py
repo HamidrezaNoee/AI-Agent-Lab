@@ -36,7 +36,7 @@ def test_new_identity_is_login_ready_only_after_tenant_and_role_are_confirmed():
             create(
                 client,
                 "https://auth.test/realms/avan",
-                "secret",
+                "0123456789abcdef",
                 tenant,
                 "ardalan",
                 "user@test.example",
@@ -71,7 +71,7 @@ def test_existing_identity_cannot_be_overwritten():
             create(
                 client,
                 "https://auth.test/realms/avan",
-                "secret",
+                "0123456789abcdef",
                 str(UUID(int=1)),
                 "user",
                 "user@test.example",
