@@ -219,3 +219,39 @@ def test_binding_live_revalidates_selected_external_user_even_when_directory_can
                                     external_user_id="pm-ali")
     directory.assert_called_once_with(SOURCE,refresh=True)
     assert tx.store["bpms_user_bindings"]["bindings"]==[]
+
+def test_bind_by_username_resolves_exact_active_bpms_username_case_insensitively():
+    directory=[
+        {"external_user_id":"pm-1","username":"Hamid.Noee","display_name":"Hamid Noee",
+         "email":"h@example.org","status":"ACTIVE","active":True,"unit":"IT"},
+        {"external_user_id":"pm-2","username":"other.user","display_name":"Other",
+         "email":"o@example.org","status":"ACTIVE","active":True,"unit":"Sales"},
+    ]
+    expected={"avan_subject":"sub-1","source_id":SOURCE,
+              "external_user_id":"pm-1","external_username":"Hamid.Noee"}
+    with patch.object(user_bpms_bindings,"directory_users",return_value=directory) as read_directory, \
+         patch.object(user_bpms_bindings,"bind",return_value=expected) as persist:
+        result=user_bpms_bindings.bind_by_username(
+            subject="sub-1",source_id=SOURCE,
+            external_username="hamid.noee",approved_by="admin-1")
+    assert result==expected
+    read_directory.assert_called_once_with(SOURCE,refresh=True)
+    persist.assert_called_once_with(
+        subject="sub-1",source_id=SOURCE,external_user_id="pm-1",
+        match_method="manual",approved_by="admin-1",
+        _directory_snapshot=directory,
+    )
+
+
+def test_bind_by_username_rejects_missing_or_inactive_bpms_username():
+    directory=[
+        {"external_user_id":"pm-1","username":"inactive.user","display_name":"Inactive",
+         "email":None,"status":"INACTIVE","active":False,"unit":""}
+    ]
+    with patch.object(user_bpms_bindings,"directory_users",return_value=directory), \
+         patch.object(user_bpms_bindings,"bind") as persist:
+        with pytest.raises(user_bpms_bindings.BindingError):
+            user_bpms_bindings.bind_by_username(
+                subject="sub-1",source_id=SOURCE,external_username="inactive.user")
+    persist.assert_not_called()
+
