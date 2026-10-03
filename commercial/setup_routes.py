@@ -649,7 +649,7 @@ def create_godadmin_account(body:GodAdminAccount,session=Depends(_ready)):
         raise HTTPException(409,"ساخت حساب ممکن نیست؛ نام کاربری، سازمان یا وضعیت سرویس هویت را بررسی کنید.")
     setup.audit("GODADMIN_OIDC_ACCOUNT_CREATED_PENDING_BIND")
     return {"created":True,"subject":subject,
-            "next":"با حساب تازه وارد شوید؛ رمز موقت را تغییر دهید و کد دومرحله‌ای را فعال کنید، سپس حساب را در این پنل تأیید کنید."}
+            "next":"حساب آماده ورود است. با رمز ثبت‌شده وارد شوید؛ Authenticator فقط در صورت فعال‌بودن روی همان حساب درخواست می‌شود، سپس اتصال GodAdmin را در این پنل نهایی کنید."}
 
 
 class MySQLConfig(BaseModel):
