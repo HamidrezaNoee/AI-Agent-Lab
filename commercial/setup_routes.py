@@ -1997,3 +1997,33 @@ def secretary_pack_save(body:SecretaryPackSave,session=Depends(_ready)):
         return save(body.source_id,pack,_binding_admin_actor(session),identifier=body.id,revision=body.revision,
                     enabled=body.enabled,monitor_lead_minutes=body.monitor_lead_minutes,action_lead_minutes=body.action_lead_minutes)
     except ValueError as exc:raise HTTPException(422,str(exc))
+
+
+class NativeProcessConnect(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    source_id:str=Field(pattern=r'^[0-9a-f]{24}$')
+    process_uid:str=Field(pattern=r'^[a-f0-9]{32}$')
+
+@router.post('/api/process-workspace/connect')
+def connect_native_process(body:NativeProcessConnect,session=Depends(_ready)):
+    from .secretary_catalog import discover,save
+    found=next((p for p in discover(body.source_id) if p['process_uid']==body.process_uid),None)
+    if not found:raise HTTPException(404,'فرایند در این اتصال نصب نیست.')
+    try:return save(body.source_id,{'adapter':'native_tasks_v1','process':found},_binding_admin_actor(session))
+    except ValueError as exc:raise HTTPException(422,str(exc))
+
+class ProcessPackEnabled(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    source_id:str=Field(pattern=r'^[0-9a-f]{24}$')
+    pack_id:str=Field(pattern=r'^[0-9a-f]{24}$')
+    revision:int=Field(ge=1)
+    enabled:bool
+
+@router.post('/api/process-workspace/enabled')
+def process_pack_enabled(body:ProcessPackEnabled,session=Depends(_ready)):
+    from .secretary_catalog import packs,save
+    pack=next((p for p in packs(body.source_id) if p['id']==body.pack_id),None)
+    if not pack:raise HTTPException(404,'بسته فرایند پیدا نشد.')
+    try:return save(body.source_id,pack,_binding_admin_actor(session),identifier=body.pack_id,revision=body.revision,
+                    enabled=body.enabled,monitor_lead_minutes=pack['monitor_lead_minutes'],action_lead_minutes=pack['action_lead_minutes'])
+    except ValueError as exc:raise HTTPException(409,str(exc))

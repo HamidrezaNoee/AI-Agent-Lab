@@ -1466,7 +1466,7 @@ async function renderBPMS(m){
     catch(err){showError(out,err)}finally{remove.disabled=false}
   },"secondary danger");
   append(actions,test,edit,copy);
-  if(isPm)append(actions,btn("فرایندهای دبیر هوشمند",()=>secretaryProcessSettings(c,out),"secondary"));
+  if(isPm)append(actions,btn("فرایندها و کارتابل‌ها",()=>secretaryProcessSettings(c,out),"secondary"));
 
   if(isPm&&!c.active){
     append(actions,btn("فعال‌سازی",async()=>{
@@ -1789,11 +1789,13 @@ async function secretaryProcessSettings(connection,target){
  target.replaceChildren(info("در حال دریافت فرایندهای اتصال..."));
  try{
   const data=await api("secretary/processes/"+encodeURIComponent(connection.id));target.replaceChildren();
-  const box=panel("دبیر هوشمند · "+connection.name,"بسته اختصاصی جلسه و اقدامات را به فرایندهای نصب‌شده همین اتصال متصل کنید.");
+  const box=panel("فرایندها و کارتابل‌ها · "+connection.name,"بسته اختصاصی جلسه و اقدامات را به فرایندهای نصب‌شده همین اتصال متصل کنید.");
   const listing=node("details");append(listing,node("summary","","فرایندهای این BPMS ("+data.processes.length+")"));
   for(const p of data.processes)append(listing,node("p","",p.title+" · "+p.process_uid));append(box,listing);
-  for(const pack of data.packs)append(box,info(pack.meeting.title+" · "+(pack.enabled?"فعال":"غیرفعال")+" · نسخه "+pack.revision+" · پایش "+pack.monitor_lead_minutes+" دقیقه پیش از پایان"));
-  const f=node("form"),select=node("select");select.name="pack";append(select,node("option","","بسته جدید"));for(const p of data.packs){const o=node("option","",p.meeting.title);o.value=p.id;append(select,o)}
+  for(const pack of data.packs){const entry=node("div");append(entry,info((pack.meeting?.title||pack.process?.title||pack.id)+" · "+(pack.enabled?"فعال":"غیرفعال")+" · نسخه "+pack.revision),btn(pack.enabled?"غیرفعال‌سازی فرایند":"فعال‌سازی فرایند",async()=>{try{await api("process-workspace/enabled",{source_id:connection.id,pack_id:pack.id,revision:pack.revision,enabled:!pack.enabled});await secretaryProcessSettings(connection,target)}catch(e){showError(entry,e)}},"secondary"));append(box,entry)}
+  const native=node("form"),nativeSelect=node("select");nativeSelect.setAttribute("aria-label","فرایند برای کارتابل بومی");for(const p of data.processes){const o=node("option","",p.title);o.value=p.process_uid;append(nativeSelect,o)}
+  const nativeOut=node("div");append(native,nativeSelect,btn("اتصال کارتابل بومی این فرایند",async()=>{try{await api("process-workspace/connect",{source_id:connection.id,process_uid:nativeSelect.value});await secretaryProcessSettings(connection,target)}catch(e){showError(nativeOut,e)}}),info("کارتابل بومی برای هر فرایند، خواندنی است. عملیات اختصاصی با آداپتور همان فرایند فعال می‌شود."),nativeOut);append(box,native);
+  const f=node("form"),select=node("select");select.name="pack";append(select,node("option","","بسته جدید"));for(const p of data.packs.filter(p=>p.adapter==="meeting_v2")){const o=node("option","",p.meeting.title);o.value=p.id;append(select,o)}
   append(f,node("label","","بسته قابل تنظیم"),select);
   const meeting=field("PMX مدیریت جلسات","meeting","",{type:"file"}),action=field("PMX اجرای اقدامات","action","",{type:"file"});for(const w of [meeting,action]){w.querySelector("input").accept=".pmx";append(f,w)}
   append(f,field("یادآوری پایش چند دقیقه قبل از پایان؟ (۱۴۴۰ = یک روز)","monitor",1440,{type:"number"}),field("یادآوری اقدام چند دقیقه قبل از مهلت؟","lead",60,{type:"number"}));

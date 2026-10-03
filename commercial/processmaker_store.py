@@ -348,7 +348,7 @@ def _parents(con, scope, cursor=None, limit=MAX_MEETINGS):
     last = cursor
     scanned = 0
     while len(found) <= limit:
-        args = [MEETING_PROCESS]
+        args = [scope.get("meeting_process_uid",MEETING_PROCESS)]
         where = "PRO_UID=%s"
         if last is not None:
             where += " AND APP_NUMBER<%s"
@@ -410,7 +410,7 @@ def authorized_meeting_snapshot(con, scope, *, maximum=MAX_MEETINGS, meeting_id=
     if meeting_id is None:
         parents, more = _parents(con, scope, limit=maximum)
     else:
-        rows = query(con, 'SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA FROM APPLICATION WHERE PRO_UID=%s AND APP_NUMBER=%s', (MEETING_PROCESS, meeting_id))
+        rows = query(con, 'SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA FROM APPLICATION WHERE PRO_UID=%s AND APP_NUMBER=%s', (scope.get("meeting_process_uid",MEETING_PROCESS), meeting_id))
         parents, more = [], False
         for row in rows:
             data = decode_case(row[3])
@@ -443,14 +443,14 @@ def authorized_meeting_snapshot(con, scope, *, maximum=MAX_MEETINGS, meeting_id=
                         "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE FROM APPLICATION WHERE PRO_UID=%s AND APP_UID IN ("
                         + ",".join("%s" for _ in chunk)
                         + ")",
-                        (ACTION_PROCESS, *chunk),
+                        (scope.get("action_process_uid",ACTION_PROCESS), *chunk),
                     )
                 )
         else:
             rows = query(
                 con,
                 "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE FROM APPLICATION WHERE PRO_UID=%s AND APP_DATA LIKE %s ORDER BY APP_NUMBER DESC LIMIT 20001",
-                (ACTION_PROCESS, "%" + m["case_uid"] + "%"),
+                (scope.get("action_process_uid",ACTION_PROCESS), "%" + m["case_uid"] + "%"),
             )
         if len(rows) > 20000:
             raise ProductionUnavailable("Child case bound exceeded")
@@ -566,3 +566,4 @@ def authorized_meeting_snapshot(con, scope, *, maximum=MAX_MEETINGS, meeting_id=
                 }
             )
     return [r[0] for r in parents], not more
+

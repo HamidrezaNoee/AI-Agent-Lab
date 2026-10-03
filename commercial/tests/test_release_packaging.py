@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 
@@ -14,16 +15,18 @@ def test_production_copy_layout_imports_and_boots_without_customer_databases(tmp
     patterns=[x.strip() for x in (root/'.dockerignore').read_text().splitlines() if x.strip() and not x.startswith('#')]
     for line in (root/'commercial/Dockerfile.production').read_text().splitlines():
         if not line.startswith('COPY '):continue
-        source,target=line.split()[-2:]
-        source_path=root/source
-        assert source_path.exists(),source
-        # Catch broad filename exclusions, including the former *secret* rule
-        # that unintentionally excluded secretary_agent.py.
-        assert not any(fnmatch.fnmatch(source,p) for p in patterns),source
-        dest=tmp_path/target.removeprefix('/app/')
-        dest.parent.mkdir(parents=True,exist_ok=True)
-        if source_path.is_dir():shutil.copytree(source_path,dest,dirs_exist_ok=True)
-        else:shutil.copy2(source_path,dest)
+        pieces=[x for x in shlex.split(line)[1:] if not x.startswith('--')]
+        target=pieces[-1]
+        sources=pieces[:-1]
+        for source in sources:
+            source_path=root/source
+            assert source_path.exists(),source
+            assert not any(fnmatch.fnmatch(source,p) for p in patterns),source
+            dest=tmp_path/target.removeprefix('/app/')
+            if target.endswith('/') and source_path.is_file():dest=dest/source_path.name
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            if source_path.is_dir():shutil.copytree(source_path,dest,dirs_exist_ok=True)
+            else:shutil.copy2(source_path,dest)
     code="from commercial.setup_console import initialize,get_setting; initialize(); from commercial.production_app import app; assert app.title=='AVAN'; assert not get_setting('agent_sql'); from commercial.identity_operator import create; print('COPY layout boot OK')"
     env={**os.environ,'PYTHONPATH':str(tmp_path),'AVAN_STATE_DIR':str(tmp_path/'state'),
          'AVAN_BFF_CLIENT_SECRET_PATH':str(tmp_path/'absent-secret')}
@@ -43,3 +46,4 @@ def test_realm_tenant_is_admin_only_and_https_has_exact_callback():
             assert bff['redirectUris']==['${AVAN_PUBLIC_ORIGIN}/auth/callback']
     gateway=(root/'infra/caddy/Caddyfile').read_text()
     assert 'respond @admin 404' in gateway
+

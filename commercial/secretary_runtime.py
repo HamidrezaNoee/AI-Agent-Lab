@@ -30,18 +30,24 @@ def task_key(scope,case,index):return 'secretary_task:'+hashlib.sha256(json.dump
 
 def task(con,scope,case,index,pack_id):
  pack=catalog.get(scope['source_id'],pack_id)
+ if pack.get('adapter')!='meeting_v2':raise PermissionError('این ابزار فقط برای بسته جلسات فعال است.')
  found=query(con,'SELECT a.PRO_UID,a.APP_NUMBER,a.APP_DATA,d.TAS_UID FROM APPLICATION a JOIN APP_DELEGATION d ON d.APP_UID=a.APP_UID WHERE a.APP_UID=%s AND d.DEL_INDEX=%s AND d.USR_UID=%s AND d.DEL_THREAD_STATUS=%s AND a.APP_STATUS IN (%s,%s)',(case,index,scope['external_user_id'],'OPEN','TO_DO','DRAFT'))
  if len(found)!=1:raise PermissionError('این وظیفه جاری به حساب متصل شما تعلق ندارد.')
  stage=next((s for s,v in pack['stages'].items() if v['task_uid']==str(found[0][3]) and process_for(pack,s)==str(found[0][0])),None)
  if not stage:raise PermissionError('این وظیفه ابزار دبیر فعال ندارد.')
  if stage=='monitoring':
-  visible=next((r for r in inbox(con,scope)['tasks'] if r['case_uid']==case and r['index']==int(index)),None)
+  visible=next((r for r in inbox(con,scope,pack_id=pack_id)['tasks'] if r['case_uid']==case and r['index']==int(index)),None)
   if not visible or not visible['available']:raise PermissionError('زمان پایش این جلسه هنوز نرسیده است.')
  values=normalize(decode_case(found[0][2]))
  return {'case_uid':case,'index':int(index),'pack_id':pack_id,'stage':stage,'title':text(values.get('MTG_MeetingTitle') or values.get('MTGA_ContextMeetingTitle')) or text(values.get('MTGA_ActionDescription')),'number':str(found[0][1]),'native':values,'pack':pack}
 
-def inbox(con,scope,now=None):
+def inbox(con,scope,now=None,*,pack_id=None):
  packs=catalog.packs(scope['source_id'],True)
+ if pack_id is not None:
+  selected=catalog.get(scope['source_id'],pack_id)
+  if selected.get('adapter')!='meeting_v2':raise PermissionError('این کارتابل برای آداپتور جلسات است.')
+  packs=[selected]
+ packs=[p for p in packs if p.get('adapter')=='meeting_v2']
  if not packs:return {'tasks':[],'notifications':[],'packs':[],'truncated':False}
  by_process={p[k]['process_uid']:p for p in packs for k in ('meeting','action')}
  process_ids=list(by_process)
@@ -59,7 +65,9 @@ def inbox(con,scope,now=None):
     if len(day)==10 and day[:4].isdigit() and int(day[:4])<1700:due=legacy.jalali_instant(day.replace('-','/'),clock)
     else:
      from zoneinfo import ZoneInfo
-     due=datetime.fromisoformat(day.replace('Z','+00:00'))
+     raw=day.replace('Z','+00:00')
+     if len(raw)==10:raw+='T'+(clock or '00:00')
+     due=datetime.fromisoformat(raw)
      if due.tzinfo is None:due=due.replace(tzinfo=ZoneInfo('Asia/Tehran'))
     lead=pack['monitor_lead_minutes'] if stage=='monitoring' else pack['action_lead_minutes']
     reminder=(due-timedelta(minutes=lead)).isoformat()
@@ -74,11 +82,12 @@ def inbox(con,scope,now=None):
    identity=hashlib.sha256(json.dumps([t['case_uid'],t['index'],t['stage'],t['reminder_at']]).encode()).hexdigest()[:32]
    old=saved.get(identity,{})
    kind='monitoring_due' if t['stage']=='monitoring' else 'action_due' if t['stage']=='action_execution' and t['reminder_at'] and now>=datetime.fromisoformat(t['reminder_at']) else 'task_assigned'
-   if t['available']:saved[identity]={**old,'id':identity,'kind':kind,'task':t,'read':old.get('read',False) if old.get('kind')==kind else False if old.get('kind')==kind else False,'first_seen':old.get('first_seen',now.isoformat())}
+   if t['available']:saved[identity]={**old,'id':identity,'kind':kind,'task':t,'read':old.get('read',False) if old.get('kind')==kind else False,'first_seen':old.get('first_seen',now.isoformat())}
   active={(t['case_uid'],t['index']) for t in tasks}
   # Only current own tasks are returned; no historical task content after reassignment.
   notices=[n for n in saved.values() if (n['task']['case_uid'],n['task']['index']) in active and any(t['case_uid']==n['task']['case_uid'] and t['index']==n['task']['index'] and t['available'] for t in tasks)]
-  tx.put(nkey,{n['id']:n for n in notices[:400]})
+  retained={k:n for k,n in saved.items() if pack_id is not None and n.get('task',{}).get('pack_id')!=pack_id}
+  tx.put(nkey,{**retained,**{n['id']:n for n in notices[:400]}})
  return {'tasks':tasks,'notifications':notices,'packs':[{'id':p['id'],'title':p['meeting']['title']} for p in packs],'truncated':len(found)>200}
 
 def acknowledge(scope,identifier):
@@ -101,7 +110,9 @@ def initial(task):
  return v
 
 def native_stamp(task):
- return hashlib.sha256(json.dumps(task['native'],sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+ keys=set(task['pack']['stages'][task['stage']]['fields'])|FIELDS[task['stage']]
+ watched={k:task['native'].get(k,'') for k in keys}
+ return hashlib.sha256(json.dumps(watched,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
 def draft(scope,actor,task):
  with agent_storage.transaction() as tx:
@@ -140,6 +151,9 @@ def gaps(values,task):
   if values.get('MTGA_ReviewStatus2')=='Rework':required+=['MTGA_SecretaryComment1']
   elif values.get('MTGA_ReviewStatus2')=='Closed':required+=['MTGA_SecretaryActualCompletionDateTime2','MTGA_SecretaryActualCompletionTime2']
  elif stage=='monitoring':required=['MTG_ClosingNote']
+ if stage in ('invitation_approval','minutes_approval') and values.get(decision)=='Approved':
+  underlying='invitation' if stage=='invitation_approval' else 'minutes'
+  return legacy.missing({**task['native'],**values},underlying)
  if stage in ('invitation_approval','minutes_approval') and values.get(decision)=='NeedsRevision':required+=[comment]
  specs=form(task)
  return [{'field':k,'question':'لطفاً '+str(specs.get(k,{}).get('label') or k)+' را مشخص کنید.'} for k in required if values.get(k) in (None,'',{})]
@@ -243,6 +257,8 @@ def submit(scope,actor,task,revision,*,pm=None):
   # Fresh native assignment and delegation, before any mutation or trigger.
   index=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
   if index!=task['index']:raise RevisionConflict('Native task changed')
+  current={**task,'native':normalize(pm.variables(task['case_uid']))}
+  if native_stamp(current)!=native_stamp(task):raise RevisionConflict('Native data changed before submission')
   with agent_storage.transaction() as tx:
    key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
    if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
@@ -279,6 +295,7 @@ def sessions(scope,actor):
 
 def session_create(scope,actor,pack_id,values=None):
  pack=catalog.get(scope['source_id'],pack_id)
+ if pack.get('adapter')!='meeting_v2':raise PermissionError('ایجاد جلسه برای این بسته مجاز نیست.')
  values=values or {'MTG_SecretaryUserUID':scope['external_user_id']}
  item={'pack':pack,'stage':'invitation','native':{}}
  validate(values,item,scope)
@@ -307,6 +324,7 @@ def session_update(scope,actor,identifier,revision,values,questions=()):
 
 def session_send(scope,actor,identifier,revision,*,pm=None):
  row,task=session_load(scope,actor,identifier)
+ validate(row['values'],task,scope)
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
  if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
  owned=pm is None

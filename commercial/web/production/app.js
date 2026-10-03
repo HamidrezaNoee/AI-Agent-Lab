@@ -1,5 +1,5 @@
 "use strict";
-const app={secretaryTimer:null,user:null,csrf:null,page:"overview",selectedSourceId:null,cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,cleanup:[]};
+const app={processChoices:{},processManifests:{},secretaryTimer:null,user:null,csrf:null,page:"overview",selectedSourceId:null,cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,cleanup:[]};
 const $=id=>document.getElementById(id);
 function el(tag,klass,text){const n=document.createElement(tag);if(klass)n.className=klass;if(text!==undefined)n.textContent=String(text);return n}
 function add(parent,...children){for(const x of children.flat())if(x!==undefined&&x!==null)parent.append(x);return parent}
@@ -15,6 +15,8 @@ function sourceApi(sourceId,path){
 }
 async function request(url,options={}){
  const headers={"Accept":"application/json",...(options.headers||{})};
+ const scoped=url.match(/^\/api\/sources\/([^/]+)\/(ask|questions|meetings(?:\/[^/]+)?|agent\/(status|history)|reports\/actions(?:\/ask)?|monitor(?:\/[^/]+)?|voice\/(speech|transcribe))(?:\?|$)/);
+ if(scoped&&app.processChoices[scoped[1]]?.packId)headers["X-AVAN-Process-Pack"]=app.processChoices[scoped[1]].packId;
  if(options.background)headers["X-AVAN-BACKGROUND"]="1";
  if(options.method==="POST" && app.csrf)headers["X-AVAN-CSRF"]=app.csrf;
  const {background,...fetchOptions}=options;
@@ -28,12 +30,13 @@ async function request(url,options={}){
  if(!response.ok){
    let message="دریافت اطلاعات با خطا مواجه شد.";
    try{const e=await response.json();if(typeof e.detail==="string")message=e.detail}catch{}
-   throw Error(message);
+   const error=Error(message);error.status=response.status;throw error;
  }
  return options.binary?response:response.json();
 }
 function cleanMedia(){for(const fn of app.cleanup.splice(0)){try{fn()}catch{}}}
 function sessionExpired(){
+ app.processChoices={};app.processManifests={};
  if(app.secretaryTimer){clearInterval(app.secretaryTimer);app.secretaryTimer=null}
  const wasBootstrap=!!app.user?.bootstrap_mode;
  cleanMedia();
@@ -55,7 +58,7 @@ function setupUser(user){
  const workspaceNavigation=user.workspace_navigation!==undefined
    ?!!user.workspace_navigation
    :!!user.workspace_access;
- $("pm-nav").hidden=!workspaceNavigation;
+ $("pm-nav").hidden=!workspaceNavigation||(user.bpms_sources||[]).length>0;
  $("platform-nav").hidden=!(user.is_godadmin&&user.platform_access!==false);
  $("admin-nav").hidden=!user.is_godadmin;
  const sourceNav=$("bound-source-nav"),sourceButtons=$("bound-source-buttons");
@@ -69,13 +72,9 @@ function setupUser(user){
   add(group,el("span","bound-source-name",source.source_name));
   const capabilities=new Set(source.capabilities||["overview"]);
   add(group,sourcePageButton(source,"source-overview","◉  نمای BPMS"));
-  if(capabilities.has("meetings"))add(group,sourcePageButton(source,"source-meetings","▤  جلسات"));
-  if(capabilities.has("assistant"))add(group,sourcePageButton(source,"source-assistant","✦  دستیار"));
-  if(capabilities.has("secretary"))add(group,sourcePageButton(source,"source-secretary","▧  دبیر هوشمند"));
-  if(capabilities.has("reports"))add(group,sourcePageButton(source,"source-reports","▥  گزارش اقدامات"));
-  if(capabilities.has("monitor"))add(group,sourcePageButton(source,"source-monitor","◷  هشدار و پیگیری"));
-  if(capabilities.has("bi"))add(group,sourcePageButton(source,"source-bi","▦  BI"));
+  if(capabilities.has("bi"))add(group,sourcePageButton(source,"source-bi","▦  BI اتصال"));
   add(sourceButtons,group);
+  if(source.engine==="processmaker")loadProcessChoices(source,group);
  }
  sourceNav.hidden=!(user.bpms_sources||[]).length;
  installSecretaryBadges();
@@ -150,10 +149,10 @@ function select(page){
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",
    sourcePage&&b.dataset.sourceId
-    ?b.dataset.sourceId===app.selectedSourceId&&b.dataset.page===page
+    ?b.dataset.sourceId===app.selectedSourceId&&b.dataset.page===page&&(!b.dataset.section||(b.dataset.packId===app.processChoices[app.selectedSourceId]?.packId&&b.dataset.section===app.processChoices[app.selectedSourceId]?.section))
     :b.dataset.page===page));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>secretaryPage(app.selectedSourceId),"source-reports":()=>reportsPage(app.selectedSourceId),"source-monitor":()=>monitorPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>processWorkspacePage(),"source-process":processWorkspacePage,"source-reports":()=>reportsPage(app.selectedSourceId),"source-monitor":()=>monitorPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
  if(work)work().catch(err=>{
   const target=root();
   if(orgPage&&app.user?.is_godadmin){
@@ -291,7 +290,7 @@ async function init(){
   const user=await request("/api/me");setupUser(user);
   const workspaceNavigation=(user.bpms_sources||[]).length>0;
   if(user.bootstrap_mode){select("system-management");return}
-  if(workspaceNavigation){select("overview");return}
+  if(workspaceNavigation){app.selectedSourceId=user.bpms_sources[0].source_id;select("source-overview");return}
   if((user.bpms_sources||[]).length){
    app.selectedSourceId=user.bpms_sources[0].source_id;select("source-overview");return
   }
@@ -498,7 +497,7 @@ function renderAnalysis(target,result,sourceId=null){
  }
  add(target,evidence,el("small","muted","زمان بررسی: "+result.as_of_utc));
 }
-async function secretaryPage(sourceId=null){
+async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initialManifest=null){
  const m=root();heading(m,"کارتابل دبیر هوشمند","دعوت‌نامه، تأیید رئیس، صورتجلسه، اجرای اقدام و پایش در فرایند متصل BPMS");
  if(!sourceId){add(m,note("اتصال BPMS را از منوی کنار انتخاب کنید."));return}
  const base=sourceApi(sourceId,"/secretary"),out=el("div"),editor=el("div");add(m,out,editor);
@@ -506,12 +505,24 @@ async function secretaryPage(sourceId=null){
  const checked=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
  let info;
  async function load(){
-  info=await request(base+"/inbox",{background:true});if(!m.isConnected)return;
-  out.replaceChildren();const top=card("فرایندهای فعال","هر فرد فقط وظایف تخصیص‌یافته به حساب BPMS خودش را می‌بیند.");
-  if(!info.packs.length)add(top,note("برای این اتصال، بسته دبیر فعال نشده است. مدیر باید PMX جلسه و اقدامات را در تنظیمات اتصال معرفی کند."));
-  const select=el("select");select.setAttribute("aria-label","فرایند جلسه");for(const p of info.packs){const o=el("option","",p.title);o.value=p.id;add(select,o)}
-  const create=link("جلسه جدید",checked(async()=>{const r=await post("/sessions",{pack_id:select.value});await session(r.id)}));create.disabled=!info.packs.length||!info.oauth_connected;
-  add(top,select,create,link("تازه‌سازی کارتابل",checked(load)),link("فعال‌سازی اعلان‌های پس‌زمینه",checked(async()=>{await post("/subscribe");toast("پایش کارتابل فعال شد؛ نیازمند اعتبار نشست سازمانی است.")})));
+  if(packId){
+   let manifest;
+   try{manifest=initialManifest||await request(sourceApi(sourceId,"/process-workspace/"+packId+"?section="+encodeURIComponent(sectionId)),{background:true})}catch(e){
+    if(e.status!==403||sectionId==="inbox")throw e;
+    manifest=await request(sourceApi(sourceId,"/process-workspace/"+packId),{background:true});
+    if(app.selectedSourceId===sourceId&&app.processChoices[sourceId]?.packId===packId&&app.processChoices[sourceId]?.section===sectionId){app.processChoices[sourceId].section=manifest.section;select("source-process")}return;
+   }initialManifest=null;
+   refreshProcessMenu(sourceId,manifest);
+   if(!m.isConnected||app.selectedSourceId!==sourceId||app.processChoices[sourceId]?.packId!==packId||app.processChoices[sourceId]?.section!==sectionId)return;
+   const personal=await request(base+"/inbox?pack_id="+packId,{background:true});
+   info={...manifest,...personal,tasks:manifest.tasks,notifications:manifest.notifications,sessions:manifest.sessions,packs:[manifest.process]};
+  }else info=await request(base+"/inbox",{background:true});
+  if(!m.isConnected||(packId&&(app.selectedSourceId!==sourceId||app.processChoices[sourceId]?.packId!==packId||app.processChoices[sourceId]?.section!==sectionId)))return;
+  out.replaceChildren();const top=card(info.packs[0]?.title||"فرایندهای فعال","کارتابل فقط برای فرایند و بخش انتخاب‌شده است.");
+  if(!info.packs.length)add(top,note("بسته فرایند فعال نشده است."));
+  const currentPack=packId||info.packs[0]?.id;
+  if(sectionId==="drafts"||!packId){const create=link("جلسه جدید",checked(async()=>{const r=await post("/sessions",{pack_id:currentPack});await session(r.id)}));create.disabled=!currentPack||!info.oauth_connected;add(top,create)}
+  add(top,link("تازه‌سازی کارتابل",checked(load)),link("فعال‌سازی اعلان‌های پس‌زمینه",checked(async()=>{await post("/subscribe");toast("پایش کارتابل فعال شد؛ نیازمند اعتبار نشست سازمانی است.")})));
   add(out,top);
   const connection=card("مجوز عملیات حساب BPMS",info.oauth_connected?"مجوز شخصی حساب متصل فعال است.":"برای ثبت و انتقال مراحل، مجوز حساب خودتان در ProcessMaker لازم است.");
   if(info.oauth_connected)add(connection,link("قطع مجوز شخصی",checked(async()=>{await post("/oauth/disconnect");await load()})));
@@ -525,7 +536,7 @@ async function secretaryPage(sourceId=null){
   const tasks=card("وظایف من","تأیید و ارسال فقط پس از بازبینی شما انجام می‌شود.");
   for(const t of info.tasks){const b=link(t.stage_label+" · "+t.title+" · "+t.number,checked(()=>open(t)));b.disabled=!t.available||!info.oauth_connected;add(tasks,b);if(!t.available)add(tasks,el("small","muted",t.reminder_at?("پایش از "+t.reminder_at+" فعال می‌شود."):"تاریخ و ساعت پایان برنامه‌ریزی در BPMS باید تکمیل شود."))}
   if(info.truncated)add(tasks,note("بیش از ۲۰۰ وظیفه جاری دارید؛ همه موارد در این صفحه نمایش داده نشده‌اند."));if(!info.tasks.length)add(tasks,note("وظیفه جاری ندارید."));add(out,tasks);
-  const drafts=card("جلسات ایجادشده","ادامه پیش‌نویس یا مشاهده وضعیت دعوت‌نامه");for(const r of info.sessions)add(drafts,link(r.title+" · "+r.status,checked(()=>session(r.id))));add(out,drafts);
+  const drafts=card("پیش‌نویس‌های فرایند","ادامه پیش‌نویس یا مشاهده وضعیت دعوت‌نامه");for(const r of info.sessions)add(drafts,link(r.title+" · "+r.status,checked(()=>session(r.id))));add(out,drafts);
  }
  async function open(t,prepare=true){const r=await post(prepare?"/tasks/open":"/tasks/load",{case_uid:t.case_uid,index:t.index,pack_id:t.pack_id});render(r,false)}
  async function session(id){const r=await request(base+"/sessions/"+encodeURIComponent(id));render({...r,draft:r.session,task:{stage:"invitation",title:r.session.values.MTG_MeetingTitle||"جلسه جدید"}},true)}
@@ -776,4 +787,62 @@ function installSecretaryBadges(){
   }finally{running=false}
  }
  poll();app.secretaryTimer=setInterval(poll,60000);
+}
+
+async function loadProcessChoices(source,group){
+ const user=app.user,choice=el("select"),sections=el("div"),message=el("small","muted");choice.setAttribute("aria-label","فرایند · "+source.source_name);add(choice,el("option","","انتخاب فرایند..."));
+ sections.dataset.processMenu=source.source_id;add(group,choice,message,sections);let serial=0;
+ async function apply(openPage=true){const token=++serial;sections.replaceChildren();message.textContent="";const packId=choice.value;
+  if(app.processChoices[source.source_id]?.packId!==packId){app.newConversation=true;app.conversationId=null}
+  app.processChoices[source.source_id]={packId,section:"inbox"};if(!packId)return;
+  try{const manifest=await request(sourceApi(source.source_id,"/process-workspace/"+encodeURIComponent(packId)),{background:true});if(token!==serial||app.user!==user||!group.isConnected)return;
+   app.processManifests[source.source_id]=manifest;
+   const saved=app.processChoices[source.source_id];saved.section=manifest.section;
+   for(const section of manifest.navigation){const b=link(section.label+(section.count?" · "+fmt(section.count):""),()=>{app.selectedSourceId=source.source_id;saved.section=section.id;select("source-process")});b.dataset.page="source-process";b.dataset.sourceId=source.source_id;b.dataset.packId=packId;b.dataset.section=section.id;add(sections,b)}
+   if(openPage){app.selectedSourceId=source.source_id;select("source-process")}
+  }catch(e){if(token===serial){message.textContent=e.message;app.processChoices[source.source_id]={packId:null,section:null};}}
+ }
+ choice.addEventListener("change",()=>{cleanMedia();if(app.selectedSourceId===source.source_id)root().replaceChildren(note("در حال تغییر فرایند..."));apply()});
+ try{const result=await request(sourceApi(source.source_id,"/process-workspace"),{background:true});if(app.user!==user||!group.isConnected)return;
+  for(const p of result.processes){const o=el("option","",p.title);o.value=p.id;add(choice,o)}
+  if(!result.processes.length){choice.disabled=true;message.textContent="فرایند فعال و مجاز تنظیم نشده است.";return}
+  const previous=app.processChoices[source.source_id]?.packId;
+  choice.value=result.processes.some(p=>p.id===previous)?previous:result.processes[0].id;
+  await apply(false);
+ }catch(e){choice.disabled=true;message.textContent=e.message;add(group,link("دریافت دوباره فرایندها",()=>{choice.remove();message.remove();sections.remove();loadProcessChoices(source,group)}))}
+}
+async function processWorkspacePage(){
+ const sourceId=app.selectedSourceId,selection=app.processChoices[sourceId],m=root();
+ if(!selection?.packId){add(m,note("ابتدا فرایند را از منوی اتصال انتخاب کنید."));return}
+ const packId=selection.packId;let section=selection.section,manifest;
+ try{manifest=await request(sourceApi(sourceId,"/process-workspace/"+packId+"?section="+encodeURIComponent(section)))}catch(e){
+  if(e.status!==403||section==="inbox")throw e;
+  manifest=await request(sourceApi(sourceId,"/process-workspace/"+packId));
+  if(app.selectedSourceId!==sourceId||app.processChoices[sourceId]?.packId!==packId||app.processChoices[sourceId]?.section!==section)return;
+  section=manifest.section;selection.section=section;
+ }
+ if(!m.isConnected||!["source-process","source-secretary"].includes(app.page)||app.selectedSourceId!==sourceId||app.processChoices[sourceId]?.packId!==packId||app.processChoices[sourceId]?.section!==section)return;
+ app.processManifests[sourceId]=manifest;refreshProcessMenu(sourceId,manifest);
+ $("breadcrumb").textContent=manifest.process.title+" · "+(manifest.navigation.find(s=>s.id===section)?.label||"کارتابل");
+ if(manifest.process.renderer==="meeting"){
+  const view=manifest.navigation.find(s=>s.id===section)?.view;
+  if(view==="assistant"){await assistantPage(sourceId);return}
+  if(view==="reports"){await reportsPage(sourceId);return}
+  if(view==="monitor"){await monitorPage(sourceId);return}
+  if(view==="meetings"){await boundSourceMeetings();return}
+  await secretaryPage(sourceId,packId,section,manifest);return;
+ }
+ heading(m,manifest.process.title,manifest.navigation.find(s=>s.id===manifest.section)?.label||"کارتابل فرایند");
+ const view=manifest.navigation.find(s=>s.id===manifest.section)?.view;
+ if(view==="overview"){for(const p of manifest.process.processes)add(m,note(p.title+" · "+p.process_uid));for(const s of manifest.navigation)add(m,note(s.label+": "+fmt(s.count)));return}
+ const box=card("وظایف من","این آداپتور، کارتابل بومی فرایند را به صورت خواندنی نمایش می‌دهد.");
+ for(const t of manifest.tasks)add(box,el("p","",t.stage_label+" · پرونده "+t.number));
+ if(!manifest.tasks.length)add(box,note("وظیفه جاری برای شما در این فرایند وجود ندارد."));
+ if(manifest.truncated)add(box,note("بیش از ۲۰۰ وظیفه وجود دارد؛ فهرست کامل نیست."));add(m,box);
+}
+
+function refreshProcessMenu(sourceId,manifest){
+ const choice=app.processChoices[sourceId];if(!choice||choice.packId!==manifest.process.id)return;
+ const target=Array.from(document.querySelectorAll('[data-process-menu]')).find(x=>x.dataset.processMenu===sourceId);if(!target)return;
+ target.replaceChildren();for(const section of manifest.navigation){const b=link(section.label+(section.count?" · "+fmt(section.count):""),()=>{app.selectedSourceId=sourceId;app.processChoices[sourceId].section=section.id;select("source-process")});b.dataset.page="source-process";b.dataset.sourceId=sourceId;b.dataset.packId=manifest.process.id;b.dataset.section=section.id;b.classList.toggle("active",sourceId===app.selectedSourceId&&section.id===choice.section);add(target,b)}
 }

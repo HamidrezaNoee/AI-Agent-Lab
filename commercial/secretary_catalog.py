@@ -71,14 +71,16 @@ def get(source_id,identifier):
  return found
 
 def save(source_id,pack,actor,*,identifier=None,revision=None,enabled=True,monitor_lead_minutes=1440,action_lead_minutes=60):
+ from .process_workspace import native_ids
+ identifiers=native_ids(pack)
  if not 0<=monitor_lead_minutes<=43200 or not 0<=action_lead_minutes<=43200:raise ValueError('فاصله یادآوری معتبر نیست.')
  with agent_storage.transaction() as tx:
   data=tx.get(STORE,[],lock=True);old=next((p for p in data if p['id']==identifier and p['source_id']==source_id),None)
   if identifier and (not old or old['revision']!=revision):raise ValueError('تنظیم فرایند تغییر کرده است؛ دوباره بارگذاری کنید.')
-  if any(p['id']!=identifier and p['source_id']==source_id and any(p[k]['process_uid']==pack[k]['process_uid'] for k in ('meeting','action')) for p in data):raise ValueError('این فرایند قبلاً برای همین اتصال تنظیم شده است.')
+  if any(p['id']!=identifier and p['source_id']==source_id and identifiers & {v['process_uid'] for v in p.values() if isinstance(v,dict) and 'process_uid' in v} for p in data):raise ValueError('این فرایند قبلاً برای همین اتصال تنظیم شده است.')
   row={**pack,'id':identifier or secrets.token_hex(12),'source_id':source_id,'enabled':enabled,'revision':(old or {}).get('revision',0)+1,
    'monitor_lead_minutes':monitor_lead_minutes,'action_lead_minutes':action_lead_minutes,
-   'tools':['extract_fields','request_missing_fields','submit_invitation','review_invitation','submit_minutes','review_minutes','submit_action_report','review_action','prepare_monitoring','propose_followup']}
+   'tools':['extract_fields','request_missing_fields','submit_invitation','review_invitation','submit_minutes','review_minutes','submit_action_report','review_action','prepare_monitoring','propose_followup'] if pack['adapter']=='meeting_v2' else ['read_own_tasks']}
   tx.put(STORE,[p for p in data if p['id']!=row['id']]+[row]);tx.audit('',actor,'SECRETARY_PACK_CONFIGURED',{'source_id':source_id,'pack_id':row['id']})
  return row
 

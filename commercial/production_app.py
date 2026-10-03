@@ -619,6 +619,8 @@ def _source_store_response(source_id, action, principal):
         profile=processmaker_profile(source_id)
         with open_production(config=profile["mysql"]) as con:
             scope=verified_scope(con,principal,source_id=source_id)
+            from .process_context import scoped
+            scope=scoped(scope)
             return action(con,scope)
     except BindingError:
         raise HTTPException(status_code=404,detail="اتصال ProcessMaker پیدا نشد.")
@@ -847,3 +849,9 @@ async def agent_storage_unavailable(request,exc):
 
 from .secretary_inbox_routes import register as register_secretary_inbox
 register_secretary_inbox(app,_authorized,_csrf)
+
+from .process_workspace import register as register_process_workspaces
+register_process_workspaces(app,_authorized)
+
+from .process_context import install as install_process_context
+install_process_context(app)

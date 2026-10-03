@@ -56,6 +56,7 @@ def test_native_update_and_duplicate_submit(pack,store):
  class PM:
   count=0
   def assigned(self,*a):return 1
+  def variables(self,*a):return t["native"]
   def submit_stage(self,*a):self.count+=1
  pm=PM();r.submit(S,'actor',t,row['revision'],pm=pm)
  with pytest.raises(RevisionConflict):r.submit(S,'actor',t,row['revision'],pm=pm)
@@ -68,9 +69,10 @@ def test_native_change_rejects_stale_draft(pack,store):
  reopened=r.draft(S,'actor',t);assert reopened['revision']>row['revision'] and reopened['values']['MTG_Location']=='محل جدید'
 
 def test_timeout_is_not_retried(pack,store):
- t=task(pack,'invitation_approval');row=r.draft(S,'actor',t);row=r.update(S,'actor',t,row['revision'],{'MTG_InvitationApproval':'Approved'})
+ t=task(pack,'invitation_approval',copy.deepcopy(V));row=r.draft(S,'actor',t);row=r.update(S,'actor',t,row['revision'],{'MTG_InvitationApproval':'Approved'})
  class PM:
   def assigned(self,*a):return 1
+  def variables(self,*a):return t["native"]
   def submit_stage(self,*a):raise TimeoutError()
  with pytest.raises(TimeoutError):r.submit(S,'actor',t,row['revision'],pm=PM())
  assert r.draft(S,'actor',t)['status']=='reconciliation_required'

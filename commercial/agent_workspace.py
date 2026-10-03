@@ -32,6 +32,8 @@ def scope_stamp(scope):
         scope["role"],
         sorted(scope.get("visible_uids", [])),
     ]
+    if scope.get("process_pack_id"):
+        value += [scope["process_pack_id"],scope.get("meeting_process_uid"),scope.get("action_process_uid")]
     return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 
 
@@ -113,3 +115,4 @@ def public_conversation(row):
             for t in row["turns"]
         ]
     }
+

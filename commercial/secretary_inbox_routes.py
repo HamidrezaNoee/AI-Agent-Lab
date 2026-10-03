@@ -1,5 +1,5 @@
 """Task inbox and secretary tools; all writes retain current native assignment checks."""
-from fastapi import Depends,HTTPException
+from fastapi import Depends,HTTPException,Query
 from fastapi.responses import Response
 from pydantic import BaseModel,ConfigDict,Field
 from . import secretary_runtime as runtime,secretary_catalog as catalog,secretary_credentials as credentials
@@ -58,8 +58,13 @@ def register(app,authorized,csrf):
   context={k:v for k,v in t['native'].items() if k in t['pack']['stages'][t['stage']]['fields'] and not any(x in k for x in ('File','Evidence','Json','History'))}
   return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},'draft':{k:row[k] for k in ('values','revision','status','questions')},'form':runtime.form(t),'context':context,'missing':runtime.gaps(row['values'],t),'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
  @app.get(base+'/inbox')
- def inbox(source_id:str,value=Depends(authorized)):
-  return access(value,source_id,lambda con,s,p:{**runtime.inbox(con,s),'oauth_connected':credentials.connected(s,p.subject),'sessions':[{'id':r['id'],'pack_id':r['pack_id'],'status':r['status'],'title':r['values'].get('MTG_MeetingTitle','جلسه جدید'),'case_uid':r['case_uid']} for r in runtime.sessions(s,p.subject)]})
+ def inbox(source_id:str,pack_id:str|None=Query(None,pattern=r'^[0-9a-f]{24}$'),value=Depends(authorized)):
+  def run(con,s,p):
+   data=runtime.inbox(con,s,pack_id=pack_id)
+   enabled={x['id'] for x in catalog.packs(s['source_id'],True) if x.get('adapter')=='meeting_v2'}
+   sessions=[{'id':r['id'],'pack_id':r['pack_id'],'status':r['status'],'title':r['values'].get('MTG_MeetingTitle','جلسه جدید'),'case_uid':r['case_uid']} for r in runtime.sessions(s,p.subject) if (not pack_id or r['pack_id']==pack_id) and r['pack_id'] in enabled]
+   return {**data,'oauth_connected':credentials.connected(s,p.subject),'sessions':sessions}
+  return access(value,source_id,run)
  @app.post(base+'/notifications/{identifier}/read')
  def read_notice(source_id:str,identifier:str,value=Depends(csrf)):
   return access(value,source_id,lambda con,s,p:runtime.acknowledge(s,identifier))
@@ -123,9 +128,10 @@ def register(app,authorized,csrf):
  def advice(source_id:str,case_uid:str,index:int,pack_id:str,value=Depends(csrf)):
   from .secretary_evidence import assess
   s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
+  original_scope=s
   def run():
    with run_slot((str(p.tenant_id),p.subject)):answer=assess(s,p.subject,t)
-   return access(value,source_id,lambda con,s,p:answer if runtime.native_stamp(runtime.task(con,s,case_uid,index,pack_id))==runtime.native_stamp(t) else (_ for _ in ()).throw(RevisionConflict()))
+   return access(value,source_id,lambda con,s,p:answer if runtime.scope_stamp(s)==runtime.scope_stamp(original_scope) and catalog.get(s['source_id'],pack_id)['revision']==t['pack']['revision'] and runtime.native_stamp(runtime.task(con,s,case_uid,index,pack_id))==runtime.native_stamp(t) else (_ for _ in ()).throw(RevisionConflict()))
   try:return guard_model(run)
   except ValueError as exc:raise HTTPException(422,str(exc))
  @app.post(base+'/tasks/{case_uid}/{index}/speech')

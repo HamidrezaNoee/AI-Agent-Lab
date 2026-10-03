@@ -1,5 +1,26 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-03: process workspaces and audit
+
+Starting upstream: `da14de175025efc39da50b534be9889ad3000577`, same feature branch.
+`process_workspace.py` registers trusted adapters (`meeting_v2`, read-only
+`native_tasks_v1`), validates process UID collisions, and serves source/pack/license
+scoped manifests. User menus and inboxes follow the selected pack, with independent
+analytical module permissions. `process_context.py` revalidates analytical selection;
+native queries and conversation stamps include selected process identities.
+Secretary writes now compare fresh REST form data before claiming/submitting and
+revalidate active people before creating invitations. Relevant form fields alone
+participate in native revision checks. Evidence quotes use actual scalar/document text.
+Admin connects read-only native packs and toggles revision-checked activation.
+Docker explicit COPY includes both new modules; release test checks every COPY source.
+
+Validation: full commercial suite 335 passed, 55 subtests; both DOM integration
+scripts passed; production/admin JavaScript syntax passed. No live SQL/PM/Keycloak/model
+integration, Docker daemon or Chromium screenshot validation was available. Root
+prototype RAG suites remain blocked locally by missing native libodbc.so.2. See
+`AVAN_AUDIT_20261003_FA.md` for limits and `PROCESS_WORKSPACE_FA.md` for extension and
+update instructions. No identity, secret or MySQL write architecture changes.
+
 ## Starting point and scope
 
 Repository: HamidrezaNoee/AI-Agent-Lab. Branch:
