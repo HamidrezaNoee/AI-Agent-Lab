@@ -110,7 +110,7 @@ const server=http.createServer((req,res)=>{
 
  await page.locator('[data-page=source-bi][data-source-id="'+sourceId+'"]').click();
  await page.getByText('تأیید خرید',{exact:true}).waitFor();
- if(await page.locator('meter').count()!==2)throw Error('Missing scoped BI charts');
+ if(await page.locator('meter').count()!==3)throw Error('Missing scoped BI charts');
  const csv=page.waitForEvent('download');
  await page.getByRole('button',{name:'دریافت CSV فرایندها'}).click();
  await csv;
