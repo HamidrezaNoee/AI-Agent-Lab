@@ -317,6 +317,38 @@ def bind(*,subject:str,source_id:str,external_user_id:str,
     return record
 
 
+
+def bind_by_username(*,subject:str,source_id:str,external_username:str,
+                     approved_by:str="GodAdmin")->dict:
+    """Bind one AVAN user to an active external BPMS account by exact username.
+
+    The match is case-insensitive but otherwise exact. This is intentionally not
+    an automatic identity merge: an administrator must provide/confirm the BPMS
+    username, and the external directory is re-read before persisting the binding.
+    """
+    username=_clean_text(external_username,120)
+    if not username:
+        raise BindingError("BPMS username is required")
+    users=directory_users(source_id,refresh=True)
+    matches=[
+        u for u in users
+        if u.get("active")
+        and _clean_text(u.get("username"),120).casefold()==username.casefold()
+    ]
+    if not matches:
+        raise BindingError("BPMS username does not exist or is inactive")
+    if len(matches)>1:
+        raise BindingError("BPMS username is not unique")
+    external=matches[0]
+    return bind(
+        subject=subject,
+        source_id=source_id,
+        external_user_id=external["external_user_id"],
+        match_method="manual",
+        approved_by=approved_by,
+        _directory_snapshot=users,
+    )
+
 def unbind(*,subject:str,source_id:str,approved_by:str="GodAdmin")->dict:
     data,_=_avan_user(subject)
     tenant_id=data.get("tenant_id")
