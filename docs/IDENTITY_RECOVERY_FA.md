@@ -18,7 +18,7 @@ $identityUsername = Read-Host 'نام کاربری هویت جدید AVAN'
 docker compose @composeArgs exec avan python -m commercial.identity_recovery --username $identityUsername
 ```
 
-اگر رمز جدید پذیرفته نشد، به جای تلاش‌های تکراری یک رمز موقت جدید تعیین کنید:
+اگر رمز جدید پذیرفته نشد، به جای تلاش‌های تکراری یک رمز ورود جدید تعیین کنید:
 
 ```powershell
 docker compose @composeArgs exec avan python -m commercial.identity_recovery --username $identityUsername --reset-password
@@ -39,8 +39,8 @@ Keycloak توسط مدیر میزبان بررسی شود؛ فرمان به‌ط
 بازیابی اضطراری قدیمی `--reset-godadmin` اتصال هویت و MFA اولیه را پاک می‌کند؛
 برای مشکل ورود هویت جدید از آن استفاده نکنید.
 
-## باز و بسته‌شدن مستطیل
+## مستطیل ورود
 
-مدیریت ← تنظیمات ظاهری ← بخش رفتار Hover: «باز و بسته‌شدن خودکار مستطیل ورود».
-با خاموش کردن، فرم همیشه باز می‌ماند. مرحله OTP همیشه باز است. تنظیم را ذخیره
-و صفحه ورود را با Ctrl+F5 تازه کنید. پیش‌فرض برای تنظیمات قدیمی روشن است.
+مستطیل ورود AVAN ثابت و همیشه باز است و دیگر تنظیم Auto Collapse یا Drag ندارد.
+مرحله OTP نیز صفحه مستقل خودش را دارد و فقط برای حسابی ظاهر می‌شود که Authenticator
+واقعاً روی آن فعال شده باشد. پس از به‌روزرسانی صفحه ورود را با Ctrl+F5 تازه کنید.
