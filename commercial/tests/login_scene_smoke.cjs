@@ -104,16 +104,14 @@ const server=http.createServer((req,res)=>{
  await page.mouse.move(hb.x+hb.width/2+90,hb.y+hb.height/2+55,{steps:8});
  await page.mouse.up();
  const after=await card.boundingBox();
- if(Math.abs(after.x-before.x)<30&&Math.abs(after.y-before.y)<20)throw Error('Login card drag did not move');
+ if(Math.abs(after.x-before.x)>2||Math.abs(after.y-before.y)>2)throw Error('Fixed login card moved after drag gesture');
  if(errors.length)throw Error('Browser errors: '+errors.join(' | '));
- // First-step panel reveals on hover and collapses on leave; orbit hit target stays stable.
+ // The first-step panel is permanently open and independent of pointer position.
  await page.mouse.move(0,0);
- await page.waitForFunction(()=>document.querySelector('.login-reveal-card')?.classList.contains('is-collapsed'));
- if(await page.locator('input[name="username"]').isVisible())throw Error('Login form did not collapse');
- const revealBox=await card.boundingBox();
- await page.mouse.move(revealBox.x+revealBox.width/2,revealBox.y+revealBox.height/2);
- await page.waitForFunction(()=>document.querySelector('.login-reveal-card')?.classList.contains('is-expanded'));
- if(!await page.locator('input[name="username"]').isVisible())throw Error('Login form did not reveal');
+ await page.waitForTimeout(250);
+ if(!await card.evaluate(el=>el.classList.contains('is-expanded')))throw Error('Login card is not fixed open');
+ if(await card.evaluate(el=>el.classList.contains('is-collapsed')))throw Error('Login card collapsed unexpectedly');
+ if(!await page.locator('input[name="username"]').isVisible())throw Error('Fixed login form is hidden');
  if(await page.locator('input[name="username"]').inputValue()!=='')throw Error('Username prefilled');
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.waitForTimeout(100);
@@ -124,9 +122,9 @@ const server=http.createServer((req,res)=>{
  await page.setViewportSize({width:390,height:844});
  await page.mouse.move(0,0);
  await page.waitForTimeout(250);
- await page.locator('.login-reveal-toggle').click({force:true});
- if(!await page.locator('input[name="username"]').isVisible())throw Error('Mobile form hidden');
+ if(await page.locator('.login-reveal-toggle:visible').count())throw Error('Legacy reveal toggle is still visible');
+ if(!await page.locator('input[name="username"]').isVisible())throw Error('Mobile fixed form hidden');
  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile horizontal overflow');
  await browser.close();server.close();
- console.log('LOGIN SCENE PASS: configurable V4 background, visible globe, settings-driven nodes, tooltip/select and unchanged draggable login card');
+ console.log('LOGIN SCENE PASS: configurable V4 background, visible globe, stable nodes and fixed always-open login card');
 })().catch(e=>{console.error(e);try{server.close()}catch(_){}process.exit(1)});
