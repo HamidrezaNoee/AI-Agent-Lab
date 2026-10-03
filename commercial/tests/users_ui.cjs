@@ -9,7 +9,7 @@ w.fetch=async(url,options={})=>{
  const name=url.replace('/admin/api/','').split('?')[0];
  const fixtures={'users/mapped':{users:[user]},'users/identities':{users:[user]},'users/pending':{pending:[]},'user-bindings/sources':{sources:[{id:source,name:'ProcessMaker',engine:'processmaker'}]},'license/status':{valid:true,modules:[1,2]},'identity/status':{godadmin_local:true,godadmin_username:'godadmin'},'company':{company_name:'Company'},'user-bindings/list':{bindings:[]},'user-bindings/directory':{users:[{external_user_id:'p'.repeat(32),display_name:'BPMS Person',username:'person',active:true}],suggestions:[]}};
  if(fixtures[name])data=fixtures[name];
- else if(!['users/password','users/profile','users/delete','user-bindings/bind'].includes(name))throw Error('Unexpected '+url);
+ else if(!['users/create-identity','users/password','users/profile','users/delete','user-bindings/bind'].includes(name))throw Error('Unexpected '+url);
  return {ok:true,json:async()=>data};
 };
 let code=fs.readFileSync(path.join(__dirname,'../web/admin/app.js'),'utf8').replace('document.addEventListener("DOMContentLoaded",start);','');
@@ -20,6 +20,25 @@ const person=()=>[...w.document.querySelectorAll('.connection-list > section')].
 (async()=>{
  await w.renderUsers(w.document.getElementById('main'));
  assert.equal(w.document.querySelectorAll('form').length,0);
+
+ // Creating a user requires an immediately usable password plus confirmation.
+ button(w.document,'افزودن کاربر').click();
+ let create=w.document.querySelector('form');
+ assert(create.elements.password);assert(create.elements.repeat);
+ create.elements.username.value='new.person';
+ create.elements.name.value='New Person';
+ create.elements.email.value='new.person@example.com';
+ create.elements.password.value='new-password-123456';
+ create.elements.repeat.value='different-password';
+ create.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+ assert(!calls.some(c=>c.url.endsWith('/users/create-identity')));
+ create.elements.repeat.value='new-password-123456';
+ create.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+ const created=calls.find(c=>c.url.endsWith('/users/create-identity'));assert(created);
+ const createBody=JSON.parse(created.options.body);
+ assert.equal(createBody.temporary_password,'new-password-123456');
+ assert.equal(created.options.headers['X-AVAN-ADMIN-CSRF'],'csrf');
+
  button(person(),'ویرایش').click();assert.equal(w.document.querySelectorAll('form').length,1);
  button(person(),'تغییر رمز').click(); // clicking another action must open its own editor
  assert(w.document.querySelector('input[name=password]'));
@@ -36,5 +55,5 @@ const person=()=>[...w.document.querySelectorAll('.connection-list > section')].
  button(person(),'انصراف').click();assert(!calls.some(c=>c.url.endsWith('/users/delete')));
  button(person(),'حذف کاربر').click();button(person(),'حذف قطعی کاربر').click();await tick();
  const deletion=calls.find(c=>c.url.endsWith('/users/delete'));assert.equal(JSON.parse(deletion.options.body).subject,uid);assert.equal(deletion.options.headers['X-AVAN-ADMIN-CSRF'],'csrf');
- dom.window.close();console.log('Users DOM passed: closed fields, selected-user password, CSRF, per-BPMS editor and confirmed deletion.');
+ dom.window.close();console.log('Users DOM passed: confirmed login password creation, selected-user reset, CSRF, BPMS editor and deletion.');
 })().catch(e=>{dom.window.close();console.error(e);process.exitCode=1});
