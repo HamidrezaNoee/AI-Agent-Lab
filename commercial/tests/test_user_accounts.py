@@ -11,7 +11,7 @@ def service(calls,foreign=False):
         if request.url.path.endswith('/token'):return httpx.Response(200,json={'access_token':'secret'})
         if request.method=='GET':return httpx.Response(200,json={'id':SUBJECT,'email':'old@example.com','attributes':{'tenant_id':['other' if foreign else TENANT]}})
         return httpx.Response(204)
-    return Directory(httpx.Client(transport=httpx.MockTransport(handle)),'http://auth.localhost:8181/realms/avan','secret',TENANT)
+    return Directory(httpx.Client(transport=httpx.MockTransport(handle)),'http://auth.localhost:8181/realms/avan','0123456789abcdef',TENANT)
 
 def test_other_tenant_cannot_be_edited_or_reset():
     for action in ('profile','password'):
@@ -29,10 +29,12 @@ def test_email_edit_removes_verification_without_changing_roles():
     assert body['emailVerified'] is False
     assert 'attributes' not in body and 'realmRoles' not in body and 'enabled' not in body
 
-def test_temporary_password_revokes_keycloak_sessions_preserves_otp():
+def test_password_reset_is_permanent_revokes_sessions_and_preserves_otp():
     calls=[];api=service(calls)
     api.password(SUBJECT,'long-password-1234')
-    assert calls[-2].url.path.endswith('/reset-password')
+    reset=next(r for r in calls if r.url.path.endswith('/reset-password'))
+    import json
+    assert json.loads(reset.content)['temporary'] is False
     assert calls[-1].url.path.endswith('/logout')
     assert not any('/credentials/' in r.url.path for r in calls)
 
@@ -62,7 +64,7 @@ def test_delete_checks_boundary_before_detaching_and_can_retry(kind):
             return httpx.Response(200,json=user)
         events.append('delete')
         return httpx.Response(500 if kind=='failure' else 404 if kind=='missing' else 204)
-    api=Directory(httpx.Client(transport=httpx.MockTransport(handle)),'http://auth.localhost:8181/realms/avan','secret',TENANT)
+    api=Directory(httpx.Client(transport=httpx.MockTransport(handle)),'http://auth.localhost:8181/realms/avan','0123456789abcdef',TENANT)
     if kind in ('foreign','service','failure'):
         with pytest.raises(AccountError):api.delete(SUBJECT,lambda:events.append('detach'))
     else:api.delete(SUBJECT,lambda:events.append('detach'))
@@ -112,3 +114,34 @@ def test_user_deletion_revokes_only_selected_sessions(monkeypatch):
     monkeypatch.setattr(app,'sessions',{'target':{'subject':SUBJECT},'other':{'subject':'someone-else'}})
     accounts.revoke_sessions(SUBJECT)
     assert app.sessions=={'other':{'subject':'someone-else'}}
+
+
+def test_password_reset_repairs_legacy_required_actions_without_removing_otp():
+    import json
+    calls=[]
+    def handle(request):
+        calls.append(request)
+        if request.url.path.endswith('/token'):
+            return httpx.Response(200,json={'access_token':'secret'})
+        if request.method=='GET':
+            return httpx.Response(200,json={
+                'id':SUBJECT,
+                'email':'old@example.com',
+                'attributes':{'tenant_id':[TENANT]},
+                'requiredActions':['UPDATE_PASSWORD','CONFIGURE_TOTP','VERIFY_EMAIL'],
+            })
+        return httpx.Response(204)
+    api=Directory(
+        httpx.Client(transport=httpx.MockTransport(handle)),
+        'http://auth.localhost:8181/realms/avan',
+        '0123456789abcdef',
+        TENANT,
+    )
+    api.password(SUBJECT,'long-password-1234')
+    updates=[
+        json.loads(r.content)
+        for r in calls
+        if r.method=='PUT' and r.url.path.endswith('/users/'+SUBJECT)
+    ]
+    assert updates==[{'requiredActions':['VERIFY_EMAIL'],'enabled':True}]
+    assert not any('/credentials/' in r.url.path for r in calls)
