@@ -1156,12 +1156,30 @@ async function renderUsers(m){
   form.addEventListener("submit",async e=>{e.preventDefault();busy(form,true);try{const result=await submit(form);close(host);if(result!==false)await showSettings("users")}catch(err){showError(out,err)}finally{busy(form,false)}});return form;
  }
  const raw=(form,name)=>form.elements.namedItem(name).value;
- function openCreate(){open(createHost,()=>saveForm(createHost,[field("نام کاربری","username"),field("نام و نام خانوادگی","name"),field("ایمیل","email","",{type:"email"}),field("رمز موقت؛ حداقل ۱۶ نویسه","password","",{secret:true}),selectField("نقش","role",[{value:"Expert",label:"کارشناس"},{value:"Manager",label:"مدیر"},{value:"SysAdmin",label:"مدیر سیستم"}],"Expert")],async f=>{await api("users/create-identity",{username:formValue(f,"username"),name:formValue(f,"name"),email:formValue(f,"email"),role:formValue(f,"role"),temporary_password:raw(f,"password")})}))}
+ function openCreate(){open(createHost,()=>saveForm(createHost,[
+  field("نام کاربری","username"),
+  field("نام و نام خانوادگی","name"),
+  field("ایمیل","email","",{type:"email"}),
+  field("رمز ورود؛ حداقل ۱۶ نویسه","password","",{secret:true}),
+  field("تکرار رمز ورود","repeat","",{secret:true}),
+  selectField("نقش","role",[{value:"Expert",label:"کارشناس"},{value:"Manager",label:"مدیر"},{value:"SysAdmin",label:"مدیر سیستم"}],"Expert")
+ ],async f=>{
+  const password=raw(f,"password");
+  if(password!==raw(f,"repeat"))throw Error("تکرار رمز ورود یکسان نیست.");
+  await api("users/create-identity",{
+   username:formValue(f,"username"),
+   name:formValue(f,"name"),
+   email:formValue(f,"email"),
+   role:formValue(f,"role"),
+   temporary_password:password
+  });
+ }))}
+
  function edit(user,host,passwordOnly){open(host,()=>{
   const local=user.local,fields=[];
   if(!passwordOnly){fields.push(field("نام کاربری","username",user.username));if(!local)fields.push(field("نام و نام خانوادگی","name",user.name),field("ایمیل","email",user.email,{type:"email"}))}
   if(local)fields.push(field("رمز فعلی","current","",{secret:true}),field("کد Authenticator","otp"));
-  if(passwordOnly)fields.push(field(local?"رمز جدید؛ حداقل ۱۶ نویسه":"رمز موقت جدید؛ حداقل ۱۶ نویسه","password","",{secret:true}),field("تکرار رمز جدید","repeat","",{secret:true}));
+  if(passwordOnly)fields.push(field("رمز جدید؛ حداقل ۱۶ نویسه","password","",{secret:true}),field("تکرار رمز جدید","repeat","",{secret:true}));
   saveForm(host,fields,async f=>{
    const password=passwordOnly?raw(f,"password"):"";
    if(passwordOnly&&password!==raw(f,"repeat"))throw Error("تکرار رمز یکسان نیست.");
