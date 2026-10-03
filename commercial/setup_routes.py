@@ -1606,6 +1606,62 @@ def create_avan_identity(body:AvanIdentityCreate,session=Depends(_ready)):
     }
 
 
+class ManagedIdentityActivation(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    subject:UUID
+
+
+@router.post("/api/users/activate-managed")
+def activate_managed_identity(body:ManagedIdentityActivation,session=Depends(_ready)):
+    company=setup.get_setting("company") or {}
+    tenant=company.get("tenant_id")
+    company_name=(company.get("company_name") or "").strip()
+    if not tenant or not company_name:
+        raise HTTPException(409,"ابتدا اطلاعات سازمان را کامل ثبت کنید.")
+
+    from .user_accounts import directory
+    from .production_onboarding import (
+        ProvisioningDenied,
+        register_managed_identity,
+    )
+
+    subject=str(body.subject)
+    with directory() as service:
+        user=service.get(subject)
+        if not user.get("enabled"):
+            raise HTTPException(409,"هویت Keycloak این کاربر غیرفعال است.")
+        if user.get("emailVerified") is not True:
+            raise HTTPException(409,"ایمیل هویت Keycloak این کاربر هنوز تأیید نشده است.")
+        role=service.avan_role(subject)
+        username=str(user.get("username") or "").strip()
+        email=str(user.get("email") or "").strip()
+        name=(" ".join([
+            str(user.get("firstName") or "").strip(),
+            str(user.get("lastName") or "").strip(),
+        ])).strip() or username
+        try:
+            access=register_managed_identity(
+                tenant_id=tenant,
+                subject=subject,
+                company_name=company_name,
+                username=username,
+                email=email,
+                name=name,
+                role=role,
+            )
+        except ProvisioningDenied as exc:
+            raise HTTPException(409,str(exc)) from exc
+
+    setup.audit("AVAN_EXISTING_IDENTITY_ACTIVATED_"+role.upper())
+    return {
+        "activated":True,
+        "subject":subject,
+        "username":username,
+        "role":role,
+        "modules":access["modules"],
+    }
+
+
 class StaffApproval(BaseModel):
     model_config=ConfigDict(extra="forbid")
     tenant_id:str=Field(min_length=36,max_length=36)
