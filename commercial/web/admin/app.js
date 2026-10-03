@@ -500,9 +500,169 @@ function showTotpEnroll(){
  });
 }
 
+
+async function renderUserBpmsBindings(m){
+ const p=panel("اتصال کاربران به BPMS",
+  "هر کاربر AVAN را به حساب متناظر همان شخص در هر BPMS متصل کنید. هویت AVAN مستقل می‌ماند و فقط نگاشت حساب BPMS ثبت می‌شود.");
+ append(m,p);
+ const feedback=node("div"),controls=node("div","grid"),editor=node("div"),summary=node("div","connection-list");
+ append(p,feedback,controls,editor,node("h3","","اتصال‌های ثبت‌شده"),summary);
+
+ const results=await Promise.allSettled([
+  api("users/mapped"),
+  api("user-bindings/sources"),
+  api("user-bindings/list")
+ ]);
+ const value=i=>results[i].status==="fulfilled"?results[i].value:{};
+ for(const result of results)if(result.status==="rejected")append(feedback,info(result.reason.message,true));
+
+ const users=(value(0).users||[]).filter(x=>x.subject&&x.enabled!==false);
+ const sources=(value(1).sources||[]).filter(x=>x.id&&x.enabled!==false);
+ const bindings=value(2).bindings||[];
+
+ if(!users.length){
+  append(p,info("ابتدا حداقل یک کاربر فعال در AVAN ایجاد کنید.",true));
+  return;
+ }
+ if(!sources.length){
+  append(p,info("ابتدا حداقل یک اتصال فعال BPMS/ProcessMaker در بخش «اتصالات BPMS» ثبت کنید.",true));
+  return;
+ }
+
+ const userLabel=node("label","","کاربر AVAN"),userSelect=node("select");
+ userSelect.name="avan_subject";
+ for(const user of users){
+  const opt=node("option","",(user.name||user.username||user.subject)+" · "+(user.username||""));
+  opt.value=user.subject;append(userSelect,opt);
+ }
+ append(userLabel,userSelect);
+
+ const sourceLabel=node("label","","BPMS / ProcessMaker"),sourceSelect=node("select");
+ sourceSelect.name="source_id";
+ for(const source of sources){
+  const engine=source.engine==="processmaker"?"ProcessMaker":(source.engine||"BPMS");
+  const opt=node("option","",source.name+" · "+engine);
+  opt.value=source.id;append(sourceSelect,opt);
+ }
+ append(sourceLabel,sourceSelect);
+ append(controls,userLabel,sourceLabel);
+
+ const selectedUser=()=>users.find(x=>x.subject===userSelect.value);
+ const selectedSource=()=>sources.find(x=>x.id===sourceSelect.value);
+ const currentBinding=()=>bindings.find(x=>x.avan_subject===userSelect.value&&x.source_id===sourceSelect.value&&x.status==="active");
+
+ async function loadEditor(){
+  const user=selectedUser(),source=selectedSource();
+  if(!user||!source)return;
+  editor.replaceChildren(info("در حال خواندن کاربران «"+source.name+"»…"));
+  try{
+   const data=await api("user-bindings/directory?subject="+encodeURIComponent(user.subject)+
+                        "&source_id="+encodeURIComponent(source.id));
+   const directory=(data.users||[]).filter(x=>x.active);
+   const suggestions=data.suggestions||[];
+   const current=currentBinding();
+   editor.replaceChildren();
+
+   const box=panel("اتصال "+(user.name||user.username)+" به "+source.name,
+    "نام کاربری همان شخص در این BPMS را وارد کنید. آوان فقط در صورت وجود یک کاربر فعال با همین username اتصال را ثبت می‌کند.");
+   const form=node("form","grid binding-editor");
+   const usernameField=field("نام کاربری کاربر در "+source.name,"external_username",current?.external_username||"");
+   const input=usernameField.querySelector("input");
+   const listId="bpms-usernames-"+source.id+"-"+String(user.subject).replaceAll(/[^A-Za-z0-9]/g,"").slice(0,12);
+   const datalist=node("datalist");datalist.id=listId;input.setAttribute("list",listId);
+   input.autocomplete="off";input.placeholder="مثال: hamid.noee";
+   for(const ext of directory){
+    const opt=node("option");opt.value=ext.username||"";
+    opt.label=[ext.display_name,ext.unit].filter(Boolean).join(" · ");
+    append(datalist,opt);
+   }
+   append(form,usernameField,datalist);
+
+   if(current){
+    append(form,info("اتصال فعلی: "+current.external_username+
+      (current.external_display_name?" · "+current.external_display_name:"")));
+   }else{
+    append(form,info("برای این کاربر و این BPMS هنوز اتصالی ثبت نشده است."));
+   }
+
+   if(suggestions.length){
+    const suggestionBox=node("div","full");
+    append(suggestionBox,node("strong","","پیشنهادهای احتمالی"));
+    for(const candidate of suggestions.slice(0,3)){
+     const row=node("div","binding-suggestion");
+     append(row,
+      node("span","",candidate.display_name+" · "+candidate.username),
+      btn("استفاده از این username",()=>{input.value=candidate.username||""},"secondary"));
+     append(suggestionBox,row);
+    }
+    append(form,suggestionBox);
+   }
+
+   const out=node("div","full"),actions=node("div","actions full");
+   append(actions,
+    btn(current?"به‌روزرسانی اتصال":"برقراری اتصال",async()=>{
+     out.replaceChildren();
+     const username=input.value.trim();
+     if(!username){showError(out,Error("نام کاربری BPMS را وارد کنید."));return}
+     busy(form,true);
+     try{
+      await api("user-bindings/bind-username",{
+       subject:user.subject,source_id:source.id,external_username:username
+      });
+      append(out,info("اتصال کاربر به "+source.name+" با موفقیت ذخیره شد."));
+      await showSettings("userbpms");
+     }catch(err){showError(out,err)}finally{busy(form,false)}
+    }),
+    btn("خواندن مجدد کاربران BPMS",async()=>{
+     out.replaceChildren();busy(form,true);
+     try{
+      await api("user-bindings/refresh",{source_id:source.id});
+      append(out,info("فهرست کاربران و وضعیت اتصال‌ها از BPMS به‌روزرسانی شد."));
+      await loadEditor();
+     }catch(err){showError(out,err)}finally{busy(form,false)}
+    },"secondary")
+   );
+   if(current)append(actions,btn("قطع اتصال",async()=>{
+    if(!confirm("اتصال این کاربر به "+source.name+" قطع شود؟"))return;
+    out.replaceChildren();busy(form,true);
+    try{
+     await api("user-bindings/unbind",{subject:user.subject,source_id:source.id});
+     await showSettings("userbpms");
+    }catch(err){showError(out,err)}finally{busy(form,false)}
+   },"danger"));
+   append(form,actions,out);append(box,form);append(editor,box);
+  }catch(err){
+   editor.replaceChildren();
+   showError(editor,err);
+  }
+ }
+
+ userSelect.addEventListener("change",loadEditor);
+ sourceSelect.addEventListener("change",loadEditor);
+
+ if(!bindings.length)append(summary,info("هنوز هیچ اتصال کاربر↔BPMS ثبت نشده است."));
+ for(const binding of bindings){
+  const user=users.find(x=>x.subject===binding.avan_subject);
+  const source=sources.find(x=>x.id===binding.source_id);
+  if(!user||!source)continue;
+  const actions=node("div","connection-actions");
+  append(actions,btn("مدیریت",()=>{
+   userSelect.value=user.subject;sourceSelect.value=source.id;loadEditor();
+  },"secondary"));
+  append(summary,connectionItem(
+   (user.name||user.username)+" ↔ "+source.name,
+   "AVAN: "+(user.username||user.subject)+" · BPMS: "+(binding.external_username||"—"),
+   {active:binding.status==="active",label:binding.status==="active"?"متصل":"نیازمند بررسی"},
+   actions
+  ));
+ }
+ await loadEditor();
+}
+
 const menu=[
  ["connections","وضعیت سامانه"],
  ["bpms","اتصالات BPMS"],
+ ["userbpms","اتصال کاربران به BPMS"],
  ["agentdb","بانک Agent"],
  ["ai","هوش مصنوعی"],
  ["organization","سازمان و دسترسی"],
@@ -556,6 +716,7 @@ async function showSettings(page=state.page){
  try{
   if(page==="connections")await renderConnections(contentHost,settings);
   else if(page==="bpms")await renderBPMS(contentHost);
+  else if(page==="userbpms")await renderUserBpmsBindings(contentHost);
   else if(page==="agentdb")await renderAgentDatabase(contentHost);
   else if(page==="ai")renderAI(contentHost,settings.ai||{});
   else if(page==="organization")await renderOrganizationHub(contentHost);
