@@ -5,7 +5,7 @@ import pytest
 from commercial.identity_operator import create
 
 
-def test_new_identity_stays_disabled_until_tenant_and_role_are_confirmed():
+def test_new_identity_is_login_ready_only_after_tenant_and_role_are_confirmed():
     tenant = str(UUID(int=1))
     subject = str(UUID(int=2))
     calls = []
@@ -46,10 +46,13 @@ def test_new_identity_stays_disabled_until_tenant_and_role_are_confirmed():
             )
             == subject
         )
-    assert payload["enabled"] is False and payload["requiredActions"] == [
-        "UPDATE_PASSWORD",
-        "CONFIGURE_TOTP",
-    ]
+    assert payload["enabled"] is False
+    assert payload["requiredActions"] == []
+    assert payload["credentials"] == [{
+        "type": "password",
+        "value": "temporary-password",
+        "temporary": False,
+    }]
     assert calls[-2][1].endswith("/role-mappings/realm") and calls[-1][0] == "PUT"
 
 
