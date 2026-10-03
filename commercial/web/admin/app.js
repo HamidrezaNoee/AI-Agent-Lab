@@ -1184,6 +1184,11 @@ async function renderUsers(m){
     saveForm(host,[selectField("نقش","role",[{value:"Expert",label:"کارشناس"},{value:"Manager",label:"مدیر"},...((user.roles||[]).includes("SysAdmin")?[{value:"SysAdmin",label:"مدیر سیستم"}]:[])],"Expert"),field("واحد","department_name","",{required:false}),options],f=>api("users/approve",{tenant_id:user.tenant_id,subject:user.subject,company_name:company.company_name,role:formValue(f,"role"),department_name:formValue(f,"department_name")||null,manager_subject:null,modules:selectedModules(options)}));
    }),"secondary"));
   }
+  if(!user.local&&user.subject!==status.godadmin_subject)append(actions,btn("حذف کاربر",()=>open(host,()=>{
+   const form=node("form","grid"),out=node("div","full"),remove=node("button","danger","حذف قطعی کاربر");remove.type="submit";
+   append(form,info("حساب «"+(user.username||user.name)+"» و دسترسی‌های AVAN و اتصال‌های BPMS آن حذف می‌شوند. سوابق فرایندها باقی می‌مانند."),remove,btn("انصراف",()=>close(host),"secondary"),out);append(host,form);
+   form.addEventListener("submit",async e=>{e.preventDefault();busy(form,true);try{await api("users/delete",{subject:user.subject});close(host);await showSettings("users")}catch(err){showError(out,err)}finally{busy(form,false)}});
+  }),"secondary danger"));
   append(card,actions,host);append(accounts,card);
  }
  if(!rows.length)append(accounts,info("کاربری ثبت نشده است."));

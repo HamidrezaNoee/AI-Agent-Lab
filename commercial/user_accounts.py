@@ -29,9 +29,12 @@ class Directory:
         return r
     def allowed(self,user):
         return not user.get('serviceAccountClientId') and user.get('attributes',{}).get('tenant_id')==[self.tenant]
-    def get(self,subject):
+    def get(self,subject,*,missing_ok=False):
         subject=str(UUID(subject))
-        user=self.call('GET','/users/'+subject).json()
+        response=self.client.request('GET',self.base+'/users/'+subject,headers=self.headers)
+        if missing_ok and response.status_code==404:return None
+        if response.status_code!=200:raise AccountError('دریافت کاربر انجام نشد (HTTP '+str(response.status_code)+').')
+        user=response.json()
         if not self.allowed(user):raise AccountError('این حساب متعلق به سازمان انتخاب‌شده نیست.')
         return user
     def users(self):
@@ -53,6 +56,34 @@ class Directory:
         self.call('PUT','/users/'+str(UUID(subject))+'/reset-password',json={'type':'password','value':password,'temporary':True})
         if after_reset:after_reset()
         self.call('POST','/users/'+str(UUID(subject))+'/logout')
+
+    def delete(self,subject,before_delete=None):
+        self.get(subject,missing_ok=True)
+        if before_delete:before_delete()
+        response=self.client.request('DELETE',self.base+'/users/'+str(UUID(subject)),headers=self.headers)
+        if response.status_code not in (204,404):
+            raise AccountError('حذف هویت انجام نشد؛ دسترسی AVAN قطع شده است. دوباره حذف را انجام دهید (HTTP '+str(response.status_code)+').')
+
+def revoke_sessions(subject):
+    from .production_app import sessions,_session_lock
+    with _session_lock:
+        for sid,row in list(sessions.items()):
+            if row.get('subject')==subject:sessions.pop(sid,None)
+
+def remove_access(tenant,subject):
+    # One AVAN SQL transaction removes grants and all BPMS links. No BPMS writes.
+    from . import agent_storage,native_access,user_bpms_bindings as bindings
+    with agent_storage.transaction() as tx:
+        data=tx.get('organization_access',dict(native_access.EMPTY),lock=True)
+        if data.get('tenant_id')==tenant:
+            data['users']=[u for u in data.get('users',[]) if u.get('subject')!=subject]
+            for user in data['users']:
+                if user.get('manager_subject')==subject:user['manager_subject']=None
+            tx.put('organization_access',data)
+        state=bindings._state(tx,lock=True)
+        state['bindings']=[b for b in state['bindings'] if not (b.get('tenant_id')==tenant and b.get('avan_subject')==subject)]
+        tx.put(bindings.STORE_KEY,state)
+        tx.audit(tenant,'GodAdmin','USER_ACCESS_REMOVED',{'subject':subject})
 
 @contextmanager
 def directory():
@@ -77,6 +108,10 @@ class Password(BaseModel):
     subject:UUID
     password:str=Field(min_length=16,max_length=128)
 
+class Delete(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    subject:UUID
+
 def register(router,ready):
     @router.get('/api/users/identities')
     def identities(session=Depends(ready)):
@@ -89,11 +124,25 @@ def register(router,ready):
         return {'updated':True}
     @router.post('/api/users/password')
     def password(body:Password,session=Depends(ready)):
-        from .production_app import sessions,_session_lock
-        def revoke():
-            with _session_lock:
-                for sid,row in list(sessions.items()):
-                    if row.get('subject')==str(body.subject):sessions.pop(sid,None)
-        with directory() as service:service.password(str(body.subject),body.password,revoke)
+        with directory() as service:service.password(str(body.subject),body.password,lambda:revoke_sessions(str(body.subject)))
         setup.audit('USER_PASSWORD_RESET')
         return {'updated':True,'temporary':True}
+
+    @router.post('/api/users/delete')
+    def delete(body:Delete,session=Depends(ready)):
+        subject=str(body.subject)
+        bound=setup.godadmin_identity() or {}
+        if subject in (bound.get('subject'),session[1].get('subject')):
+            raise HTTPException(409,'حذف حساب اصلی یا حساب جاری مجاز نیست.')
+        with directory() as service:
+            # Validate tenant/service-account boundaries before any local mutation.
+            # Missing identities allow retry after an interrupted deletion.
+            def detach():
+                remove_access(service.tenant,subject)
+                revoke_sessions(subject)
+            service.delete(subject,detach)
+            with setup._db() as con:
+                exists=con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pending_identity'").fetchone()
+                if exists:con.execute('DELETE FROM pending_identity WHERE tenant_id=? AND subject=?',(service.tenant,subject))
+        setup.audit('USER_DELETED')
+        return {'deleted':True,'subject':subject}

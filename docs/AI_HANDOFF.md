@@ -1,5 +1,19 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-03: user deletion
+
+Add on-demand deletion confirmation to Users, excluding local/bound GodAdmin.
+POST users/delete uses existing admin/MFA/CSRF gates, validates tenant and excludes
+service accounts before mutations, and rejects bound/current administrator deletion.
+Remove AVAN grants and tenant-scoped BPMS bindings atomically in the dedicated SQL
+store, revoke sessions, delete Keycloak identity, then clear pending approval.
+Keep BPMS users, process cases and historical records. External deletion failure
+keeps access removed and reports retry; missing identity supports interrupted retries.
+No login assets changed; canonical scene sync run (identical outputs).
+Validation: 20 focused account/login/release tests passed; mocked Users DOM covers
+confirmation, cancel, selected-subject deletion and no local GodAdmin delete action.
+JS syntax and Python compilation passed. This does not certify live Keycloak.
+
 ## Update 2026-10-03: unified user administration
 
 Replace the explanatory identity screen and always-open account forms with one
