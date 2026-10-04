@@ -128,15 +128,17 @@ def register(app,authorized,csrf):
     if row['revision']!=body.revision:raise RevisionConflict()
     vals,questions=runtime.extract(body.text,t,row['values'],s,questions=row.get('questions',[]))
     decision=runtime.apply_explicit_decision(body.text,t['stage'],vals)
+    workflow_intent=runtime.apply_explicit_workflow_intent(body.text,t['stage'],vals)
+    advance=runtime.explicit_advance_intent(body.text,t['stage'],workflow_intent) or bool(decision)
    def commit(con,s,p):
     fresh=runtime.task(con,s,case_uid,index,pack_id)
     updated=runtime.update(s,p.subject,fresh,body.revision,vals,questions,turn_text=body.text)
     assistant=runtime.assistant_state(updated['values'],fresh,s,updated.get('questions',[]))
-    if body.auto_advance and decision and not assistant['missing']:
+    if body.auto_advance and advance and not assistant['missing']:
      sent=runtime.submit(s,p.subject,fresh,updated['revision'])
      return {'advanced':True,'status':sent['status'],'assistant':{
       'stage':fresh['stage'],'summary':assistant['summary'],'missing':[],
-      'can_submit':False,'message':'تصمیم شما ثبت شد و پرونده به مرحله بعد فرایند منتقل شد.'
+      'can_submit':False,'message':'دستور صریح شما اجرا شد و پرونده به مرحله بعد فرایند منتقل شد.'
      }}
     return response(s,p,fresh,updated)
    return access(value,source_id,commit)
