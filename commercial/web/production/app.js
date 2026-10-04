@@ -877,8 +877,8 @@ async function showMeeting(id){
   for(const a of meeting.actions){const row=el("tr");for(const v of [a.action_no,a.description,(a.owner_name||"نامشخص")+" / "+(a.owner_unit||"نامشخص"),a.is_closed?"بسته‌شده":a.status,a.progress_percent==null?"نامشخص":fmt(a.progress_percent)+"٪",dateText(a.due_at_utc)])add(row,el("td","",v));add(body,row)}add(table,body);add(m,add(el("div","table-scroll panel"),table));
  }catch(e){toast(e.message)}
 }
-function attachVoiceInput(target,input,platform=false,sourceId=null,onTranscript=null){
- const wrap=el("div","voice-bar"),status=el("span","muted");let recorder=null,stream=null,timer=null,discard=false,busy=false;
+function attachVoiceInput(target,input,platform=false,sourceId=null,onTranscript=null,compact=false){
+ const wrap=el("div","voice-bar"+(compact?" compact":"")),status=el("span","muted");let recorder=null,stream=null,timer=null,discard=false,busy=false;
  const cleanup=()=>{discard=true;if(timer)clearTimeout(timer);if(recorder?.state==="recording")recorder.stop();stream?.getTracks().forEach(t=>t.stop())};app.cleanup.push(cleanup);
  async function convert(blob){
   if(busy||discard)return;if(blob.size>8*1024*1024){status.textContent="حداکثر حجم صوت ۸ مگابایت است.";return}busy=true;button.disabled=true;upload.disabled=true;status.textContent="در حال تبدیل صوت؛ سپس متن را بازبینی کنید...";
@@ -888,18 +888,22 @@ function attachVoiceInput(target,input,platform=false,sourceId=null,onTranscript
    if(onTranscript)await onTranscript(r.text);
   }catch(e){status.textContent=e.message}finally{busy=false;button.disabled=false;upload.disabled=false}
  }
- const button=link("ضبط سؤال / یادداشت",async()=>{
+ const button=link(compact?"🎤":"ضبط سؤال / یادداشت",async()=>{
   if(recorder?.state==="recording"){recorder.stop();return}
   if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent="ضبط به HTTPS یا localhost نیاز دارد؛ می‌توانید فایل صوت انتخاب کنید.";return}
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true});if(discard){stream.getTracks().forEach(t=>t.stop());return}
    const mime=["audio/webm;codecs=opus","audio/mp4"].find(x=>MediaRecorder.isTypeSupported(x));if(!mime)throw Error("قالب ضبط مرورگر پشتیبانی نمی‌شود؛ فایل صوت انتخاب کنید.");
    recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-   recorder.onstop=()=>{clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());button.textContent="ضبط سؤال / یادداشت";if(!discard)convert(new Blob(chunks,{type:mime.split(";")[0]}))};
-   recorder.start();button.textContent="پایان ضبط و تبدیل";status.textContent="در حال ضبط؛ حداکثر ۹۰ ثانیه";timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop()},90000);
+   recorder.onstop=()=>{clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());button.textContent=compact?"🎤":"ضبط سؤال / یادداشت";if(!discard)convert(new Blob(chunks,{type:mime.split(";")[0]}))};
+   recorder.start();button.textContent=compact?"■":"پایان ضبط و تبدیل";status.textContent="در حال ضبط؛ حداکثر ۹۰ ثانیه";timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop()},90000);
   }catch(e){stream?.getTracks().forEach(t=>t.stop());status.textContent=e.message}
  });
  const upload=el("input");upload.type="file";upload.accept="audio/webm,audio/ogg,audio/wav,audio/mpeg,audio/mp4,.m4a";upload.setAttribute("aria-label","انتخاب فایل صوت برای تبدیل به متن");upload.addEventListener("change",()=>{if(upload.files[0])convert(upload.files[0])});
- add(wrap,button,upload,el("small","muted","برای تبدیل، صوت انتخابی به سرویس هوش مصنوعی ارسال می‌شود."),status);add(target,wrap);
+ if(compact){
+  upload.className="secretary-hidden-input";button.classList.add("icon-button");button.title="ضبط صوت";status.classList.add("voice-compact-status");
+  add(wrap,button,upload,status);
+ }else add(wrap,button,upload,el("small","muted","برای تبدیل، صوت انتخابی به سرویس هوش مصنوعی ارسال می‌شود."),status);
+ add(target,wrap);
 }
 function attachSpeech(target,result,sourceId=null){
  const area=el("div","voice-bar"),status=el("span","muted","صدای تولیدشده توسط هوش مصنوعی"),player=el("audio");player.controls=true;let part=0,parts=1,url=null;
