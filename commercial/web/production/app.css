@@ -62,3 +62,40 @@
  #bound-source-nav .nav-section-title{width:100%}
  .bound-source-group{min-width:210px;flex:1}
 }
+
+
+/* Conversational intelligent secretary */
+.secretary-conversation{padding:0;overflow:hidden}
+.secretary-conversation>h2,.secretary-conversation>.sub{padding-left:22px;padding-right:22px}
+.secretary-conversation>h2{padding-top:22px}
+.secretary-chat{display:flex;flex-direction:column;gap:12px;padding:18px 22px;max-height:520px;overflow:auto;background:linear-gradient(180deg,rgba(244,248,251,.72),rgba(255,255,255,.96));border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.chat-bubble{max-width:min(760px,88%);padding:13px 15px;border-radius:16px;line-height:2;white-space:pre-wrap;overflow-wrap:anywhere}
+.chat-bubble small{display:block;margin-bottom:5px;font-size:10px;opacity:.7;font-weight:800}
+.chat-bubble.assistant{align-self:flex-start;background:white;border:1px solid var(--border);border-bottom-right-radius:5px}
+.chat-bubble.user{align-self:flex-end;background:#e7f5f2;border:1px solid #c7e5df;border-bottom-left-radius:5px}
+.chat-summary,.secretary-invitation-summary pre{white-space:pre-wrap;font:inherit;line-height:2;margin:8px 0 0}
+.secretary-invitation-summary{margin:18px 22px 0;padding:15px;border:1px solid #cbe1de;background:#f2faf8;border-radius:13px}
+.secretary-invitation-summary strong{color:var(--teal)}
+.secretary-missing{margin:14px 22px;padding:14px 16px;border-right:4px solid #c68b24;background:#fff9ed;border-radius:10px}
+.secretary-missing p{margin:5px 0;font-size:12px}
+.secretary-composer{padding:18px 22px 22px}
+.secretary-composer>.field{margin-top:0}
+.secretary-composer textarea{min-height:105px}
+.voice-auto{display:flex!important;align-items:center;gap:8px;margin:8px 0!important;font-size:12px;color:var(--muted)}
+.voice-auto input{width:auto!important}
+.secretary-file-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0;padding:10px;border:1px dashed #c6d5df;border-radius:11px}
+.secretary-file-bar input[type=file]{max-width:420px}
+.secretary-quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.secretary-attachments{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.secretary-form-details{margin-top:18px;border:1px solid var(--border);border-radius:14px;background:white}
+.secretary-form-details>summary{cursor:pointer;padding:16px 18px;font-weight:800;color:var(--blue)}
+.secretary-form-body{padding:0 18px 18px}
+:root[data-theme='dark'] .secretary-chat{background:var(--surface-soft,#101b27)}
+:root[data-theme='dark'] .chat-bubble.assistant,:root[data-theme='dark'] .secretary-form-details{background:var(--surface,#172333)}
+@media(max-width:650px){
+ .chat-bubble{max-width:96%}
+ .secretary-chat,.secretary-composer{padding-left:12px;padding-right:12px}
+ .secretary-invitation-summary,.secretary-missing{margin-left:12px;margin-right:12px}
+ .secretary-file-bar{display:block}
+ .secretary-file-bar input[type=file]{max-width:100%}
+}
