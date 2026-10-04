@@ -200,3 +200,38 @@ def test_text_pdf_is_read_by_bounded_worker():
  content=DecodedStreamObject();content.set_data(b'BT /F1 12 Tf 72 720 Td (Completed shipment) Tj ET');page[NameObject('/Contents')]=writer._add_object(content)
  data=BytesIO();writer.write(data)
  assert 'Completed shipment' in document_text(data.getvalue(),'report.pdf')
+
+
+
+def test_new_conversation_does_not_ask_for_system_generated_meeting_number(pack,store):
+    row=r.session_create(S,'actor',pack['id'])
+    _,fake=r.session_load(S,'actor',row['id'])
+    fields={x['field'] for x in r.gaps(row['values'],fake)}
+    assert 'MTG_MeetingNo' not in fields
+    assert {'MTG_MeetingTitle','MTG_Location','MTG_MeetingStartDateTime','MTG_MeetingStartTime','MTG_ChairUserUID'} <= fields
+
+
+def test_explicit_chair_voice_decision_is_deterministic(pack):
+    values={}
+    assert r.apply_explicit_decision('بله، دعوت‌نامه را تأیید می‌کنم','invitation_approval',values)=='Approved'
+    assert values['MTG_InvitationApproval']=='Approved'
+    values={}
+    assert r.apply_explicit_decision('نیاز به اصلاح؛ ساعت جلسه عوض شود','invitation_approval',values)=='NeedsRevision'
+    assert values['MTG_InvitationApproval']=='NeedsRevision'
+    assert r.explicit_start_intent('بله، ایجاد و ارسال کن')
+    assert not r.explicit_start_intent('مکان جلسه ساختمان جردن است')
+
+
+def test_assistant_state_summarizes_invitation_for_chair(pack):
+    t=task(pack,'invitation_approval',{
+        **V,
+        'MTG_Objective':'بررسی وضعیت واردات',
+        'MTG_Participants':{'1':{'MTG_ParticipantUserUID':'c'*32}},
+        'MTG_Agenda':{'1':{'MTG_AgendaTitle':'وضعیت مجوزها','MTG_AgendaPresenterUID':'c'*32,'MTG_AgendaPlannedMinutes':'20'}},
+    })
+    values=r.initial(t)
+    state=r.assistant_state(values,t,S)
+    assert 'بررسی واردات' in state['summary']
+    assert 'رئیس' in state['summary']
+    assert 'وضعیت مجوزها' in state['summary']
+    assert 'تأیید' in state['message']
