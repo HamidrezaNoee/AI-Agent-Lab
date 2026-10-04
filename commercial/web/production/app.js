@@ -325,7 +325,8 @@ async function boundSourceOverview(){
   add(p,note("داده‌های این ProcessMaker با Source ID خودش و Binding همین حساب خوانده می‌شود."));
   if(capabilities.has("meetings"))add(p,link("جلسات همین ProcessMaker",()=>select("source-meetings"),"button primary"));
   if(capabilities.has("assistant"))add(p,link("دستیار همین ProcessMaker",()=>select("source-assistant"),"button secondary"));
-  if(capabilities.has("secretary"))add(p,link("دبیر هوشمند همین ProcessMaker",()=>select("source-secretary"),"button secondary"));
+  if(capabilities.has("secretary"))add(p,link("مدیریت جلسات / دبیر هوشمند",()=>select("source-secretary"),"button secondary"));
+  else add(p,note("ماژول «مدیریت جلسات و دبیر هوشمند» برای این حساب فعال نیست. مدیر سامانه باید از «کاربران → دسترسی‌ها» ماژول ۲ را فعال کند."));
   if(capabilities.has("reports"))add(p,link("گزارش اقدامات همین ProcessMaker",()=>select("source-reports"),"button secondary"));
   if(capabilities.has("monitor"))add(p,link("هشدار و پیگیری همین ProcessMaker",()=>select("source-monitor"),"button secondary"));
   if(capabilities.has("bi"))add(p,link("BI همین ProcessMaker",()=>select("source-bi"),"button secondary"));
@@ -925,8 +926,8 @@ async function loadProcessChoices(source,group){
  }
  choice.addEventListener("change",()=>{cleanMedia();if(app.selectedSourceId===source.source_id)root().replaceChildren(note("در حال تغییر فرایند..."));apply()});
  try{const result=await request(sourceApi(source.source_id,"/process-workspace"),{background:true});if(app.user!==user||!group.isConnected)return;
-  for(const p of result.processes){const o=el("option","",p.title);o.value=p.id;add(choice,o)}
-  if(!result.processes.length){choice.disabled=true;message.textContent="فرایند فعال و مجاز تنظیم نشده است.";return}
+  for(const p of result.processes){const title=p.renderer==="meeting"?("مدیریت جلسات · "+p.title):p.title;const o=el("option","",title);o.value=p.id;add(choice,o)}
+  if(!result.processes.length){choice.disabled=true;message.textContent=(source.capabilities||[]).includes("secretary")?"بسته «مدیریت جلسات» برای این اتصال هنوز در مدیریت سامانه فعال نشده است.":"ماژول مدیریت جلسات برای این حساب فعال نیست.";return}
   const previous=app.processChoices[source.source_id]?.packId;
   choice.value=result.processes.some(p=>p.id===previous)?previous:result.processes[0].id;
   await apply(false);
