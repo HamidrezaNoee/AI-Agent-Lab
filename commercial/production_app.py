@@ -229,15 +229,14 @@ def internal_security_challenge(request:Request,
     except TurnstileUnavailable:
         raise HTTPException(status_code=503,detail="AVAN anti-bot is unavailable")
     cloudflare=config.get("cloudflare") or {}
-    return {
-        "action":action,
-        "local":config.get("local"),
-        "cloudflare":{
-            "enabled":bool(cloudflare.get("enabled")),
-            "siteKey":str(cloudflare.get("site_key") or ""),
-            "timeoutMs":int(cloudflare.get("timeout_ms") or 2500),
-        },
-    }
+    local=config.get("local") if isinstance(config.get("local"),dict) else None
+    payload={"action":action,"localAvailable":bool(local)}
+    if local:
+        payload.update(local)
+    if cloudflare.get("enabled"):
+        payload["turnstileSiteKey"]=str(cloudflare.get("site_key") or "")
+        payload["turnstileTimeoutMs"]=int(cloudflare.get("timeout_ms") or 2500)
+    return payload
 
 
 class InternalSecurityVerify(BaseModel):
