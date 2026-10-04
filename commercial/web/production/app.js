@@ -162,7 +162,7 @@ function select(page){
     ?b.dataset.sourceId===app.selectedSourceId&&b.dataset.page===page&&(!b.dataset.section||(b.dataset.packId===app.processChoices[app.selectedSourceId]?.packId&&b.dataset.section===app.processChoices[app.selectedSourceId]?.section))
     :b.dataset.page===page));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>processWorkspacePage(),"source-process":processWorkspacePage,"source-reports":()=>reportsPage(app.selectedSourceId),"source-monitor":()=>monitorPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>intelligentMeetingPage(),"source-process":processWorkspacePage,"source-reports":()=>reportsPage(app.selectedSourceId),"source-monitor":()=>monitorPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
  if(work)work().catch(err=>{
   const target=root();
   if(orgPage&&app.user?.is_godadmin){
@@ -968,13 +968,42 @@ async function loadProcessChoices(source,group){
  }
  choice.addEventListener("change",()=>{cleanMedia();if(app.selectedSourceId===source.source_id)root().replaceChildren(note("در حال تغییر فرایند..."));apply()});
  try{const result=await request(sourceApi(source.source_id,"/process-workspace"),{background:true});if(app.user!==user||!group.isConnected)return;
-  for(const p of result.processes){const title=p.renderer==="meeting"?("مدیریت جلسات · "+p.title):p.title;const o=el("option","",title);o.value=p.id;add(choice,o)}
+  for(const p of result.processes){const title=p.renderer==="meeting"?("مدیریت جلسات · "+p.title):("کارتابل عمومی · "+p.title);const o=el("option","",title);o.value=p.id;add(choice,o)}
   if(!result.processes.length){choice.disabled=true;message.textContent=(source.capabilities||[]).includes("secretary")?"بسته «مدیریت جلسات» برای این اتصال هنوز در مدیریت سامانه فعال نشده است.":"ماژول مدیریت جلسات برای این حساب فعال نیست.";return}
   const previous=app.processChoices[source.source_id]?.packId;
   choice.value=result.processes.some(p=>p.id===previous)?previous:result.processes[0].id;
   await apply(false);
  }catch(e){choice.disabled=true;message.textContent=e.message;add(group,link("دریافت دوباره فرایندها",()=>{choice.remove();message.remove();sections.remove();loadProcessChoices(source,group)}))}
 }
+async function intelligentMeetingPage(){
+ const sourceId=app.selectedSourceId,m=root();
+ heading(m,"اجرای هوشمند فرایند جلسات","محیط مکالمه‌ای نقش‌محور برای دبیر، رئیس جلسه، اقدام‌کننده و بررسی‌کننده؛ متصل به Task واقعی ProcessMaker.");
+ if(!sourceId){add(m,note("ابتدا اتصال ProcessMaker را انتخاب کنید.",true));return}
+ let list;
+ try{list=await request(sourceApi(sourceId,"/process-workspace"))}catch(e){add(m,note(e.message,true));return}
+ const meeting=(list.processes||[]).find(p=>p.adapter==="meeting_v2"&&p.renderer==="meeting");
+ if(!meeting){
+  let status=null;
+  try{status=await request(sourceApi(sourceId,"/process-workspace/status"),{background:true})}catch{}
+  const generic=(list.processes||[]).filter(p=>p.adapter==="native_tasks_v1");
+  add(m,note("فرایندهای جلسه روی ProcessMaker متصل هستند، اما هنوز به بسته تخصصی «meeting_v2» آوان تبدیل نشده‌اند؛ بنابراین Chat/Voice/File نباید با کارتابل عمومی اشتباه نمایش داده شود.",true));
+  if(generic.length){
+   const box=card("فرایندهای فعلی","این موارد فعلاً فقط کارتابل عمومی هستند.");
+   for(const p of generic)add(box,el("p","",p.title+" · native_tasks_v1"));
+   add(m,box);
+  }
+  if(status?.promotion_warning)add(m,note(status.promotion_warning,true));
+  add(m,note("پس از فعال شدن meeting_v2، همین صفحه به‌صورت خودکار محیط گفت‌وگوی هوشمند را برای وظیفه نقش فعلی باز می‌کند."));
+  return
+ }
+ const current=app.processChoices[sourceId];
+ app.processChoices[sourceId]={
+  packId:meeting.id,
+  section:(current?.packId===meeting.id&&current.section)?current.section:"inbox"
+ };
+ await processWorkspacePage();
+}
+
 async function processWorkspacePage(){
  const sourceId=app.selectedSourceId,selection=app.processChoices[sourceId],m=root();
  if(!selection?.packId){add(m,note("ابتدا فرایند را از منوی اتصال انتخاب کنید."));return}
