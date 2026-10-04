@@ -47,8 +47,7 @@ def parse_pmx(xml):
    'after':[a['tri_uid'] for a in sorted(assigned,key=lambda a:int(a['st_position'])) if a['st_type']=='AFTER']}
  return {'process_uid':process,'title':metadata.get('name',process),'pmx_sha256':hashlib.sha256(xml.encode()).hexdigest(),'stages':stages}
 
-def compile_pack(meeting_xml,action_xml):
- meeting,action=parse_pmx(meeting_xml),parse_pmx(action_xml)
+def _compile_pair(meeting,action):
  meeting_stages={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}
  action_stages={'action_execution','action_review'}
  if set(meeting['stages'])!=meeting_stages or set(action['stages'])!=action_stages:
@@ -68,6 +67,100 @@ def compile_pack(meeting_xml,action_xml):
    'action_review':['MTGA_ReviewStatus2','MTGA_SecretaryProgressPercent2']}.items():
   if not set(keys)<=stages[s]['fields'].keys():raise ValueError('قرارداد مرحله '+s+' با آداپتور جلسات سازگار نیست.')
  return {'adapter':'meeting_v2','meeting':meeting,'action':action,'stages':stages}
+
+def compile_pack(meeting_xml,action_xml):
+ return _compile_pair(parse_pmx(meeting_xml),parse_pmx(action_xml))
+
+def _form_fields(content):
+ fields={}
+ def walk(v):
+  if isinstance(v,dict):
+   if v.get('variable'):
+    spec={k:v.get(k) for k in ('label','type','required','options','mode')}
+    if v.get('type')=='grid':
+     spec['columns']=[{k:c.get(k) for k in ('id','label','type','options')} for c in v.get('columns',[])]
+    fields[v['variable']]=spec
+   for a in v.values():walk(a)
+  elif isinstance(v,list):
+   for a in v:walk(a)
+ try:walk(json.loads(content))
+ except (ValueError,RecursionError,TypeError) as exc:raise ValueError('تعریف فرم نصب‌شده ProcessMaker معتبر نیست.') from exc
+ return fields
+
+def _installed_process(con,process_uid):
+ from .processmaker_store import query
+ process=query(con,'SELECT PRO_UID,PRO_TITLE FROM PROCESS WHERE PRO_UID=%s',(process_uid,))
+ if len(process)!=1:raise ValueError('فرایند نصب‌شده ProcessMaker پیدا نشد.')
+ tasks={str(r[0]):str(r[1] or r[0]) for r in query(con,'SELECT TAS_UID,TAS_TITLE FROM TASK WHERE PRO_UID=%s',(process_uid,))}
+ forms=query(con,'SELECT DYN_UID,DYN_TITLE,DYN_CONTENT FROM DYNAFORM WHERE PRO_UID=%s',(process_uid,))
+ stages={}
+ signature=[]
+ for dyn_uid,dyn_title,dyn_content in forms:
+  title=str(dyn_title or '')
+  stage=next((s for s,prefix in STAGES.items() if re.match(re.escape(prefix)+r'(?:\s|[-–]|$)',title)),None)
+  if not stage:continue
+  linked=query(con,"SELECT STEP_UID,TAS_UID FROM STEP WHERE STEP_UID_OBJ=%s AND STEP_TYPE_OBJ='DYNAFORM'",(str(dyn_uid),))
+  if len(linked)!=1 or stage in stages:raise ValueError('نگاشت فرم نصب‌شده به وظیفه باید یکتا باشد.')
+  step_uid,task_uid=map(str,linked[0])
+  if task_uid not in tasks:raise ValueError('وظیفه فرم نصب‌شده متعلق به فرایند انتخابی نیست.')
+  triggers=query(con,'SELECT TRI_UID,ST_TYPE,ST_POSITION,ST_CONDITION FROM STEP_TRIGGER WHERE STEP_UID=%s AND TAS_UID=%s ORDER BY ST_POSITION',(step_uid,task_uid))
+  if any(str(r[3] or '').strip() for r in triggers):raise ValueError('تریگر شرطی نیاز به بازبینی آداپتور دارد.')
+  stage_row={
+   'task_uid':task_uid,'task_title':tasks[task_uid],'form_uid':str(dyn_uid),
+   'fields':_form_fields(str(dyn_content or '{}')),
+   'before':[str(r[0]) for r in triggers if str(r[1])=='BEFORE'],
+   'after':[str(r[0]) for r in triggers if str(r[1])=='AFTER'],
+  }
+  stages[stage]=stage_row
+  signature.append((stage,str(dyn_uid),task_uid,tuple(stage_row['before']),tuple(stage_row['after'])))
+ digest=hashlib.sha256(json.dumps(signature,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
+ return {'process_uid':str(process[0][0]),'title':str(process[0][1] or process_uid),
+         'pmx_sha256':'installed:'+digest,'stages':stages}
+
+def ensure_installed_meeting_pack(source_id,actor='system:auto'):
+ """Promote two reviewed native ProcessMaker inboxes to meeting_v2 when their
+ installed forms/tasks/triggers satisfy the typed seven-stage meeting contract.
+ No PMX upload or untrusted code execution is involved.
+ """
+ existing=packs(source_id,True)
+ if any(p.get('adapter')=='meeting_v2' for p in existing):return None
+ native=[p for p in existing if p.get('adapter')=='native_tasks_v1' and p.get('enabled')]
+ if len(native)<2:return None
+
+ from .user_bpms_bindings import processmaker_profile
+ from .processmaker_store import open_production
+ compiled=[]
+ with open_production(processmaker_profile(source_id)['mysql']) as con:
+  for row in native:
+   try:installed=_installed_process(con,row['process']['process_uid'])
+   except ValueError:continue
+   stage_set=set(installed['stages'])
+   if stage_set=={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}:
+    compiled.append(('meeting',row,installed))
+   elif stage_set=={'action_execution','action_review'}:
+    compiled.append(('action',row,installed))
+ meetings=[x for x in compiled if x[0]=='meeting'];actions=[x for x in compiled if x[0]=='action']
+ if len(meetings)!=1 or len(actions)!=1:return None
+ meeting_native,meeting=meetings[0][1],meetings[0][2]
+ action_native,action=actions[0][1],actions[0][2]
+ pack=_compile_pair(meeting,action)
+
+ with agent_storage.transaction() as tx:
+  data=tx.get(STORE,[],lock=True)
+  if any(p.get('source_id')==source_id and p.get('adapter')=='meeting_v2' and p.get('enabled') for p in data):return None
+  current_meeting=next((p for p in data if p.get('id')==meeting_native['id'] and p.get('source_id')==source_id),None)
+  current_action=next((p for p in data if p.get('id')==action_native['id'] and p.get('source_id')==source_id),None)
+  if not current_meeting or not current_action:return None
+  if current_meeting.get('adapter')!='native_tasks_v1' or current_action.get('adapter')!='native_tasks_v1':return None
+  row={**pack,'id':current_meeting['id'],'source_id':source_id,'enabled':True,
+       'revision':max(int(current_meeting.get('revision',0)),int(current_action.get('revision',0)))+1,
+       'monitor_lead_minutes':1440,'action_lead_minutes':60,
+       'tools':['extract_fields','request_missing_fields','submit_invitation','review_invitation','submit_minutes','review_minutes','submit_action_report','review_action','prepare_monitoring','propose_followup']}
+  remove={current_meeting['id'],current_action['id']}
+  tx.put(STORE,[p for p in data if p.get('id') not in remove]+[row])
+  tx.audit('',actor,'SECRETARY_NATIVE_PACK_AUTO_PROMOTED',{'source_id':source_id,'pack_id':row['id'],
+           'meeting_process_uid':meeting['process_uid'],'action_process_uid':action['process_uid']})
+ return row
 
 def packs(source_id,enabled_only=False):
  with agent_storage.transaction() as tx:data=tx.get(STORE,[])
