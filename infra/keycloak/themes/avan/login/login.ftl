@@ -10,7 +10,7 @@
 </#if></head>
 <body class="avan-signin">
  <main class="signin-layout">
-  <section class="signin-panel login-reveal-card is-expanded login-fixed-card" aria-labelledby="signin-heading">
+  <section class="signin-panel login-reveal-card is-collapsed" aria-labelledby="signin-heading">
    <div class="signin-card-decor" aria-hidden="true">
     <svg viewBox="0 0 600 760" preserveAspectRatio="none" focusable="false">
      <defs>
@@ -32,6 +32,7 @@
    <div class="signin-heading"><span class="signin-label">AVAN · AI AGENT</span><h1 id="signin-heading">ورود به آوان</h1></div>
    <p class="login-reveal-subtitle">خوش آمدید؛ برای ادامه وارد حساب کاربری شوید.</p>
    <#if message?has_content && message.type == 'error'><div class="signin-error" role="alert">${message.summary?html}</div></#if>
+   <button class="login-reveal-toggle" type="button" aria-expanded="false"><span>ورود</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5"></path></svg></button>
    <form id="kc-form-login" class="login-expand-body" action="${url.loginAction?html}" method="post" autocomplete="on">
     <label for="username">نام کاربری</label>
     <input id="username" name="username" type="text" value="${(login.username!'')?html}" autocomplete="username" maxlength="256" required>
