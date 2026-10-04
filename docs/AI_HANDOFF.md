@@ -1,5 +1,26 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-04: realm readiness and existing-process role activation
+
+Baseline 721bc48. The owner's transcript confirms `down -v` removed four persistent
+volumes; the last HTTP error is Keycloak bootstrap, not a demonstrated password error.
+Compose now waits for the AVAN realm's discovery HTTP 200 before starting AVAN.
+Build health/metrics options into Keycloak and start optimized. Normalize Compose
+dollar escaping in the theme initializer. Add a fail-fast Windows Live start script;
+it preserves secrets/volumes and waits for realm/app readiness without claiming login.
+
+Admin process settings can now explicitly select a read-only native meeting pack
+for upgrade using reviewed meeting/action PMX. Preserve its ID/revision history;
+reject upgrades to an unrelated process. Validate five meeting vs two action stages
+and unique task IDs before accepting a pack, avoiding ambiguous role dispatch.
+No runtime grants, user bindings or live process assignments were changed here.
+
+Validation: 75 focused Python tests passed, including the actual Bash readiness
+probe against local HTTP 200/302/404/500/503 responders. Admin JavaScript syntax passed.
+Dependencies installed from production requirements; PyYAML added to CI test setup.
+No Docker daemon/CLI, PowerShell, live Keycloak/PM/SQL or rendered browser validation.
+See `docs/AVAN_RECOVERY_AND_ROLES_20261004_FA.md` for recovery, activation and limits.
+
 ## Update 2026-10-03: user deletion
 
 Add on-demand deletion confirmation to Users, excluding local/bound GodAdmin.

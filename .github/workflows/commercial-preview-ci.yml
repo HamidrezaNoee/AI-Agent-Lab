@@ -79,7 +79,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install operational dependencies
-        run: python -m pip install -r commercial/requirements-production.txt pytest
+        run: python -m pip install -r commercial/requirements-production.txt pytest PyYAML
       - name: Check source and authenticated installation lifecycle
         run: |
           python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/user_bpms_bindings.py commercial/setup_console.py commercial/setup_routes.py commercial/login_appearance.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py infra/antibot/server.py

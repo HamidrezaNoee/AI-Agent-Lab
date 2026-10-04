@@ -108,8 +108,8 @@ services:
     entrypoint: ["/bin/sh","-ec"]
     command:
       - |
-        export PGPASSWORD="$(cat /run/secrets/keycloak_db_password)"
-        if [ "$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT to_regclass('public.realm')")" = "realm" ]; then
+        export PGPASSWORD="$$(cat /run/secrets/keycloak_db_password)"
+        if [ "$$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT to_regclass('public.realm')")" = "realm" ]; then
           psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "UPDATE realm SET login_theme='avan' WHERE name='avan' AND COALESCE(login_theme,'') <> 'avan';"
         fi
     secrets:
@@ -130,7 +130,7 @@ services:
         export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
         export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
         export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
-        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
+        exec /opt/keycloak/bin/kc.sh start --optimized --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/avan_keycloak
@@ -151,6 +151,21 @@ services:
       - avan-ui:/opt/keycloak/themes/avan/login/resources/generated:ro
     ports:
       - "127.0.0.1:8181:8080"
+    healthcheck:
+      # An open port is not enough: bootstrap/import must expose the AVAN realm.
+      test:
+        - CMD
+        - /bin/bash
+        - -ec
+        - |
+          exec 3<>/dev/tcp/127.0.0.1/8080
+          printf 'GET /realms/avan/.well-known/openid-configuration HTTP/1.1\r\nHost: auth.localhost:8181\r\nConnection: close\r\n\r\n' >&3
+          IFS= read -r status <&3
+          [[ "$$status" == HTTP/1.*' 200 '* ]]
+      interval: 10s
+      timeout: 5s
+      start_period: 90s
+      retries: 30
     depends_on:
       ui-config-init:
         condition: service_completed_successfully
@@ -210,7 +225,7 @@ services:
       antibot:
         condition: service_started
       keycloak:
-        condition: service_started
+        condition: service_healthy
       agent-sql-init:
         condition: service_completed_successfully
     healthcheck:

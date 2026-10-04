@@ -7,4 +7,4 @@ RUN mvn -q -B -DskipTests package
 FROM quay.io/keycloak/keycloak:26.7.3
 COPY --from=builder /build/target/avan-captcha-login-1.0.0.jar /opt/keycloak/providers/avan-captcha-login.jar
 COPY infra/keycloak/themes/avan /opt/keycloak/themes/avan
-RUN /opt/keycloak/bin/kc.sh build --db=postgres
+RUN /opt/keycloak/bin/kc.sh build --db=postgres --health-enabled=true --metrics-enabled=true

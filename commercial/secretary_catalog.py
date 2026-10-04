@@ -49,6 +49,14 @@ def parse_pmx(xml):
 
 def compile_pack(meeting_xml,action_xml):
  meeting,action=parse_pmx(meeting_xml),parse_pmx(action_xml)
+ meeting_stages={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}
+ action_stages={'action_execution','action_review'}
+ if set(meeting['stages'])!=meeting_stages or set(action['stages'])!=action_stages:
+  raise ValueError('PMX جلسه باید پنج مرحله جلسه و PMX اقدام باید دو مرحله اجرا و بررسی اقدام را داشته باشد؛ ترتیب فایل‌ها و نگاشت فرم‌ها را بررسی کنید.')
+ for process in (meeting,action):
+  task_ids=[stage['task_uid'] for stage in process['stages'].values()]
+  if len(set(task_ids))!=len(task_ids):
+   raise ValueError('هر مرحله بسته جلسات باید وظیفه مستقل داشته باشد؛ چند فرم نقش روی یک وظیفه پشتیبانی نمی‌شود.')
  stages={**meeting['stages'],**action['stages']}
  if set(stages)!=set(STAGES) or meeting['process_uid']==action['process_uid']:raise ValueError('دو PMX جلسات و اقدامات با هفت مرحله کامل لازم است.')
  for s in ('invitation','minutes','monitoring'):
@@ -77,6 +85,8 @@ def save(source_id,pack,actor,*,identifier=None,revision=None,enabled=True,monit
  with agent_storage.transaction() as tx:
   data=tx.get(STORE,[],lock=True);old=next((p for p in data if p['id']==identifier and p['source_id']==source_id),None)
   if identifier and (not old or old['revision']!=revision):raise ValueError('تنظیم فرایند تغییر کرده است؛ دوباره بارگذاری کنید.')
+  if old and old.get('adapter')=='native_tasks_v1' and pack.get('adapter')=='meeting_v2' and old['process']['process_uid']!=pack['meeting']['process_uid']:
+   raise ValueError('برای ارتقا، PMX جلسه باید متعلق به همان فرایند کارتابل انتخاب‌شده باشد.')
   if any(p['id']!=identifier and p['source_id']==source_id and identifiers & {v['process_uid'] for v in p.values() if isinstance(v,dict) and 'process_uid' in v} for p in data):raise ValueError('این فرایند قبلاً برای همین اتصال تنظیم شده است.')
   row={**pack,'id':identifier or secrets.token_hex(12),'source_id':source_id,'enabled':enabled,'revision':(old or {}).get('revision',0)+1,
    'monitor_lead_minutes':monitor_lead_minutes,'action_lead_minutes':action_lead_minutes,
