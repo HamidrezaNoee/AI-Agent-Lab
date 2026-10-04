@@ -23,7 +23,8 @@ RUN apt-get -o Acquire::Retries=8 -o Acquire::http::Timeout=30 update \
  && rm -rf /var/lib/apt/lists/* /tmp/ms-prod.deb
 WORKDIR /app
 COPY commercial/requirements-production.txt /app/requirements.txt
-RUN python -m pip install --no-cache-dir --retries 12 --timeout 120 --index-url "${PIP_INDEX_URL}" -r /app/requirements.txt \
+RUN (python -m pip install --no-cache-dir --retries 6 --timeout 60 --index-url "${PIP_INDEX_URL}" -r /app/requirements.txt \
+      || python -m pip install --no-cache-dir --retries 12 --timeout 120 --index-url "https://pypi.org/simple" -r /app/requirements.txt) \
  && groupadd --gid 10001 avan \
  && useradd --uid 10001 --gid 10001 --system --create-home avan \
  && mkdir -p /var/lib/avan /var/lib/avan-ui \
