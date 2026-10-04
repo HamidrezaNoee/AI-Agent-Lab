@@ -777,7 +777,7 @@ async function showMeeting(id){
   for(const a of meeting.actions){const row=el("tr");for(const v of [a.action_no,a.description,(a.owner_name||"نامشخص")+" / "+(a.owner_unit||"نامشخص"),a.is_closed?"بسته‌شده":a.status,a.progress_percent==null?"نامشخص":fmt(a.progress_percent)+"٪",dateText(a.due_at_utc)])add(row,el("td","",v));add(body,row)}add(table,body);add(m,add(el("div","table-scroll panel"),table));
  }catch(e){toast(e.message)}
 }
-function attachVoiceInput(target,input,platform=false,sourceId=null){
+function attachVoiceInput(target,input,platform=false,sourceId=null,onTranscript=null){
  const wrap=el("div","voice-bar"),status=el("span","muted");let recorder=null,stream=null,timer=null,discard=false,busy=false;
  const cleanup=()=>{discard=true;if(timer)clearTimeout(timer);if(recorder?.state==="recording")recorder.stop();stream?.getTracks().forEach(t=>t.stop())};app.cleanup.push(cleanup);
  async function convert(blob){
@@ -785,6 +785,7 @@ function attachVoiceInput(target,input,platform=false,sourceId=null){
   try{const endpoint=platform?"/api/platform/voice/transcribe":sourceApi(sourceId,"/voice/transcribe");
    const r=await request(endpoint,{method:"POST",headers:{"Content-Type":blob.type||"audio/mpeg"},body:blob});if(!input.isConnected)return;
    if(r.text.length>input.maxLength){status.textContent="متن از ظرفیت این کادر بیشتر است؛ فایل کوتاه‌تری انتخاب کنید.";return}input.value=r.text;input.dispatchEvent(new Event("input",{bubbles:true}));status.textContent="متن آماده است؛ قبل از ارسال بازبینی کنید.";
+   if(onTranscript)await onTranscript(r.text);
   }catch(e){status.textContent=e.message}finally{busy=false;button.disabled=false;upload.disabled=false}
  }
  const button=link("ضبط سؤال / یادداشت",async()=>{
