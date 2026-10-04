@@ -235,3 +235,24 @@ def test_assistant_state_summarizes_invitation_for_chair(pack):
     assert 'رئیس' in state['summary']
     assert 'وضعیت مجوزها' in state['summary']
     assert 'تأیید' in state['message']
+
+
+
+def test_conversational_uploads_extract_text_without_executing_embedded_content():
+    from commercial import secretary_uploads as uploads
+    from io import BytesIO
+    import zipfile
+
+    text,meta=uploads.extract('عنوان جلسه: بررسی واردات'.encode('utf-8'),'notes.txt','text/plain')
+    assert 'بررسی واردات' in text and meta['type']=='txt'
+
+    buf=BytesIO()
+    with zipfile.ZipFile(buf,'w') as z:
+        z.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+        z.writestr('word/document.xml','''<?xml version="1.0" encoding="UTF-8"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+ <w:body><w:p><w:r><w:t>جلسه هیئت واردات فردا برگزار شود</w:t></w:r></w:p></w:body>
+</w:document>''')
+        z.writestr('word/vbaProject.bin',b'not-executed')
+    doc,meta=uploads.extract(buf.getvalue(),'agenda.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    assert 'جلسه هیئت واردات' in doc and meta['type']=='docx'
