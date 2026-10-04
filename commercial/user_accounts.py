@@ -7,6 +7,7 @@ authorization, sessions and BPMS bindings; it never stores user passwords.
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
+from typing import Literal
 import os
 
 import httpx
@@ -104,6 +105,12 @@ class Profile(BaseModel):
     )
 
 
+class RoleChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    subject: UUID
+    role: Literal["Expert", "Manager", "SysAdmin"]
+
+
 class Password(BaseModel):
     model_config = ConfigDict(extra="forbid")
     subject: UUID
@@ -131,6 +138,74 @@ def register(router, ready):
             )
         setup.audit("USER_PROFILE_UPDATED")
         return {"updated": True}
+
+    @router.post("/api/users/role")
+    def role(body: RoleChange, session=Depends(ready)):
+        subject = str(body.subject)
+        bound = setup.godadmin_identity() or {}
+        if subject == bound.get("subject"):
+            raise HTTPException(
+                409,
+                "نقش GodAdmin از این بخش قابل تغییر نیست؛ GodAdmin یک هویت سیستمی مستقل است.",
+            )
+
+        from . import native_access
+
+        with directory() as service:
+            old_role = service.avan_role(subject)
+            if old_role == body.role:
+                return {"updated": True, "role": body.role, "changed": False}
+
+            service.set_avan_role(subject, body.role)
+            old_access_role = None
+            try:
+                with native_access.edit() as organization:
+                    user = next(
+                        (
+                            row for row in organization.get("users", [])
+                            if row.get("subject") == subject
+                        ),
+                        None,
+                    )
+                    if user is None:
+                        raise LookupError("AVAN access record missing")
+                    old_access_role = user.get("role")
+                    user["role"] = body.role
+            except Exception as exc:
+                try:
+                    service.set_avan_role(subject, old_role)
+                except Exception:
+                    setup.audit("USER_ROLE_ROLLBACK_FAILED")
+                if isinstance(exc, LookupError):
+                    raise HTTPException(
+                        404,
+                        "رکورد دسترسی AVAN این کاربر پیدا نشد.",
+                    ) from exc
+                raise HTTPException(
+                    503,
+                    "نقش در Keycloak تغییر کرد اما ذخیره دسترسی AVAN کامل نشد؛ تغییر بازگردانی شد.",
+                ) from exc
+
+            # Existing OIDC tokens may still contain the previous role.
+            # Revoke both Keycloak and in-memory AVAN sessions so the next login
+            # receives a fresh signed role claim.
+            try:
+                service.call("POST", "/users/" + subject + "/logout")
+            except Exception:
+                # Role is already synchronized in both authoritative stores.
+                # AVAN sessions are still revoked below; Keycloak token lifetime
+                # remains bounded by realm policy.
+                setup.audit("USER_ROLE_KEYCLOAK_LOGOUT_FAILED")
+            revoke_sessions(subject)
+
+        setup.audit("USER_ROLE_CHANGED_" + old_role.upper() + "_TO_" + body.role.upper())
+        return {
+            "updated": True,
+            "changed": True,
+            "role": body.role,
+            "previous_role": old_role,
+            "requires_login": True,
+        }
 
     @router.post("/api/users/password")
     def password(body: Password, session=Depends(ready)):
