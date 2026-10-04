@@ -448,25 +448,57 @@ async function platformAssistant(){
 
 async function platformBI(){
  const status=await request("/api/platform/status");if(app.page!=="platform-bi")return;app.voiceEnabled=status.voice_enabled;
- const m=root();heading(m,"گزارش BPMSهای متصل","اطلاعات هر موتور فقط از آداپتر همان منبع و در دامنه سازمان تنظیم‌شده دریافت می‌شود.");
- const enabled=status.sources.filter(s=>s.enabled);
- if(!enabled.length){const settings=link("افزودن اتصال در مدیریت سامانه",()=>select("system-management"),"button primary");add(m,note("هنوز هیچ مبدل خواندنی AVAN REST v1 فعال نشده است."),settings);return}
- const p=card("انتخاب منبع و بازه"),source=el("select"),period=el("select"),out=el("div"),analysis=card("تحلیل زبان طبیعی","مدل فقط به گزارش منبع انتخابی دسترسی دارد.");
- source.setAttribute("aria-label","منبع BPMS");period.setAttribute("aria-label","بازه گزارش");
- for(const s of enabled){const opt=el("option","",s.name);opt.value=s.id;add(source,opt)}
+ const m=root();heading(m,"گزارش BPMSهای متصل","هر موتور از Connector خودش و فقط در دامنه مجاز همین حساب AVAN خوانده می‌شود.");
+
+ const native=(app.user?.bpms_sources||[])
+  .filter(s=>(s.capabilities||[]).includes("bi"))
+  .map(s=>({id:s.source_id,name:s.source_name,engine:s.engine||"BPMS",mode:"native",source:s}));
+ const rest=(status.sources||[]).filter(s=>s.enabled)
+  .map(s=>({id:s.id,name:s.name,engine:s.kind||"AVAN REST v1",mode:"rest",source:s}));
+ const seen=new Set(),connected=[...native,...rest].filter(s=>!seen.has(s.id)&&seen.add(s.id));
+
+ if(!connected.length){
+  const settings=link("افزودن اتصال در مدیریت سامانه",()=>select("system-management"),"button primary");
+  add(m,note("هنوز هیچ BPMS دارای دسترسی BI برای این حساب فعال نشده است."),settings);return
+ }
+
+ const sources=card("منابع گزارش","ProcessMaker از Connector بومی AVAN خوانده می‌شود؛ سایر موتورها می‌توانند قرارداد AVAN REST v1 داشته باشند.");
+ for(const s of connected){
+  const row=el("div","history-item"),details=el("div");
+  add(details,el("strong","",s.name),el("small","",s.mode==="native"?(s.engine+" · اتصال بومی و Binding همین حساب"):(s.engine+" · AVAN REST v1")));
+  if(s.mode==="native"){
+   const open=link("باز کردن BI این اتصال",()=>{app.selectedSourceId=s.id;select("source-bi")},"button primary");
+   add(row,details,open);
+  }else{
+   const choose=link("گزارش REST این اتصال",()=>{restPanel.hidden=false;restSource.value=s.id;restPanel.scrollIntoView({behavior:"smooth",block:"start"})},"button secondary");
+   add(row,details,choose);
+  }
+  add(sources,row);
+ }
+ add(m,sources);
+
+ const restEnabled=connected.filter(s=>s.mode==="rest");
+ const restPanel=card("گزارش موتورهای AVAN REST v1","این بخش فقط برای موتورهایی است که قرارداد خواندنی AVAN REST v1 را پیاده کرده‌اند.");
+ restPanel.hidden=!restEnabled.length;
+ const restSource=el("select"),period=el("select"),out=el("div"),analysis=card("تحلیل زبان طبیعی","مدل فقط به گزارش REST منبع انتخابی دسترسی دارد.");
+ restSource.setAttribute("aria-label","منبع BPMS REST");period.setAttribute("aria-label","بازه گزارش");
+ for(const s of restEnabled){const opt=el("option","",s.name);opt.value=s.id;add(restSource,opt)}
  for(const [key,label] of [["last_30_days","۳۰ روز گذشته"],["last_7_days","۷ روز گذشته"],["this_month","ماه جاری"],["last_month","ماه قبل"],["all","تمام زمان‌ها"]]){const opt=el("option","",label);opt.value=key;add(period,opt)}
- add(p,add(el("label"),el("span","","منبع"),source)," ",add(el("label"),el("span","","بازه"),period));
+ add(restPanel,add(el("label"),el("span","","منبع"),restSource)," ",add(el("label"),el("span","","بازه"),period));
  const table=(labels,rows)=>{const t=el("table"),head=el("tr");for(const label of labels)add(head,el("th","",label));add(t,add(el("thead"),head));const body=el("tbody");for(const values of rows){const row=el("tr");for(const val of values)add(row,el("td","",val??"—"));add(body,row)}add(t,body);return add(el("div","table-scroll panel"),t)};
- const load=link("نمایش گزارش",async()=>{load.disabled=true;out.replaceChildren(note("در حال دریافت گزارش..."));try{const r=await request("/api/platform/bpms/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source_id:source.value,period:period.value,limit:30})});if(!out.isConnected)return;out.replaceChildren();add(out,note("زمان استخراج: "+dateText(r.as_of_utc)+(r.coverage_complete?"":" · پوشش داده ناقص است.")));
+ const load=link("نمایش گزارش REST",async()=>{load.disabled=true;out.replaceChildren(note("در حال دریافت گزارش..."));try{const r=await request("/api/platform/bpms/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source_id:restSource.value,period:period.value,limit:30})});if(!out.isConnected)return;out.replaceChildren();add(out,note("زمان استخراج: "+dateText(r.as_of_utc)+(r.coverage_complete?"":" · پوشش داده ناقص است.")));
   const stats=el("div","stats");for(const [key,label] of [["cases","کل پرونده"],["open_cases","باز"],["completed_cases","تکمیل‌شده"],["open_tasks","وظایف باز"],["overdue_tasks","وظایف تأخیردار"]])add(stats,add(el("div","stat"),el("span","",label),el("strong","",fmt(r.metrics[key]))));add(out,stats);
   add(out,table(["فرایند","کل","باز","تکمیل","وظایف تأخیردار"],r.processes.map(x=>[x.title,fmt(x.total),fmt(x.open),fmt(x.completed),fmt(x.overdue_tasks)])));
   add(out,table(["شماره پرونده","فرایند","وضعیت","ثبت"],r.rows.map(x=>[x.case_number,x.process_title,statusName(x.status),dateText(x.created_at)])));
   if(r.has_more)add(out,note("فهرست پرونده‌ها صفحه‌بندی شده است؛ برای ادامه بازه را محدود کنید."));
- }catch(e){out.replaceChildren(note(e.message,true))}finally{load.disabled=false}},"button primary");add(p,load,out);add(m,p);
- const question=el("textarea");question.maxLength=2000;question.rows=3;question.setAttribute("aria-label","سؤال درباره گزارش BPMS");question.placeholder="کدام فرایندها بیشترین وظایف تأخیردار را دارند؟";
- const result=el("div");const ask=link("تحلیل منبع انتخابی",async()=>{ask.disabled=true;result.replaceChildren(note("در حال تحلیل..."));try{const r=await request("/api/platform/bpms/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:question.value,source_id:source.value,new_conversation:true})});if(result.isConnected){result.replaceChildren();renderAnalysis(result,r)}}catch(e){result.replaceChildren(note(e.message,true))}finally{ask.disabled=false}},"button primary");
- add(analysis,question,ask);if(status.voice_enabled)attachVoiceInput(analysis,question,true);if(!status.enabled)add(analysis,note("برای تحلیل متنی، اتصال مدل AI را فعال کنید."));add(analysis,result);add(m,analysis);
+ }catch(e){out.replaceChildren(note(e.message,true))}finally{load.disabled=false}},"button primary");add(restPanel,load,out);
+
+ const question=el("textarea");question.maxLength=2000;question.rows=3;question.setAttribute("aria-label","سؤال درباره گزارش BPMS REST");question.placeholder="کدام فرایندها بیشترین وظایف تأخیردار را دارند؟";
+ const result=el("div");const ask=link("تحلیل منبع REST",async()=>{ask.disabled=true;result.replaceChildren(note("در حال تحلیل..."));try{const r=await request("/api/platform/bpms/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:question.value,source_id:restSource.value,new_conversation:true})});if(result.isConnected){result.replaceChildren();renderAnalysis(result,r)}}catch(e){result.replaceChildren(note(e.message,true))}finally{ask.disabled=false}},"button primary");
+ add(analysis,question,ask);if(status.voice_enabled)attachVoiceInput(analysis,question,true);if(!status.enabled)add(analysis,note("برای تحلیل متنی، اتصال مدل AI را فعال کنید."));add(analysis,result);add(restPanel,analysis);
+ if(restEnabled.length)add(m,restPanel);
 }
+
 
 
 function renderAnalysis(target,result,sourceId=null){
