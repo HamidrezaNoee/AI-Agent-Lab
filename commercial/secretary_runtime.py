@@ -42,7 +42,7 @@ def task(con,scope,case,index,pack_id):
  return {'case_uid':case,'index':int(index),'pack_id':pack_id,'stage':stage,'title':text(values.get('MTG_MeetingTitle') or values.get('MTGA_ContextMeetingTitle')) or text(values.get('MTGA_ActionDescription')),'number':str(found[0][1]),'native':values,'pack':pack}
 
 def inbox(con,scope,now=None,*,pack_id=None):
- packs=catalog.packs(scope['source_id'],True)
+ packs=catalog.runtime_meeting_packs(scope['source_id'])
  if pack_id is not None:
   selected=catalog.get(scope['source_id'],pack_id)
   if selected.get('adapter')!='meeting_v2':raise PermissionError('این کارتابل برای آداپتور جلسات است.')
