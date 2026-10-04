@@ -6,6 +6,9 @@ from . import agent_storage
 from .secretary_workflow import CONTRACT,WRITE_FIELDS
 
 STORE='secretary_packs_v2'
+
+class MeetingPromotionUnavailable(ValueError):
+ pass
 STAGES={'invitation':'FR-MTG-001','invitation_approval':'FR-MTG-002','minutes':'FR-MTG-003','minutes_approval':'FR-MTG-004','monitoring':'FR-MTG-005','action_execution':'FR-MTG-A01','action_review':'FR-MTG-A02'}
 
 def records(root,name):
@@ -214,10 +217,12 @@ def ensure_installed_meeting_pack(source_id,actor='system:auto'):
  # Fast, deterministic promotion for the reviewed meeting/action pair already
  # shipped with AVAN. This avoids reparsing ProcessMaker 3.2/3.3 DYN_CONTENT,
  # whose storage representation differs between community builds.
+ trusted_error=None
  try:
   trusted=_trusted_meeting_pack()
   by_uid={p.get('process',{}).get('process_uid'):p for p in native}
-  if trusted['meeting']['process_uid'] in by_uid and trusted['action']['process_uid'] in by_uid:
+  trusted_candidate=(trusted['meeting']['process_uid'] in by_uid and trusted['action']['process_uid'] in by_uid)
+  if trusted_candidate:
    _verify_trusted_pack(source_id,trusted)
    meeting_native=by_uid[trusted['meeting']['process_uid']]
    action_native=by_uid[trusted['action']['process_uid']]
@@ -236,9 +241,10 @@ def ensure_installed_meeting_pack(source_id,actor='system:auto'):
      tx.audit('',actor,'SECRETARY_TRUSTED_PACK_PROMOTED',{'source_id':source_id,'pack_id':row['id'],
               'meeting_process_uid':trusted['meeting']['process_uid'],'action_process_uid':trusted['action']['process_uid']})
      return row
- except ValueError:
-  # Fall through to generic installed-schema discovery for any other compatible pair.
-  pass
+ except ValueError as exc:
+  # Preserve the exact incompatibility reason so the UI can explain why the
+  # reviewed pair was not promoted, while still allowing generic discovery.
+  trusted_error=str(exc)
 
  from .user_bpms_bindings import processmaker_profile
  from .processmaker_store import open_production
@@ -253,11 +259,15 @@ def ensure_installed_meeting_pack(source_id,actor='system:auto'):
    elif stage_set=={'action_execution','action_review'}:
     compiled.append(('action',row,installed))
  meetings=[x for x in compiled if x[0]=='meeting'];actions=[x for x in compiled if x[0]=='action']
- if len(meetings)!=1 or len(actions)!=1:return None
+ if len(meetings)!=1 or len(actions)!=1:
+  if trusted_error:raise MeetingPromotionUnavailable(trusted_error)
+  return None
  meeting_native,meeting=meetings[0][1],meetings[0][2]
  action_native,action=actions[0][1],actions[0][2]
  try:pack=_compile_pair(meeting,action)
- except ValueError:return None
+ except ValueError as exc:
+  if trusted_error:raise MeetingPromotionUnavailable(trusted_error)
+  raise MeetingPromotionUnavailable(str(exc))
 
  with agent_storage.transaction() as tx:
   data=tx.get(STORE,[],lock=True)
