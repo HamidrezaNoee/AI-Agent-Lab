@@ -534,7 +534,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   for(const n of info.notifications)add(notices,link((n.read?"":"● ")+n.task.stage_label+" · "+n.task.title,checked(async()=>{await post("/notifications/"+n.id+"/read");await open(n.task)})));
   if(!info.notifications.length)add(notices,note("اعلان جاری ندارید."));add(out,notices);
   const tasks=card("وظایف من","تأیید و ارسال فقط پس از بازبینی شما انجام می‌شود.");
-  for(const t of info.tasks){const b=link(t.stage_label+" · "+t.title+" · "+t.number,checked(()=>open(t)));b.disabled=!t.available||!info.oauth_connected;add(tasks,b);if(!t.available)add(tasks,el("small","muted",t.reminder_at?("پایش از "+t.reminder_at+" فعال می‌شود."):"تاریخ و ساعت پایان برنامه‌ریزی در BPMS باید تکمیل شود."))}
+  for(const t of info.tasks){const b=link(t.stage_label+" · "+t.title+" · "+t.number,checked(()=>open(t,!!info.oauth_connected)));b.disabled=!t.available;add(tasks,b);if(!info.oauth_connected)add(tasks,el("small","muted","مشاهده و شنیدن خلاصه آزاد است؛ برای ثبت تصمیم و انتقال مرحله، اتصال شخصی ProcessMaker لازم است."));if(!t.available)add(tasks,el("small","muted",t.reminder_at?("پایش از "+t.reminder_at+" فعال می‌شود."):"تاریخ و ساعت پایان برنامه‌ریزی در BPMS باید تکمیل شود."))}
   if(info.truncated)add(tasks,note("بیش از ۲۰۰ وظیفه جاری دارید؛ همه موارد در این صفحه نمایش داده نشده‌اند."));if(!info.tasks.length)add(tasks,note("وظیفه جاری ندارید."));add(out,tasks);
   const drafts=card("پیش‌نویس‌های فرایند","ادامه پیش‌نویس یا مشاهده وضعیت دعوت‌نامه");for(const r of info.sessions)add(drafts,link(r.title+" · "+r.status,checked(()=>session(r.id))));add(out,drafts);
  }
@@ -616,7 +616,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(locked)return;
    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
    const text=(textValue??notes.input.value).trim();if(!text)throw Error("متن یا صوتی برای ارسال وارد کنید.");
-   const result=await post(path+"/turn"+query,{revision:d.revision,text,auto_advance:true});
+   const result=await post(path+"/turn"+query,{revision:d.revision,text,auto_advance:!!info.oauth_connected});
    await applyResult(result,fromVoice);
   }
   const sendMessage=link("ارسال به دبیر",checked(()=>sendTurn()),"button primary");add(composer,sendMessage);
@@ -650,12 +650,13 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   if(["invitation_approval","minutes_approval"].includes(t.stage)){
    const quick=el("div","secretary-quick-actions");
    const approveText=t.stage==="invitation_approval"?"دعوت‌نامه را تأیید می‌کنم":"صورت‌جلسه را تأیید می‌کنم";
-   add(quick,link("✓ تأیید و ارسال",checked(()=>sendTurn(approveText)),"button primary"),
-    link("↩ نیاز به اصلاح",()=>{notes.input.value="نیاز به اصلاح: ";notes.input.focus()},"button secondary"));
+   const approve=link("✓ تأیید و ارسال",checked(()=>sendTurn(approveText)),"button primary");approve.disabled=!info.oauth_connected;
+   add(quick,approve,link("↩ نیاز به اصلاح",()=>{notes.input.value="نیاز به اصلاح: ";notes.input.focus()},"button secondary"));
    add(composer,quick);
   }
   if(isSession&&!missing.length){
-   add(composer,link("ایجاد گام اول و ارسال به رئیس",checked(()=>sendTurn("بله، ایجاد و ارسال کن")),"button primary"));
+   const start=link("ایجاد گام اول و ارسال به رئیس",checked(()=>sendTurn("بله، ایجاد و ارسال کن")),"button primary");start.disabled=!info.oauth_connected;add(composer,start);
+   if(!info.oauth_connected)add(composer,note("پیش‌نویس کامل است؛ برای ایجاد پرونده و ارسال آن به کارتابل رئیس، ابتدا «اتصال حساب خودم» را فعال کنید."));
   }
 
   const audio=el("audio");audio.controls=true;let audioPart=0,audioUrl=null;
@@ -691,7 +692,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+(typeof v==="object"?JSON.stringify(v):v)))}add(formBody,context);
   const save=link("ذخیره اصلاحات",checked(async()=>{await post(path+"/edit"+query,{revision:d.revision,values});if(isSession)await session(d.id);else await open(t,false)}));save.disabled=locked;
   send=link("تأیید بازبینی و ارسال به مرحله بعد",checked(async()=>{send.disabled=true;try{await post(path+"/submit"+query,{revision:d.revision,confirmed:true});editor.replaceChildren(note("اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));await load()}finally{send.disabled=locked||dirty}}),"button primary");
-  send.disabled=locked||missing.length>0;
+  send.disabled=locked||missing.length>0||!info.oauth_connected;
   add(formBody,save,send,status);add(p,formDetails);
 
   if(!isSession&&t.stage==="monitoring")add(p,link("پیشنهاد جلسه پیگیری اقدامات باز",checked(async()=>{const row=await post(path+"/followup"+query);await session(row.id);await load()})));
