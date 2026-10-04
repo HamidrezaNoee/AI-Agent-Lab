@@ -29,3 +29,10 @@ def test_theme_selector_spi_is_registered_and_scoped_to_avan_realm():
 def test_keycloak_runs_prebuilt_optimized_image():
     compose=(ROOT/"compose.yaml").read_text(encoding="utf-8")
     assert "kc.sh start --optimized" in compose
+
+
+def test_avan_waits_for_keycloak_readiness_not_container_start():
+    compose=(ROOT/"compose.yaml").read_text(encoding="utf-8")
+    assert "--server-async-bootstrap=false" in compose
+    assert "/health/ready" in compose
+    assert "keycloak:\n        condition: service_healthy" in compose
