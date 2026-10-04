@@ -48,3 +48,13 @@ def test_keycloak_uses_avan_security_bridge_not_a_second_captcha_stack():
     assert "from .turnstile import verify" in app
     assert "AVAN_SECURITY_BRIDGE_URL: http://avan:8188/internal/security" in compose
     assert "AVAN_ALLOWED_HOSTS: 127.0.0.1,localhost,avan" in compose
+
+
+def test_keycloak_initial_login_challenge_injects_avan_captcha():
+    provider = (
+        ROOT / "infra" / "keycloak" / "captcha" / "src" / "main" / "java" /
+        "com" / "avan" / "identity" / "AvanCaptchaForm.java"
+    ).read_text(encoding="utf-8")
+    assert "protected Response challenge(AuthenticationFlowContext context" in provider
+    assert "prepareSecurity(form);" in provider
+    assert "return form.createLoginUsernamePassword();" in provider
