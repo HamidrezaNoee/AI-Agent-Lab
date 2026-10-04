@@ -1,6 +1,9 @@
 # AVAN contributor instructions
 
-Read `docs/AI_HANDOFF.md` before changing this project. For login or Appearance work,
+Read the short `docs/AI_HANDOFF.md`, then run `python scripts/ai-context.py show <module>`
+(use `list` to choose). Read relevant source/tests only; update the manifest when
+contracts change. Do not preload archived history or datasets. `affected` selects
+focused tests conservatively; full CI is still required. For login or Appearance work,
 read `docs/skills/avan-login/SKILL.md` and `docs/LOGIN_APPEARANCE_FA.md`.
 
 - Keep normal-user production identity in Keycloak. At the owner's explicit request,
@@ -19,3 +22,7 @@ read `docs/skills/avan-login/SKILL.md` and `docs/LOGIN_APPEARANCE_FA.md`.
 - Use scoped tests and inspect actual browser screenshots. Clearly distinguish
   mocked UI tests, backend tests and live Docker/Keycloak verification.
 - Update the handoff when behavior or deployment instructions change.
+
+
+- The current owner requirement is a fixed login card without dragging or automatic
+  collapse; it supersedes historical hover behavior in the login skill/docs.
