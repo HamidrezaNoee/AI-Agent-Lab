@@ -219,7 +219,10 @@ def assistant_state(values,task,scope,questions=()):
  # Preserve order while removing duplicates.
  pending=list(dict.fromkeys(pending))[:12]
  if pending:
-  message='اطلاعاتی که گرفتم ثبت شد. برای ادامه این موارد را مشخص کنید:\n- '+'\n- '.join(pending)
+  first=pending[0]
+  rest=len(pending)-1
+  message='متوجه شدم و اطلاعات قابل استخراج را ثبت کردم.\n\nبرای ادامه فقط این مورد را مشخص کنید:\n'+first
+  if rest>0:message+='\n\nبعد از پاسخ شما، '+str(rest)+' مورد باقی‌مانده را مرحله‌به‌مرحله می‌پرسم.'
  elif stage=='invitation':
   message='اطلاعات دعوت‌نامه کامل است. آیا گام اول ایجاد و برای رئیس جلسه ارسال شود؟ می‌توانید بگویید «بله، ایجاد و ارسال کن».'
  elif stage=='invitation_approval':
@@ -360,6 +363,14 @@ def update(scope,actor,task,revision,values,questions=(),*,turn_text=None,turn_s
   row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments);tx.put(key,row)
  return row
 
+def _evidence_text(value):
+ text=str(value or '').strip().replace('\u200c',' ').replace('ي','ی').replace('ك','ک')
+ return re.sub(r'\s+',' ',text)
+
+def _evidence_in_notes(quote,notes):
+ q=_evidence_text(quote);n=_evidence_text(notes)
+ return bool(q) and q in n
+
 def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
  owned=client is None
  if owned:client,model=configured_client()
@@ -372,7 +383,7 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
   if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
   parsed=legacy.Extraction.model_validate_json(result.output_text);values=copy.deepcopy(current)
   for a in parsed.assignments:
-   if a.field not in form(task) or a.quote not in notes:raise AgentInvalid('Invalid assignment evidence')
+   if a.field not in form(task) or not _evidence_in_notes(a.quote,notes):raise AgentInvalid('Invalid assignment evidence')
    val=normalize(json.loads(a.value_json))
    if isinstance(val,dict):val={**(values.get(a.field) or {}),**{n:{**(values.get(a.field,{}).get(n) or {}),**r} for n,r in val.items() if isinstance(r,dict)}}
    values[a.field]=val
