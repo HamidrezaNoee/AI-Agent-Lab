@@ -79,6 +79,8 @@
 .chat-bubble.assistant{align-self:flex-start;background:transparent;border:0;box-shadow:none;padding-right:2px}
 .chat-bubble.user{align-self:flex-end;background:#e8f5f2;border:1px solid #c7e6df;border-bottom-left-radius:7px}
 .chat-bubble.error{background:#fff4f2;border:1px solid #f1d0cb;color:#8d3434;padding:12px 15px}
+.chat-error-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.chat-error-actions .button{padding:7px 10px!important;font-size:11px}
 .chat-bubble.thinking{opacity:.85}
 .typing-row{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:12px}
 .typing-dots{display:inline-flex;gap:4px;direction:ltr}
