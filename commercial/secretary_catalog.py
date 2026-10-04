@@ -128,7 +128,7 @@ def _trusted_meeting_pack():
  contract=json.loads(Path(__file__).with_name('secretary_pmx.json').read_text(encoding='utf-8'))
  forms=contract.get('forms') or {}
  def by_prefix(prefix):
-  found=[v for k,v in forms.items() if re.match(re.escape(prefix)+r'(?:\\s|[-–]|$)',k)]
+  found=[v for k,v in forms.items() if re.match(re.escape(prefix)+r'(?:\s|[-–]|$)',k)]
   if len(found)!=1:raise ValueError('قرارداد فرم داخلی مدیریت جلسات ناقص است.')
   return found[0]
  meeting_meta={
