@@ -269,7 +269,12 @@ def login(request:Request,body:Login):
         setup.audit("CAPTCHA_LOGIN_DENIED")
         raise HTTPException(401,"اعتبارسنجی ضدربات نامعتبر یا منقضی شده است.")
     state=setup.password_state()
-    valid=(hmac.compare_digest(body.username.encode(),setup.godadmin_username().encode()) and
+    local_username=hmac.compare_digest(body.username.encode(),setup.godadmin_username().encode())
+    if not local_username and state['changed'] and state['totp'] and setup.get_setting('oidc'):
+        # A stale /admin/ tab is not the organizational password verifier.
+        # Do not issue a session or forward the submitted password to the IdP.
+        return JSONResponse({'authenticated':False,'redirect':'/auth/login'})
+    valid=(local_username and
            setup.password_ok(body.password))
     if not valid:
         attempts.append(time.time())

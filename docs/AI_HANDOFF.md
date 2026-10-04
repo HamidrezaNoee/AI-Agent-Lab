@@ -1,5 +1,27 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-04: organizational login after local GodAdmin logout
+
+Confirmed routing defect: production signOut sent local GodAdmin sessions back
+to /admin/, whose identical AVAN scene verifies only the local GodAdmin password.
+An organizational user entered there received the exact reported Persian invalid
+username/password error even though their identity is stored in Keycloak.
+
+After successful local logout, go to /auth/login. A nonlocal username submitted
+from a stale /admin/ tab redirects to that route only after bootstrap is complete,
+OIDC is configured and CAPTCHA passes. Return authenticated=false, no cookie and
+no credential forwarding; clear the form password before navigation. The user
+re-enters credentials on the existing themed Keycloak flow. Local GodAdmin
+password/OTP checks, lockout and first-run handling remain intact.
+
+Validation: 20 focused routing/bootstrap/account-creation/identity tests passed;
+Node executes the actual logout handler with mocked HTTP and checks success vs
+failure; both app JS files pass syntax. No live credential verification or browser
+screenshots. This proves the routing fix, not that the owner's password is correct.
+Deploy by pulling and rebuilding only avan with the current Compose overlays.
+No Keycloak rebuild, password reset, volume deletion or re-binding is required.
+
+
 ## Update 2026-10-04: fix fresh realm import crash (follow-up to e06be0b)
 
 The next owner log identifies the actual persistent startup failure: Keycloak

@@ -99,7 +99,7 @@ async function signOut(){
    });
    if(!response.ok)throw Error("خروج انجام نشد.");
    sessionExpired();
-   window.location.assign("/admin/");
+   window.location.assign("/auth/login");
    return;
   }
   const response=await request("/auth/logout",{method:"POST"});

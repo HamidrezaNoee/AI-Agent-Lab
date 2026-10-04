@@ -87,6 +87,7 @@ jobs:
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
         run: |
+          node commercial/tests/logout_routing.cjs
           node --check commercial/web/production/app.js
           node --check commercial/web/admin/app.js
           node --check commercial/web/admin/login-scene.js

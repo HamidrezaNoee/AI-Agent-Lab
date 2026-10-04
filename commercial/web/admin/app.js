@@ -342,6 +342,10 @@ function showLogin(){
     p.dataset.submitting="1";busy(f,true);
     const result=await api("login",{username:formValue(f,"username"),
       password:f.elements.namedItem("password").value,captcha_token:captchaToken});
+    if(result.redirect==="/auth/login"){
+      f.elements.namedItem("password").value="";
+      window.location.assign("/auth/login");return;
+    }
     if(result.mfa_required){showLoginOtp(result.challenge);return}
     state.csrf=result.csrf;window.location.assign("/")
   }catch(err){showError(out,err);captcha?.reset()}finally{

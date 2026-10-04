@@ -3,6 +3,9 @@ from starlette.requests import Request
 from commercial import production_app
 from commercial import setup_console
 from commercial import setup_routes
+import json
+import pytest
+from fastapi import HTTPException
 
 
 def _request(path="/"):
@@ -58,3 +61,29 @@ def test_public_root_stays_on_local_admin_until_bootstrap_security_is_complete(m
     response=production_app.home(_request())
     assert response.status_code==303
     assert response.headers["location"]=="/admin/"
+
+
+@pytest.mark.parametrize('complete,oidc,expected', [(True,True,200),(False,True,401),(True,False,401)])
+def test_organizational_user_in_stale_admin_form_never_uses_local_password(monkeypatch,complete,oidc,expected):
+    setup_routes._attempts.clear()
+    monkeypatch.setattr(setup_routes,'_local',lambda request:None)
+    monkeypatch.setattr(setup_routes,'_origin',lambda request:None)
+    monkeypatch.setattr(setup_routes,'_turnstile_check',lambda *args:True)
+    monkeypatch.setattr(setup_console,'godadmin_identity',lambda:None)
+    monkeypatch.setattr(setup_console,'godadmin_username',lambda:'godadmin')
+    monkeypatch.setattr(setup_console,'password_state',lambda:{'changed':complete,'totp':complete})
+    monkeypatch.setattr(setup_console,'get_setting',lambda key:{'issuer':'https://idp.example/realms/avan'} if key=='oidc' and oidc else None)
+    monkeypatch.setattr(setup_console,'audit',lambda *args:None)
+    monkeypatch.setattr(setup_console,'password_ok',lambda *args:pytest.fail('Must not check organizational password against GodAdmin'))
+    before=set(setup_routes._sessions)
+    body=setup_routes.Login(username='employee',password='preserve secret whitespace ',captcha_token='test')
+    if expected==401:
+        with pytest.raises(HTTPException) as exc:
+            setup_routes.login(_request('/admin/api/login'),body)
+        assert exc.value.status_code==401
+    else:
+        result=setup_routes.login(_request('/admin/api/login'),body)
+        assert json.loads(result.body)=={'authenticated':False,'redirect':'/auth/login'}
+        assert 'set-cookie' not in result.headers
+        assert body.password not in result.body.decode()
+    assert set(setup_routes._sessions)==before
