@@ -132,6 +132,29 @@ def register(app,authorized):
             except PermissionError as exc:raise HTTPException(403,str(exc))
             except ValueError as exc:raise HTTPException(422,str(exc))
         return _source_store_response(source_id,run,value[2])
+    @app.get('/api/sources/{source_id}/process-workspace/status')
+    def process_status(source_id:str,value=Depends(authorized)):
+        def build(con,scope,principal):
+            enabled_packs=configured(scope)
+            meeting_packs=[p for p in enabled_packs if p.get('adapter')=='meeting_v2']
+            return {
+                'source_id':scope['source_id'],
+                'external_user_id':scope['external_user_id'],
+                'role':scope['role'],
+                'licensed_modules':sorted(scope['license']['modules']),
+                'meeting_module_enabled':2 in set(scope['license']['modules']),
+                'configured_processes':[identity(p,resolve(p,scope)) for p in enabled_packs],
+                'meeting_packs':[{
+                    'id':p['id'],
+                    'enabled':bool(p.get('enabled')),
+                    'revision':p.get('revision'),
+                    'meeting_title':(p.get('meeting') or {}).get('title'),
+                    'action_title':(p.get('action') or {}).get('title'),
+                } for p in meeting_packs],
+                'ready_for_meeting_management':bool(meeting_packs) and 2 in set(scope['license']['modules']),
+            }
+        return read(value,source_id,build)
+
     @app.get('/api/sources/{source_id}/process-workspace')
     def list_processes(source_id:str,value=Depends(authorized)):
         return read(value,source_id,lambda con,s,p:processes(s))
