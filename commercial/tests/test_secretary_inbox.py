@@ -367,3 +367,25 @@ def test_secretary_provider_failures_are_classified_safely():
  assert 'سهمیه' in r._model_failure(rate)
  bad=BadRequestError();bad.status_code=400
  assert 'Structured Output' in r._model_failure(bad)
+
+
+
+def test_extract_prefers_official_responses_parse(pack):
+ class Responses:
+  def __init__(self):self.calls=0
+  def parse(self,**kwargs):
+   self.calls+=1
+   assert kwargs['text_format'] is r.legacy.Extraction
+   class Result:
+    status='completed'
+    output_parsed=r.legacy.Extraction(assignments=[],questions=['عنوان جلسه چیست؟'])
+   return Result()
+  def create(self,**kwargs):
+   raise AssertionError('manual structured create must not be used when parse is available')
+ class Client:
+  def __init__(self):self.responses=Responses()
+ client=Client()
+ values,questions=r.extract('یک جلسه می‌خواهم',task(pack,'invitation',{}),{},S,client=client,model='test-model')
+ assert values=={}
+ assert questions==['عنوان جلسه چیست؟']
+ assert client.responses.calls==1
