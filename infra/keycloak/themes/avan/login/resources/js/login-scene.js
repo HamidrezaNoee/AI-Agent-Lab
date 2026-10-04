@@ -31,7 +31,7 @@
   globe_contrast:1.10,globe_saturation:1.22,globe_hue:0,globe_glow:1.30,globe_wobble:1,globe_rotation_speed:1,
   globe_point_density:1,globe_point_size:1,globe_point_opacity:1,
   node_size:70,node_opacity:1,node_border_width:1,node_glow:1,hover_scale:1.24,hover_duration:180,
-  hover_mode:"card",pause_on_hover:true,login_auto_collapse:true,show_orbits:true,show_idle_cards:true,orbit_speed:.22,orbit_mode:"orbit",
+  hover_mode:"card",pause_on_hover:true,login_auto_collapse:false,show_orbits:true,show_idle_cards:true,orbit_speed:.22,orbit_mode:"orbit",
   orbit_line_width:1.15,orbit_opacity:.78,orbit_glow:1,orbit_primary:"#50EAF7",orbit_secondary:"#FF7053",
   card_width:176,card_opacity:.94,
   elements:baseElements.map(([id,title,subtitle,accent,radius,ellipse,angle,speed])=>({
@@ -261,31 +261,22 @@
   target.addEventListener("pointermove",move);target.addEventListener("pointerup",end);target.addEventListener("pointercancel",end);target.addEventListener("dblclick",e=>{if(isInteractive(e.target))return;target.dataset.dragX="0";target.dataset.dragY="0";target.style.translate="0px 0px"});
  }
  function enableReveal(panel){
-  const toggle=panel.querySelector(".login-reveal-toggle"),form=panel.querySelector(".login-expand-body");
-  if(!toggle||!form||panel.dataset.revealReady)return;
+  const form=panel.querySelector(".login-expand-body");
+  if(!form||panel.dataset.revealReady)return;
   panel.dataset.revealReady="1";
-  let timer=null,inside=false;
-  const expand=open=>{
-   if(config.login_auto_collapse===false)open=true;
-   if(!open&&panel.dataset.submitting==="1")return;
-   panel.classList.toggle("is-expanded",open);panel.classList.toggle("is-collapsed",!open);
-   toggle.setAttribute("aria-expanded",String(open));form.inert=!open;
-   if(open)window.dispatchEvent(new CustomEvent("avan-login-expanded"));
-  };
-  panel._avanReveal=expand;
-  const closeSoon=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(!inside&&panel.dataset.dragging!=="1")expand(false)},160)};
-  panel.addEventListener("pointerenter",e=>{if(e.pointerType!=="touch"){inside=true;clearTimeout(timer);expand(true)}});
-  panel.addEventListener("pointerleave",e=>{if(e.pointerType!=="touch"){inside=false;closeSoon()}});
-  panel.addEventListener("focusin",()=>{clearTimeout(timer);expand(true)});
-  panel.addEventListener("focusout",e=>{if(!panel.contains(e.relatedTarget)&&!inside)closeSoon()});
-  toggle.addEventListener("click",()=>{clearTimeout(timer);expand(true);form.querySelector("input")?.focus()});
-  form.addEventListener("submit",()=>{expand(true)});
-  expand(!!panel.querySelector(".signin-error"));
+  panel.classList.add("is-expanded","login-fixed-card");
+  panel.classList.remove("is-collapsed","is-login-dragging");
+  panel.dataset.dragX="0";panel.dataset.dragY="0";panel.style.translate="0px 0px";
+  form.inert=false;
+  const toggle=panel.querySelector(".login-reveal-toggle");
+  if(toggle){toggle.setAttribute("aria-expanded","true");toggle.hidden=true}
+  panel._avanReveal=()=>{};
+  window.dispatchEvent(new CustomEvent("avan-login-expanded"));
  }
  function teardown(){cancelAnimationFrame(raf);raf=0;last=0;selected=null;nodes=[];root?.remove();root=wrap=canvas=ctx=layer=tooltip=backdrop=geometry=null;document.body.classList.remove("avan-live-login-enabled")}
  function sync(){
   const next=document.querySelector(loginSelector);
-  if(next){card=next;document.body.classList.add("avan-live-login-enabled");if(!root&&!creating)creating=makeScene().catch(()=>{}).finally(()=>{creating=null});enableDrag(card);enableReveal(card)}
+  if(next){card=next;document.body.classList.add("avan-live-login-enabled");if(!root&&!creating)creating=makeScene().catch(()=>{}).finally(()=>{creating=null});enableReveal(card)}
   else if(root){teardown();card=null}
  }
  document.addEventListener("visibilitychange",updateMotion);
