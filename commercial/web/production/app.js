@@ -81,6 +81,7 @@ function setupUser(user){
   add(group,el("span","bound-source-name",source.source_name));
   const capabilities=new Set(source.capabilities||["overview"]);
   add(group,sourcePageButton(source,"source-overview","◉  نمای BPMS"));
+  if(capabilities.has("secretary"))add(group,sourcePageButton(source,"source-secretary","✦  اجرای هوشمند جلسات"));
   if(capabilities.has("bi"))add(group,sourcePageButton(source,"source-bi","▦  BI اتصال"));
   add(sourceButtons,group);
   if(source.engine==="processmaker")loadProcessChoices(source,group);
@@ -154,7 +155,7 @@ function select(page){
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-assistant":"دستیار BPMS","source-secretary":"دبیر هوشمند BPMS","source-reports":"گزارش اقدامات BPMS","source-monitor":"هشدار و پیگیری BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-assistant":"دستیار BPMS","source-secretary":"اجرای هوشمند جلسات","source-reports":"گزارش اقدامات BPMS","source-monitor":"هشدار و پیگیری BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",
    sourcePage&&b.dataset.sourceId
@@ -540,7 +541,7 @@ function renderAnalysis(target,result,sourceId=null){
  add(target,evidence,el("small","muted","زمان بررسی: "+result.as_of_utc));
 }
 async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initialManifest=null){
- const m=root();heading(m,"کارتابل دبیر هوشمند","دعوت‌نامه، تأیید رئیس، صورتجلسه، اجرای اقدام و پایش در فرایند متصل BPMS");
+ const m=root();heading(m,"اجرای هوشمند فرایند جلسات","دبیر، رئیس جلسه، اقدام‌کننده و بررسی‌کننده می‌توانند وظیفه واقعی ProcessMaker خود را با متن، صوت یا فایل انجام دهند.");
  if(!sourceId){add(m,note("اتصال BPMS را از منوی کنار انتخاب کنید."));return}
  const base=sourceApi(sourceId,"/secretary"),out=el("div"),editor=el("div");add(m,out,editor);
  const post=(path,body={})=>request(base+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
