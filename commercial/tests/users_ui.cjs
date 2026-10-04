@@ -9,7 +9,7 @@ w.fetch=async(url,options={})=>{
  const name=url.replace('/admin/api/','').split('?')[0];
  const fixtures={'users/mapped':{users:[user]},'users/identities':{users:[user,legacy]},'users/pending':{pending:[]},'user-bindings/sources':{sources:[{id:source,name:'ProcessMaker',engine:'processmaker'}]},'license/status':{valid:true,modules:[1,2]},'identity/status':{godadmin_local:true,godadmin_username:'godadmin'},'company':{company_name:'Company'},'user-bindings/list':{bindings:[]},'user-bindings/directory':{users:[{external_user_id:'p'.repeat(32),display_name:'BPMS Person',username:'person',active:true}],suggestions:[]}};
  if(fixtures[name])data=fixtures[name];
- else if(!['users/create-identity','users/activate-managed','users/password','users/profile','users/delete','user-bindings/bind'].includes(name))throw Error('Unexpected '+url);
+ else if(!['users/create-identity','users/activate-managed','users/password','users/profile','users/role','users/delete','user-bindings/bind'].includes(name))throw Error('Unexpected '+url);
  return {ok:true,json:async()=>data};
 };
 let code=fs.readFileSync(path.join(__dirname,'../web/admin/app.js'),'utf8').replace('document.addEventListener("DOMContentLoaded",start);','');
@@ -45,6 +45,8 @@ const person=()=>[...w.document.querySelectorAll('.connection-list > section')].
  let f=w.document.querySelector('form');f.elements.password.value='new-password-123456';f.elements.repeat.value='new-password-123456';
  f.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await tick();
  const reset=calls.find(c=>c.url.endsWith('/users/password'));assert(reset);assert.equal(JSON.parse(reset.options.body).subject,uid);assert.equal(reset.options.headers['X-AVAN-ADMIN-CSRF'],'csrf');assert.equal(w.document.querySelectorAll('form').length,0);
+ button(person(),'تغییر نقش').click();let roleForm=w.document.querySelector('form');assert(roleForm.elements.role);roleForm.elements.role.value='Manager';roleForm.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await tick();
+ const roleChange=calls.find(c=>c.url.endsWith('/users/role'));assert(roleChange);assert.deepEqual(JSON.parse(roleChange.options.body),{subject:uid,role:'Manager'});
  button(person(),'دسترسی‌ها').click();await tick();assert(w.document.body.textContent.includes('ProcessMaker'));
  button(person(),'انتخاب کاربر BPMS').click();await tick();assert(w.document.querySelector('select[name=external_user_id]'));
  button(person(),'انصراف').click();await tick();
