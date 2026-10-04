@@ -153,6 +153,50 @@ jobs:
       - name: Build Keycloak hybrid anti-bot provider
         run: docker build -f infra/keycloak/Dockerfile -t avan-keycloak:ci .
 
+      - name: Runtime smoke AVAN Keycloak login theme
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker network create avan-keycloak-ci
+          docker run -d --name avan-keycloak-db-ci --network avan-keycloak-ci \
+            -e POSTGRES_DB=avan_keycloak \
+            -e POSTGRES_USER=keycloak \
+            -e POSTGRES_PASSWORD=ci-keycloak-password \
+            postgres:17-alpine
+          for i in {1..30}; do
+            if docker exec avan-keycloak-db-ci pg_isready -U keycloak -d avan_keycloak >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker run -d --name avan-keycloak-ci --network avan-keycloak-ci \
+            -p 127.0.0.1:18080:8080 \
+            -e KC_DB=postgres \
+            -e KC_DB_URL=jdbc:postgresql://avan-keycloak-db-ci:5432/avan_keycloak \
+            -e KC_DB_USERNAME=keycloak \
+            -e KC_DB_PASSWORD=ci-keycloak-password \
+            -e AVAN_BFF_CLIENT_SECRET=0123456789abcdef0123456789abcdef \
+            -e AVAN_PROVISIONER_CLIENT_SECRET=fedcba9876543210fedcba9876543210 \
+            -v "$PWD/infra/keycloak/avan-realm.json:/opt/keycloak/data/import/avan-realm.json:ro" \
+            avan-keycloak:ci \
+            start --optimized --server-async-bootstrap=false --http-enabled=true --import-realm \
+            --hostname=http://127.0.0.1:18080
+          cleanup() {
+            docker logs avan-keycloak-ci || true
+            docker rm -f avan-keycloak-ci avan-keycloak-db-ci >/dev/null 2>&1 || true
+            docker network rm avan-keycloak-ci >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:18080/realms/avan/.well-known/openid-configuration >/dev/null; then break; fi
+            sleep 1
+          done
+          login_url='http://127.0.0.1:18080/realms/avan/protocol/openid-connect/auth?response_type=code&client_id=avan-bff&redirect_uri=http%3A%2F%2F127.0.0.1%3A8188%2Fauth%2Fcallback&scope=openid%20profile%20email&state=ci-state&code_challenge=0ZqG8RFNf1lLfH2WJbX9gW7cYfJw-lQJZC9AkFtnz3E&code_challenge_method=S256'
+          status="$(curl -sS -o /tmp/avan-login.html -w '%{http_code}' "$login_url")"
+          test "$status" = "200"
+          grep -q 'ورود به آوان' /tmp/avan-login.html
+          ! grep -q 'An internal server error has occurred' /tmp/avan-login.html
+          ! grep -q 'We are sorry' /tmp/avan-login.html
+          echo "AVAN Keycloak runtime login theme rendered successfully."
+
       - name: Build production image and verify packaged imports
         run: |
           docker build -f commercial/Dockerfile.production -t avan-agent:ci .
