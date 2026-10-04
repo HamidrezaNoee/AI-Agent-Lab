@@ -176,6 +176,7 @@ def test_two_installed_native_processes_auto_promote_to_meeting_pack(pack,store,
 
 
 def test_process_list_stays_selectable_when_meeting_auto_promotion_is_unavailable(store,monkeypatch):
+ store[c.STORE]=[]
  scope={**S,'license':{'modules':{1,2}}}
  generic=c.save('source',{'adapter':'native_tasks_v1','process':{
   'process_uid':'f'*32,'title':'فرایند عمومی نصب‌شده'}},'admin')
@@ -194,6 +195,7 @@ def test_process_list_stays_selectable_when_meeting_auto_promotion_is_unavailabl
 
 
 def test_meeting_promotion_incompatibility_is_reported_but_native_processes_remain(store,monkeypatch):
+ store[c.STORE]=[]
  scope={**S,'license':{'modules':{1,2}}}
  generic=c.save('source',{'adapter':'native_tasks_v1','process':{
   'process_uid':'f'*32,'title':'فرایند عمومی'}},'admin')
@@ -232,3 +234,4 @@ def test_runtime_meeting_agent_is_available_even_when_catalog_promotion_is_unava
  assert diagnostics['promotion_state']=='unavailable'
  listed=w.processes({**S,'license':{'modules':{1,2}}})['processes']
  assert any(x['adapter']=='meeting_v2' and x['renderer']=='meeting' for x in listed)
+

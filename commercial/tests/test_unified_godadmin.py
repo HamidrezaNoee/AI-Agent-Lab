@@ -282,7 +282,7 @@ class UnifiedGodAdminTests(unittest.TestCase):
         self.assertFalse(setup.password_state()["changed"])
         self.assertEqual(self.client.get("/auth/login").status_code,403)
 
-    def test_bootstrap_can_create_unprivileged_identity_without_pm_mapping(self):
+    def test_bootstrap_creates_and_binds_owner_then_revokes_local_session(self):
         password=setup.INITIAL.read_text().strip()
         setup.change_password(password,"A-different-long-strong-password!")
         seed=setup.totp_enrollment();otp=setup._totp(seed,int(time.time()))
@@ -302,7 +302,12 @@ class UnifiedGodAdminTests(unittest.TestCase):
             self.assertEqual(result.status_code,200)
             self.assertEqual(create.call_args.args[-2],"GodAdmin")
         self.assertNotIn(b"A-temporary-long-password!",setup.SQLITE.read_bytes())
-        self.assertIsNone(setup.godadmin_identity())
+        self.assertEqual(setup.godadmin_identity()["subject"],"signed-subject")
+        self.assertEqual(setup.godadmin_identity()["issuer"],ISSUER)
+        self.assertTrue(result.json()["bound"])
+        self.assertEqual(result.json()["login_url"],"/auth/login")
+        self.assertEqual(self.client.get("/admin/api/secretary/processes/"+"a"*24).status_code,401)
 
 
 if __name__=="__main__":unittest.main()
+

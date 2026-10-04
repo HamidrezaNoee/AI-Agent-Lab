@@ -23,7 +23,7 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,25));
 (async()=>{
  w.testAVAN.setupUser({name:'رئیس',role:'Expert',company:'شرکت',subject:'actor',modules:[1,2],csrf:'csrf',workspace_access:true,workspace_navigation:true,bpms_sources:[{source_id:sid,source_name:'PM',engine:'processmaker',capabilities:['overview','secretary']}]});await tick();
  assert(w.document.querySelector('[data-page="source-secretary"][data-source-id="'+sid+'"]'));
- assert(w.document.querySelector('[data-page="source-secretary"][data-source-id="'+sid+'"]').textContent.includes('اجرای هوشمند جلسات'));
+ assert(w.document.querySelector('[data-page="source-secretary"][data-source-id="'+sid+'"]').textContent.includes('دبیر هوشمند'));
  assert(w.document.getElementById('pm-nav').hidden);
  assert(w.document.querySelector('[data-section="approvals"]'));
  hold=true;w.document.querySelector('[data-section="approvals"]').click();await tick();assert(release);
@@ -38,9 +38,11 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,25));
  // generic process and reopen the typed meeting_v2 workflow.
  w.document.querySelector('[data-page="source-secretary"][data-source-id="'+sid+'"]').click();await tick();await tick();
  assert.equal(w.testAVAN.app.processChoices[sid].packId,meeting);
- assert(w.document.getElementById('main').textContent.includes('اجرای هوشمند فرایند جلسات'));
+ assert(w.document.getElementById('main').textContent.includes('دبیر هوشمند'));
 
  // Generic inbox packs must never narrow analytical assistant endpoints.
+ w.testAVAN.app.processChoices[sid]={packId:purchase,section:"inbox"};
+ w.testAVAN.app.processManifests[sid]=manifests[purchase];
  requestHeaders.length=0;
  await w.testAVAN.request('/api/sources/'+sid+'/agent/status',{background:true});
  const genericHeader=requestHeaders.at(-1).headers['X-AVAN-Process-Pack'];
@@ -55,3 +57,4 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,25));
 
  w.testAVAN.cleanMedia();w.close();console.log('Process DOM integration passed: distinct menus, generic packs do not poison assistant scope, meeting context remains typed.');
 })().catch(e=>{w.close();console.error(e);process.exitCode=1});
+

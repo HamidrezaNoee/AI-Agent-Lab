@@ -1,26 +1,20 @@
-# Validation — 2026-10-04
+# Validation — meeting pair and secretary desk, 2026-10-04
 
-Baseline: 4a0b583cf098268ba8c3784e22b87df10b0fc5f2.
+Integrated onto c19ae38963f59710cadd903ec231ddff076650f1, preserving latest voice,
+structured parsing/retry and safe grid-merge work.
 
-- Manifest: ten modules, paths/dependency cycles/summary budgets valid.
-- New context/probe tests plus six identity suites: 46 passed.
-- All manifest-selected Python tests: 257 passed, 5 failed, 16 subtests passed.
-  Three failures are incomplete local source snapshot assets (preview CSS and
-  production theme/fonts). Two reproduce baseline application/test discrepancies:
-  `test_processmaker_directory_normalizes_uid_and_status` and
-  `test_assistant_state_summarizes_invitation_for_chair`.
-- Existing GitHub baseline run 37197473727: 403 passed, 3 failed, 55 subtests passed.
-  The two discrepancies above plus
-  `test_bootstrap_can_create_unprivileged_identity_without_pm_mapping` fail there.
-  Its Docker/browser steps were skipped; no green integration result is claimed.
-- Workflow YAML parsing and all embedded Bash syntax checks passed locally.
-- No Docker daemon, live Keycloak, server credentials or browser-render acceptance
-  available in this environment. Updated CI now starts the actual AVAN security
-  bridge and anti-bot alongside Keycloak, checks challenge-bearing rendered HTML,
-  and registers cleanup before resources are allocated. This gate is implemented,
-  not yet demonstrated green. It does not test password/OTP acceptance.
-
-The context tool maps tests, it does not label a module production-ready. Existing
-failures remain visible; none were skipped or weakened to obtain a green build.
-Root handoff reduced from 18,776 to 1,693 characters; this is not a measured token
-saving percentage and does not measure runtime model usage.
+- Full Python suite: 463 passed,
+  55 subtests passed. No skipped baseline failures.
+- Real runtime and REST adapter exercised for all seven stages with mock PM HTTP.
+- Context budgets, evidence quotes, pair merge/revision checks and installed
+  contract drift rejection tested.
+- Secretary and process navigation DOM tests passed after correcting stale fixtures.
+- Chromium renders actual HTML/CSS/JS with API fixtures; desktop/mobile screenshots
+  inspected. Counts, ordered stages, empty-stage disabling, filtering and task editor
+  checked. This is not live PM/Keycloak or paid-model verification.
+- Runtime accepts documented PM document-download success statuses 200 and 206.
+- Docker and PowerShell execution are unavailable locally; production packaging is
+  checked by the Python COPY-layout test. CI retains container/browser gates.
+- PMX originals unchanged. Native original-file upload remains separate from text
+  extraction; exported multiple-file controls refer to f1/all without Input Document
+  definitions. Live mapping/API-version verification is required for that path.

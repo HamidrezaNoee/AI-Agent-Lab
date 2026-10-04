@@ -302,6 +302,8 @@ def test_virtual_meeting_pack_drives_real_owned_task_inbox(store,monkeypatch):
  result=r.inbox(None,S,pack_id=virtual['id'])
  assert result['packs'][0]['id']==virtual['id']
  assert result['tasks'][0]['stage']==stage
+ # task() selects four columns, whereas inbox() selects six.
+ monkeypatch.setattr(r,'query',lambda *a:[(trusted['meeting']['process_uid'],100,phpserialize.dumps(V),trusted['stages'][stage]['task_uid'])])
  loaded=r.task(None,S,'a'*32,1,virtual['id'])
  assert loaded['pack']['adapter']=='meeting_v2'
  assert loaded['stage']==stage
@@ -405,3 +407,4 @@ def test_extracted_grid_preserves_existing_row_fields():
  assert merged['1']['MTG_ParticipantUserUID']=='u1'
  assert merged['1']['MTG_ParticipantName']=='جدید'
  assert merged['2']['MTG_ParticipantUserUID']=='u2'
+

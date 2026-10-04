@@ -81,7 +81,7 @@ function setupUser(user){
   add(group,el("span","bound-source-name",source.source_name));
   const capabilities=new Set(source.capabilities||["overview"]);
   add(group,sourcePageButton(source,"source-overview","◉  نمای BPMS"));
-  if(capabilities.has("secretary"))add(group,sourcePageButton(source,"source-secretary","✦  اجرای هوشمند جلسات"));
+  if(capabilities.has("secretary"))add(group,sourcePageButton(source,"source-secretary","✦  دبیر هوشمند"));
   if(capabilities.has("bi"))add(group,sourcePageButton(source,"source-bi","▦  BI اتصال"));
   add(sourceButtons,group);
   if(source.engine==="processmaker")loadProcessChoices(source,group);
@@ -541,12 +541,21 @@ function renderAnalysis(target,result,sourceId=null){
  add(target,evidence,el("small","muted","زمان بررسی: "+result.as_of_utc));
 }
 async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initialManifest=null){
- const m=root();heading(m,"اجرای هوشمند فرایند جلسات","دبیر، رئیس جلسه، اقدام‌کننده و بررسی‌کننده می‌توانند وظیفه واقعی ProcessMaker خود را با متن، صوت یا فایل انجام دهند.");
+ const m=root();m.classList.add("secretary-workspace");heading(m,"دبیر هوشمند","از دعوت تا پیگیری مصوبات؛ هر کار در زمان و کارتابل خودش.");
  if(!sourceId){add(m,note("اتصال BPMS را از منوی کنار انتخاب کنید."));return}
  const base=sourceApi(sourceId,"/secretary"),out=el("div"),editor=el("div");add(m,out,editor);
  const post=(path,body={})=>request(base+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
  const checked=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
- let info;
+ const stages=[
+  ["invitation","دعوت جلسه","دبیر"],
+  ["invitation_approval","تأیید دعوت‌نامه","رئیس جلسه"],
+  ["minutes","ثبت صورت‌جلسه","دبیر"],
+  ["minutes_approval","تأیید صورت‌جلسه","رئیس جلسه"],
+  ["action_execution","اجرای اقدام","اقدام‌کننده"],
+  ["action_review","بررسی اقدام","دبیر"],
+  ["monitoring","پایش و اختتام","دبیر"]
+ ];
+ let info,stageFilter=null;
  async function load(){
   if(packId){
    let manifest;
@@ -558,36 +567,82 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    refreshProcessMenu(sourceId,manifest);
    if(!m.isConnected||app.selectedSourceId!==sourceId||app.processChoices[sourceId]?.packId!==packId||app.processChoices[sourceId]?.section!==sectionId)return;
    const personal=await request(base+"/inbox?pack_id="+packId,{background:true});
-   info={...manifest,...personal,tasks:manifest.tasks,notifications:manifest.notifications,sessions:manifest.sessions,packs:[manifest.process]};
+   info={...manifest,...personal,tasks:manifest.tasks,notifications:manifest.notifications,sessions:manifest.sessions,packs:[manifest.process],workflow_tasks:personal.tasks};
   }else info=await request(base+"/inbox",{background:true});
   if(!m.isConnected||(packId&&(app.selectedSourceId!==sourceId||app.processChoices[sourceId]?.packId!==packId||app.processChoices[sourceId]?.section!==sectionId)))return;
-  out.replaceChildren();const top=card(info.packs[0]?.title||"فرایندهای فعال","کارتابل فقط برای فرایند و بخش انتخاب‌شده است.");
-  if(!info.packs.length)add(top,note("بسته فرایند فعال نشده است."));
+  out.replaceChildren();out.hidden=editor.dataset.editing==="true";
+  const allTasks=info.workflow_tasks||info.tasks||[];
+  const unread=(info.notifications||[]).filter(n=>!n.read).length;
   const currentPack=packId||info.packs[0]?.id;
-  if(sectionId==="drafts"||!packId){const create=link("شروع جلسه با دبیر هوشمند",checked(async()=>{const r=await post("/sessions",{pack_id:currentPack});await session(r.id)}),"button primary");create.disabled=!currentPack;add(top,create);if(currentPack&&!info.oauth_connected)add(top,el("small","muted","می‌توانید پیش‌نویس را با متن، صوت و فایل کامل کنید؛ برای ایجاد واقعی پرونده و ارسال به رئیس، اتصال شخصی ProcessMaker لازم است."))}
-  add(top,link("تازه‌سازی کارتابل",checked(load)),link("فعال‌سازی اعلان‌های پس‌زمینه",checked(async()=>{await post("/subscribe");toast("پایش کارتابل فعال شد؛ نیازمند اعتبار نشست سازمانی است.")})));
-  add(out,top);
+  const top=el("section","secretary-hero"),intro=el("div","secretary-hero-copy");
+  add(intro,el("span","secretary-eyebrow","میز کار جلسات"),el("h2","",info.packs[0]?.title||"جلسه‌ها از اینجا شروع می‌شوند"),el("p","","دعوت را آغاز کنید؛ ادامهٔ کار با رسیدن پرونده به شما فعال می‌شود."));
+  const metrics=el("div","secretary-metrics");
+  for(const [value,label] of [[allTasks.length,"وظیفه در کارتابل"],[unread,"اعلان تازه"],[(info.sessions||[]).filter(x=>x.status==="draft").length,"پیش‌نویس دعوت"]]){
+   const metric=el("div","secretary-metric");add(metric,el("strong","",fmt(value)),el("span","",label));add(metrics,metric);
+  }
+  const actions=el("div","secretary-hero-actions");
+  const create=link("+ دعوت جلسه",checked(async()=>{const r=await post("/sessions",{pack_id:currentPack});await session(r.id)}),"button primary secretary-create");
+  create.disabled=!currentPack;create.dataset.action="new-invitation";
+  add(actions,create,link("↻ تازه‌سازی",checked(load),"button secondary"));add(top,intro,metrics,actions);add(out,top);
+  if(!info.packs.length)add(out,note("برای شروع، مدیر سامانه باید بسته جلسات این اتصال را فعال کند."));
+  const flow=el("section","secretary-flow"),rail=el("div","secretary-steps");rail.setAttribute("aria-label","ترتیب مراحل فرایند جلسات");
+  add(flow,el("h3","","مسیر جلسه"),el("p","muted","شماره‌ها ترتیب مراحل‌اند؛ نشان رنگی، تعداد پرونده‌های موجود در کارتابل شماست."));
+  const taskArea=el("section","secretary-task-area");
+  const drawTasks=()=>{
+   taskArea.replaceChildren();
+   const chosen=allTasks.filter(t=>!stageFilter||t.stage===stageFilter);
+   const head=el("div","secretary-section-head");add(head,el("h3","",stageFilter?stages.find(x=>x[0]===stageFilter)?.[1]||"وظایف من":"منتظر اقدام شما"));
+   if(stageFilter)add(head,link("همه وظایف",()=>{stageFilter=null;drawTasks();updateRail()},"button secondary"));add(taskArea,head);
+   if(!chosen.length)add(taskArea,el("div","secretary-empty","فعلاً پرونده‌ای منتظر اقدام شما نیست. با «دعوت جلسه» شروع کنید؛ کارهای بعدی خودکار اینجا ظاهر می‌شوند."));
+   const grid=el("div","secretary-task-grid");
+   for(const t of chosen){
+    const tile=el("article","secretary-task-card"),meta=el("div","secretary-task-meta");
+    add(meta,el("span","secretary-stage-tag",t.stage_label||stages.find(x=>x[0]===t.stage)?.[1]||"وظیفه"),el("span","muted","پرونده "+t.number));
+    add(tile,meta,el("h4","",t.title));
+    const b=link("مشاهده و انجام وظیفه",checked(()=>open(t,!!info.oauth_connected)),"button secondary");b.dataset.caseUid=t.case_uid;b.disabled=!t.available;
+    add(tile,b);
+    if(!t.available)add(tile,el("small","muted",t.reminder_at?"زمان فعال‌شدن: "+t.reminder_at:"زمان پایش هنوز تکمیل نشده است."));
+    add(grid,tile);
+   }add(taskArea,grid);
+   if(info.truncated)add(taskArea,note("نمایش به ۲۰۰ وظیفه محدود است؛ تعدادها مربوط به همین فهرست‌اند."));
+  };
+  const stepButtons=[];
+  function updateRail(){for(const [key,b] of stepButtons)b.setAttribute("aria-pressed",String(stageFilter===key))}
+  stages.forEach(([key,title,role],i)=>{
+   const count=allTasks.filter(t=>t.stage===key).length;
+   const step=link("",()=>{stageFilter=key;drawTasks();updateRail()},"secretary-step");step.disabled=count===0;step.dataset.stage=key;
+   add(step,el("span","secretary-step-index",fmt(i+1)),el("strong","",title),el("small","",role));
+   if(count)add(step,el("span","secretary-step-count",fmt(count)));
+   else add(step,el("span","secretary-step-wait","در انتظار پرونده"));
+   stepButtons.push([key,step]);add(rail,step);
+  });add(flow,rail);add(out,flow,taskArea);drawTasks();updateRail();
   const connection=card("مجوز عملیات حساب BPMS",info.oauth_connected?"مجوز شخصی حساب متصل فعال است.":"برای ثبت و انتقال مراحل، مجوز حساب خودتان در ProcessMaker لازم است.");
   if(info.oauth_connected)add(connection,link("قطع مجوز شخصی",checked(async()=>{await post("/oauth/disconnect");await load()})));
   else{
    const fields=[inputField("نام کاربری ProcessMaker",""),inputField("رمز ProcessMaker","","password"),inputField("OAuth Client ID",""),inputField("OAuth Client Secret","","password")];for(const f of fields)add(connection,f.wrap);
    add(connection,link("اتصال حساب خودم",checked(async()=>{await post("/oauth/connect",{username:fields[0].input.value,password:fields[1].input.value,client_id:fields[2].input.value,client_secret:fields[3].input.value});fields[1].input.value="";fields[3].input.value="";await load()})));
-  }add(out,connection);
+  }
+  const connectionDetails=el("details","secretary-connection");
+  add(connectionDetails,el("summary","",info.oauth_connected?"● حساب فرایندی متصل است":"اتصال حساب برای ارسال نهایی پرونده"),connection);add(out,connectionDetails);
   const notices=card("اعلان‌ها",String(info.notifications.filter(n=>!n.read).length)+" اعلان خوانده‌نشده");
   for(const n of info.notifications)add(notices,link((n.read?"":"● ")+n.task.stage_label+" · "+n.task.title,checked(async()=>{await post("/notifications/"+n.id+"/read");await open(n.task)})));
-  if(!info.notifications.length)add(notices,note("اعلان جاری ندارید."));add(out,notices);
-  const tasks=card("وظایف من","تأیید و ارسال فقط پس از بازبینی شما انجام می‌شود.");
-  for(const t of info.tasks){const b=link(t.stage_label+" · "+t.title+" · "+t.number,checked(()=>open(t,!!info.oauth_connected)));b.disabled=!t.available;add(tasks,b);if(!info.oauth_connected)add(tasks,el("small","muted","مشاهده و شنیدن خلاصه آزاد است؛ برای ثبت تصمیم و انتقال مرحله، اتصال شخصی ProcessMaker لازم است."));if(!t.available)add(tasks,el("small","muted",t.reminder_at?("پایش از "+t.reminder_at+" فعال می‌شود."):"تاریخ و ساعت پایان برنامه‌ریزی در BPMS باید تکمیل شود."))}
-  if(info.truncated)add(tasks,note("بیش از ۲۰۰ وظیفه جاری دارید؛ همه موارد در این صفحه نمایش داده نشده‌اند."));if(!info.tasks.length)add(tasks,note("وظیفه جاری ندارید."));add(out,tasks);
-  const drafts=card("پیش‌نویس‌های فرایند","ادامه پیش‌نویس یا مشاهده وضعیت دعوت‌نامه");for(const r of info.sessions)add(drafts,link(r.title+" · "+r.status,checked(()=>session(r.id))));add(out,drafts);
+  if(info.notifications.length)add(out,notices);
+  if(info.sessions.length){
+   const drafts=card("دعوت‌های من","پیش‌نویس‌ها و وضعیت دعوت‌های ارسال‌شده");drafts.classList.add("secretary-drafts");
+   for(const r of info.sessions)add(drafts,link(r.title+" · "+({draft:"پیش‌نویس",sent:"ارسال‌شده",reconciliation_required:"نیازمند بررسی"}[r.status]||r.status),checked(()=>session(r.id)),"button secondary"));add(out,drafts);
+  }
+
  }
  async function open(t,prepare=true){const r=await post(prepare?"/tasks/open":"/tasks/load",{case_uid:t.case_uid,index:t.index,pack_id:t.pack_id});render(r,false)}
  async function session(id){const r=await request(base+"/sessions/"+encodeURIComponent(id));render({...r,draft:r.session,task:{stage:"invitation",title:r.session.values.MTG_MeetingTitle||"جلسه جدید"}},true)}
  function render(r,isSession){
-  editor.replaceChildren();
+  editor.replaceChildren();editor.dataset.editing="true";out.hidden=true;
+  add(editor,link("← بازگشت به میز کار",checked(async()=>{editor.replaceChildren();editor.dataset.editing="false";out.hidden=false;await load()}),"button secondary secretary-back"));
   const d=r.draft,t=r.task,values=structuredClone(d.values||{}),assistant=r.assistant||{};
   const stageLabels={invitation:"دعوت‌نامه",invitation_approval:"تأیید دعوت‌نامه",minutes:"صورت‌جلسه",minutes_approval:"تأیید صورت‌جلسه",action_execution:"گزارش اجرای اقدام",action_review:"بررسی اقدام",monitoring:"پایش و اختتام"};
   const p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+(stageLabels[t.stage]||t.stage));
+  const stageProgress=el("div","secretary-editor-progress");stageProgress.setAttribute("aria-label","مرحله جاری پرونده");
+  stages.forEach(([key,label],i)=>{const step=el("span",key===t.stage?"is-current":"",fmt(i+1)+" · "+label);if(key===t.stage)step.setAttribute("aria-current","step");add(stageProgress,step)});add(editor,stageProgress);
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
   const query=isSession?"":"?pack_id="+encodeURIComponent(t.pack_id);
   const status=el("div"),controls=[],locked=d.status!=="draft";let dirty=false;
@@ -663,6 +718,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
   async function applyResult(result,fromVoice=false){
    if(result.advanced){
+    editor.dataset.editing="false";
     editor.replaceChildren(note(result.assistant?.message||"پرونده به مرحله بعد منتقل شد."));
     await load();return
    }
@@ -698,7 +754,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const file=el("input","secretary-hidden-input");file.type="file";
   file.accept=".pdf,.docx,.txt,.md,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json";
   file.setAttribute("aria-label","افزودن فایل به گفت‌وگوی دبیر");
-  const attachButton=link("＋",()=>file.click(),"button icon-button");attachButton.title="افزودن فایل";
+  const attachButton=link("فایل",()=>file.click(),"button icon-button");attachButton.title="افزودن فایل";
   add(tools,attachButton,file);
 
   const voiceAuto=el("input");voiceAuto.type="checkbox";voiceAuto.id="secretary-voice-auto-"+Math.random().toString(36).slice(2);
@@ -735,7 +791,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   composerBox.addEventListener("drop",e=>{e.preventDefault();composerBox.classList.remove("dragging");uploadConversationFile(e.dataTransfer?.files?.[0]).catch(err=>toast(err.message))});
 
   const audio=el("audio","secretary-audio");audio.controls=true;audio.hidden=true;let audioPart=0,audioUrl=null;
-  const speech=link("🔊",async()=>{
+  const speech=link("شنیدن",async()=>{
    if(dirty||sending)return;
    try{
     const speechQuery=isSession?("?part="+audioPart):(query+"&part="+audioPart);
@@ -782,7 +838,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const context=el("details");add(context,el("summary","","شرح ثبت‌شده در فرایند"));
   for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+(typeof v==="object"?JSON.stringify(v):v)))}add(formBody,context);
   const save=link("ذخیره اصلاحات",checked(async()=>{await post(path+"/edit"+query,{revision:d.revision,values});if(isSession)await session(d.id);else await open(t,false)}));save.disabled=locked;
-  send=link("تأیید بازبینی و ارسال به مرحله بعد",checked(async()=>{send.disabled=true;try{await post(path+"/submit"+query,{revision:d.revision,confirmed:true});editor.replaceChildren(note("اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));await load()}finally{send.disabled=locked||dirty}}),"button primary");
+  send=link("تأیید بازبینی و ارسال به مرحله بعد",checked(async()=>{send.disabled=true;try{await post(path+"/submit"+query,{revision:d.revision,confirmed:true});editor.dataset.editing="false";editor.replaceChildren(note("اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));await load()}finally{send.disabled=locked||dirty}}),"button primary");
   send.disabled=locked||missing.length>0||!info.oauth_connected;
   add(formBody,save,send,status);add(p,formDetails);
 
@@ -894,13 +950,13 @@ function attachVoiceInput(target,input,platform=false,sourceId=null,onTranscript
    if(onTranscript)await onTranscript(r.text);
   }catch(e){status.textContent=e.message}finally{busy=false;button.disabled=false;upload.disabled=false}
  }
- const button=link(compact?"🎤":"ضبط سؤال / یادداشت",async()=>{
+ const button=link(compact?"ضبط":"ضبط سؤال / یادداشت",async()=>{
   if(recorder?.state==="recording"){recorder.stop();return}
   if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent="ضبط به HTTPS یا localhost نیاز دارد؛ می‌توانید فایل صوت انتخاب کنید.";return}
   try{stream=await navigator.mediaDevices.getUserMedia({audio:true});if(discard){stream.getTracks().forEach(t=>t.stop());return}
    const mime=["audio/webm;codecs=opus","audio/mp4"].find(x=>MediaRecorder.isTypeSupported(x));if(!mime)throw Error("قالب ضبط مرورگر پشتیبانی نمی‌شود؛ فایل صوت انتخاب کنید.");
    recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-   recorder.onstop=()=>{clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());button.textContent=compact?"🎤":"ضبط سؤال / یادداشت";if(!discard)convert(new Blob(chunks,{type:mime.split(";")[0]}))};
+   recorder.onstop=()=>{clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());button.textContent=compact?"ضبط":"ضبط سؤال / یادداشت";if(!discard)convert(new Blob(chunks,{type:mime.split(";")[0]}))};
    recorder.start();button.textContent=compact?"■":"پایان ضبط و تبدیل";status.textContent="در حال ضبط؛ حداکثر ۹۰ ثانیه";timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop()},90000);
   }catch(e){stream?.getTracks().forEach(t=>t.stop());status.textContent=e.message}
  });
@@ -1089,3 +1145,4 @@ function refreshProcessMenu(sourceId,manifest){
  const target=Array.from(document.querySelectorAll('[data-process-menu]')).find(x=>x.dataset.processMenu===sourceId);if(!target)return;
  target.replaceChildren();for(const section of manifest.navigation){const b=link(section.label+(section.count?" · "+fmt(section.count):""),()=>{app.selectedSourceId=sourceId;app.processChoices[sourceId].section=section.id;select("source-process")});b.dataset.page="source-process";b.dataset.sourceId=sourceId;b.dataset.packId=manifest.process.id;b.dataset.section=section.id;b.classList.toggle("active",sourceId===app.selectedSourceId&&section.id===choice.section);add(target,b)}
 }
+

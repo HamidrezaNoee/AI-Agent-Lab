@@ -2162,6 +2162,18 @@ def secretary_pack_save(body:SecretaryPackSave,session=Depends(_ready)):
     except ValueError as exc:raise HTTPException(422,str(exc))
 
 
+class ReviewedMeetingPack(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    source_id:str=Field(pattern=r'^[0-9a-f]{24}$')
+    expected_revisions:dict[str,int]=Field(default_factory=dict)
+
+@router.post('/api/secretary/packs/install-reviewed')
+def install_reviewed_meetings(body:ReviewedMeetingPack,session=Depends(_ready)):
+    from .secretary_catalog import install_reviewed
+    try:return install_reviewed(body.source_id,_binding_admin_actor(session),body.expected_revisions)
+    except ValueError as exc:raise HTTPException(422,str(exc))
+
+
 class NativeProcessConnect(BaseModel):
     model_config=ConfigDict(extra='forbid')
     source_id:str=Field(pattern=r'^[0-9a-f]{24}$')
@@ -2194,3 +2206,4 @@ def process_pack_enabled(body:ProcessPackEnabled,session=Depends(_ready)):
 
 from .user_accounts import register as register_user_accounts
 register_user_accounts(router,_ready)
+

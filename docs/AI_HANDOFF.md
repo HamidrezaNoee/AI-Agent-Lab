@@ -1,6 +1,6 @@
 # AVAN current handoff — 2026-10-04
 
-Baseline: `4a0b583cf098268ba8c3784e22b87df10b0fc5f2` on
+Baseline: `c19ae38963f59710cadd903ec231ddff076650f1` on
 `feature/pm-native-agent-store-20260922`.
 
 Run `python scripts/ai-context.py list`, then `show <module>`.
@@ -33,3 +33,20 @@ and recovery while PM/AI are unavailable. Verify actual tenant bindings and proc
 role assignments before claiming secretary/chair/action-user activation on the host.
 
 Historical diagnoses/results: `docs/history/AI_HANDOFF_20261004.md`.
+
+## Reviewed meeting/action pair
+
+Version-7 uploaded PMX contracts now ship in secretary_pack_reference.json. Admin
+can explicitly install/merge the pair; live forms, trigger order and code fingerprints
+must match. Chair hidden votes have typed UI choices. Extraction context is bounded
+by stage (48k characters, 80 people, 3500 output tokens); no silent grid truncation.
+See docs/AVAN_MEETINGS_V7_FA.md for deployment and live acceptance. Original file
+upload to PM is separate from AI document extraction and remains a live integration gap.
+
+## Secretary desk UI
+
+One invitation creation action; seven ordered stages with disabled empty stages
+and counts from the current user/source/pack inbox. Native task cards, compact
+OAuth settings, editor stage indicator and mobile layout. Browser fixtures cover
+counts/filtering/native task opening and return; they are not live PM acceptance.
+Preserve latest voice, schema parsing, conservative retry and grid-merge fixes.

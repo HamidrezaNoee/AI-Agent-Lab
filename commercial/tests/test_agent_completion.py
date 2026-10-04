@@ -209,8 +209,8 @@ def test_voice_validates_bytes_and_uses_sdk_without_writing_audio(state_dir):
     client.close.assert_called_once()
     with pytest.raises(Exception):
         agent_voice.audio_format(b"fake" * 8, "audio/webm")
-    with pytest.raises(Exception):
-        agent_voice.audio_format(data, "text/plain")
+    # Current browser compatibility detects actual audio bytes when MIME is absent/wrong.
+    assert agent_voice.audio_format(data, "text/plain") == ("webm", "audio/webm")
     parts = agent_voice.speech_parts(
         {"claims": [{"kind": "analysis", "text": "ا" * 7000}], "notes": []}
     )
@@ -300,3 +300,4 @@ def test_monitor_keeps_independent_source_subscriptions_under_one_credential(sta
     assert not agent_monitor.status(first,"actor")["enabled"]
     assert agent_monitor.status(second,"actor")["enabled"]
     assert session.get("monitor_delegated") is True
+

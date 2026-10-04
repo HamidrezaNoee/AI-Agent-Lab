@@ -40,7 +40,7 @@ def read_native(task,scope,actor,doc_id,version):
  try:
   if pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])!=task['index']:raise RevisionConflict()
   with pm.client.stream('GET',pm.base+f"/cases/{uid(task['case_uid'])}/input-document/{uid(doc_id)}/file?v={int(version)}") as response:
-   if response.status_code!=200:raise PermissionError('مجوز دریافت این سند در ProcessMaker وجود ندارد.')
+   if response.status_code not in (200,206):raise PermissionError('مجوز دریافت این سند در ProcessMaker وجود ندارد.')
    data=bytearray()
    for chunk in response.iter_bytes():
     data.extend(chunk)
@@ -106,3 +106,4 @@ if __name__=='__main__':
   text+=(page.extract_text() or '')+'\n'
   if len(text)>18000:sys.exit(2)
  sys.stdout.write(text)
+

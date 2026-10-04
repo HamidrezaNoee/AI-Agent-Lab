@@ -122,8 +122,11 @@ jobs:
           PY
       - name: Browser smoke test with isolated API fixtures
         run: |
-          npm install --no-save --package-lock=false playwright
+          npm install --no-save --package-lock=false playwright jsdom
           npx playwright install --with-deps chromium
+          node commercial/tests/secretary_inbox_ui.cjs
+          node commercial/tests/process_workspace_ui.cjs
+          node commercial/tests/secretary_desk_browser.cjs
           node commercial/tests/ui_smoke.cjs
           node commercial/tests/management_render_smoke.cjs
           node commercial/tests/login_scene_smoke.cjs

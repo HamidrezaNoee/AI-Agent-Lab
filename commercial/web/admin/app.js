@@ -1828,6 +1828,14 @@ async function secretaryProcessSettings(connection,target){
   for(const pack of data.packs){const entry=node("div");append(entry,info((pack.meeting?.title||pack.process?.title||pack.id)+" · "+(pack.enabled?"فعال":"غیرفعال")+" · نسخه "+pack.revision),btn(pack.enabled?"غیرفعال‌سازی فرایند":"فعال‌سازی فرایند",async()=>{try{await api("process-workspace/enabled",{source_id:connection.id,pack_id:pack.id,revision:pack.revision,enabled:!pack.enabled});await secretaryProcessSettings(connection,target)}catch(e){showError(entry,e)}},"secondary"));append(box,entry)}
   const native=node("form"),nativeSelect=node("select");nativeSelect.setAttribute("aria-label","فرایند برای کارتابل بومی");for(const p of data.processes){const o=node("option","",p.title);o.value=p.process_uid;append(nativeSelect,o)}
   const nativeOut=node("div");append(native,nativeSelect,btn("اتصال کارتابل بومی این فرایند",async()=>{try{await api("process-workspace/connect",{source_id:connection.id,process_uid:nativeSelect.value});await secretaryProcessSettings(connection,target)}catch(e){showError(nativeOut,e)}}),info("کارتابل بومی برای هر فرایند، خواندنی است. عملیات اختصاصی با آداپتور همان فرایند فعال می‌شود."),nativeOut);append(box,native);
+  const reviewedOut=node("div");append(box,btn("فعال‌سازی بسته آماده جلسات و اقدامات — نسخه ۷",async()=>{
+   try{
+    const ids=new Set(["f7f263ea31d8731d212820f220c65a48","cd66870095907431106b6dd110e06fa7"]);
+    const relevant=data.packs.filter(p=>[p.meeting?.process_uid,p.action?.process_uid,p.process?.process_uid].some(id=>ids.has(id)));
+    await api("secretary/packs/install-reviewed",{source_id:connection.id,expected_revisions:Object.fromEntries(relevant.map(p=>[p.id,p.revision]))});
+    await secretaryProcessSettings(connection,target);
+   }catch(e){showError(reviewedOut,e)}
+  }),reviewedOut);
   const f=node("form"),select=node("select");select.name="pack";append(select,node("option","","بسته جدید"));for(const p of data.packs.filter(p=>["meeting_v2","native_tasks_v1"].includes(p.adapter))){const o=node("option","",p.adapter==="meeting_v2"?p.meeting.title:"ارتقای کارتابل خواندنی به گردش جلسه: "+p.process.title);o.value=p.id;append(select,o)}
   append(f,node("label","","بسته قابل تنظیم"),select);
   const meeting=field("PMX مدیریت جلسات","meeting","",{type:"file"}),action=field("PMX اجرای اقدامات","action","",{type:"file"});for(const w of [meeting,action]){w.querySelector("input").accept=".pmx";append(f,w)}
@@ -1845,3 +1853,4 @@ async function secretaryProcessSettings(connection,target){
   }),out);append(box,f);append(target,box);
  }catch(e){showError(target,e)}
 }
+

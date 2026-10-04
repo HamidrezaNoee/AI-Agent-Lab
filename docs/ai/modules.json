@@ -30,7 +30,8 @@
         "commercial/tests/test_identity_operator.py",
         "commercial/tests/test_antibot_hybrid.py",
         "commercial/tests/test_realm_profile_import.py",
-        "commercial/tests/test_login_render_probe.py"
+        "commercial/tests/test_login_render_probe.py",
+        "commercial/tests/test_unified_godadmin.py"
       ],
       "depends_on": [],
       "contract": "Keycloak owns organizational credentials. No session before required OTP. Captcha fails closed. Local GodAdmin recovery must not depend on PM or AI."
@@ -89,7 +90,8 @@
       "entrypoints": [
         "commercial/secretary_runtime.py",
         "commercial/secretary_catalog.py",
-        "commercial/process_workspace.py"
+        "commercial/process_workspace.py",
+        "commercial/secretary_ai_context.py"
       ],
       "owns": [
         "commercial/secretary*",
@@ -102,7 +104,9 @@
         "commercial/tests/test_meeting_pack_roles.py",
         "commercial/tests/test_secretary_workflow.py",
         "commercial/tests/test_secretary_inbox.py",
-        "commercial/tests/test_process_workspace.py"
+        "commercial/tests/test_process_workspace.py",
+        "commercial/tests/test_secretary_ai_context.py",
+        "commercial/tests/test_meeting_pair_execution.py"
       ],
       "depends_on": [
         "bpms",

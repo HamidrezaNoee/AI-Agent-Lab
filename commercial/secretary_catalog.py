@@ -48,7 +48,11 @@ def parse_pmx(xml):
   stages[stage]={'task_uid':task,'task_title':tasks[task],'form_uid':form['dyn_uid'],'fields':fields,
    'before':[a['tri_uid'] for a in sorted(assigned,key=lambda a:int(a['st_position'])) if a['st_type']=='BEFORE'],
    'after':[a['tri_uid'] for a in sorted(assigned,key=lambda a:int(a['st_position'])) if a['st_type']=='AFTER']}
- return {'process_uid':process,'title':metadata.get('name',process),'pmx_sha256':hashlib.sha256(xml.encode()).hexdigest(),'stages':stages}
+ used={uid for stage in stages.values() for side in ('before','after') for uid in stage[side]}
+ source={row['tri_uid']:row.get('tri_webbot','') for row in records(root,'triggers')}
+ if not used<=source.keys():raise ValueError('کد یکی از تریگرهای متصل در PMX موجود نیست.')
+ hashes={uid:hashlib.sha256(source[uid].replace('\r\n','\n').strip().encode()).hexdigest() for uid in sorted(used)}
+ return {'process_uid':process,'title':metadata.get('name',process),'pmx_sha256':hashlib.sha256(xml.encode()).hexdigest(),'stages':stages,'trigger_hashes':hashes}
 
 def _compile_pair(meeting,action):
  meeting_stages={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}
@@ -364,11 +368,52 @@ def verify_installed(source_id,pack):
  from .processmaker_store import open_production,query
  with open_production(processmaker_profile(source_id)['mysql']) as con:
   for process in ('meeting','action'):
-   p=pack[process];tasks={str(r[0]) for r in query(con,'SELECT TAS_UID FROM TASK WHERE PRO_UID=%s',(p['process_uid'],))}
-   if not {s['task_uid'] for s in p['stages'].values()}<=tasks:raise ValueError('وظایف PMX با فرایند نصب‌شده این اتصال مطابقت ندارند.')
-   for s in p['stages'].values():
-    steps=query(con,'SELECT STEP_UID FROM STEP WHERE TAS_UID=%s AND STEP_UID_OBJ=%s',(s['task_uid'],s['form_uid']))
-    if len(steps)!=1:raise ValueError('فرم PMX در فرایند نصب‌شده پیدا نشد.')
-    installed=query(con,'SELECT TRI_UID,ST_TYPE FROM STEP_TRIGGER WHERE STEP_UID=%s',(steps[0][0],))
-    actual={(str(r[0]),str(r[1])) for r in installed}
-    if not {(t,'AFTER') for t in s['after']}|{(t,'BEFORE') for t in s['before']}<=actual:raise ValueError('تریگرهای PMX با سرور یکسان نیستند.')
+   expected=pack[process]
+   actual=_installed_process(con,expected['process_uid'])
+   if set(actual['stages'])!=set(expected['stages']):
+    raise ValueError('مراحل PMX با فرایند نصب‌شده یکسان نیستند.')
+   for name,stage in expected['stages'].items():
+    installed=actual['stages'][name]
+    # A matching task ID alone is insufficient: changes in field contracts,
+    # trigger order, extra triggers or conditional triggers affect REST routing.
+    if any(installed[key]!=stage[key] for key in ('task_uid','form_uid','fields','before','after')):
+     raise ValueError('فرم یا ترتیب تریگر مرحله '+name+' با PMX یکسان نیست؛ نسخه نصب‌شده را بررسی کنید.')
+   if expected.get('trigger_hashes'):
+    rows=query(con,'SELECT TRI_UID,TRI_WEBBOT FROM TRIGGERS WHERE PRO_UID=%s',(expected['process_uid'],))
+    hashes={str(uid):hashlib.sha256(str(code or '').replace('\r\n','\n').strip().encode()).hexdigest() for uid,code in rows}
+    if any(hashes.get(uid)!=digest for uid,digest in expected['trigger_hashes'].items()):
+     raise ValueError('کد تریگر نصب‌شده با PMX بازبینی‌شده یکسان نیست؛ نسخه صحیح را در ProcessMaker نصب کنید.')
+
+
+def install_reviewed(source_id,actor,expected_revisions):
+ """Explicitly activate the shipped PMX pair after checking this installation.
+
+ Existing standalone native inboxes are replaced atomically; concurrent edits or
+ unrelated adapters are rejected. This grants no user permissions or task ownership.
+ """
+ from pathlib import Path
+ pack=json.loads(Path(__file__).with_name('secretary_pack_reference.json').read_text(encoding='utf-8'))
+ pack=_compile_pair(pack['meeting'],pack['action'])
+ verify_installed(source_id,pack)
+ wanted={pack['meeting']['process_uid'],pack['action']['process_uid']}
+ from .process_workspace import native_ids
+ with agent_storage.transaction() as tx:
+  data=tx.get(STORE,[],lock=True)
+  previous=[p for p in data if p['source_id']==source_id and native_ids(p)&wanted]
+  if {p['id']:p['revision'] for p in previous}!=expected_revisions:
+   raise ValueError('تنظیم فرایند تغییر کرده است؛ صفحه را تازه‌سازی کنید.')
+  if any(p['adapter'] not in ('native_tasks_v1','meeting_v2') or not native_ids(p)<=wanted for p in previous):
+   raise ValueError('بسته موجود به فرایند دیگری نیز متصل است؛ جایگزینی مجاز نیست.')
+  old=next((p for p in previous if pack['meeting']['process_uid'] in native_ids(p)),None)
+  row={**pack,'id':old['id'] if old else secrets.token_hex(12),'source_id':source_id,
+       'enabled':True,'revision':max([p['revision'] for p in previous]+[0])+1,
+       'monitor_lead_minutes':(old or {}).get('monitor_lead_minutes',1440),
+       'action_lead_minutes':(old or {}).get('action_lead_minutes',60),
+       'tools':['extract_fields','request_missing_fields','submit_invitation','review_invitation',
+                'submit_minutes','review_minutes','submit_action_report','review_action',
+                'prepare_monitoring','propose_followup']}
+  replaced={p['id'] for p in previous}
+  tx.put(STORE,[p for p in data if p['id'] not in replaced]+[row])
+  tx.audit('',actor,'SECRETARY_REVIEWED_PAIR_INSTALLED',{'source_id':source_id,'pack_id':row['id'],
+           'meeting_sha256':pack['meeting']['pmx_sha256'],'action_sha256':pack['action']['pmx_sha256']})
+ return row

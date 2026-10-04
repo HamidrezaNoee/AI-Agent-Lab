@@ -140,7 +140,7 @@ def test_review_version_beats_equal_second_timestamp():
 
 
 def test_processmaker_directory_normalizes_uid_and_status():
-    row=("ABCDEF0123456789ABCDEF0123456789","user","Ali","Test","mail@example.com","active","IT")
+    row=("ABCDEF0123456789ABCDEF0123456789","Ali","Test","mail@example.com","active","IT")
     with patch.object(store,"query",return_value=[row]):
         users=store.directory(None)
     uid="abcdef0123456789abcdef0123456789"
@@ -169,3 +169,4 @@ def test_verified_scope_accepts_normalized_bound_processmaker_uid():
         scope=store.verified_scope(None,p,source_id=source)
     assert scope['external_user_id']==uid
     assert scope['license']['modules']==frozenset({1,2,3,4})
+
