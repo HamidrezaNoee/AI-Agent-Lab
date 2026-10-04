@@ -670,23 +670,28 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(isSession)render({...result,draft:result.session,task:result.task||{stage:"invitation",title:result.session?.values?.MTG_MeetingTitle||"جلسه جدید"}},true);
    else render(result,false);
   }
-  async function sendTurn(textValue=null,fromVoice=false){
+  async function sendTurn(textValue=null,fromVoice=false,retry=false){
    if(locked||sending)return;
    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
    const text=(textValue??notes.value).trim();if(!text)throw Error("پیامی برای ارسال وارد کنید.");
-   const previous=notes.value;notes.value="";autosize();
-   addChatBubble("user",text);thinkingBubble();
-   setSending(true,"در حال پردازش پیام...");
+   if(!retry){notes.value="";autosize();addChatBubble("user",text)}
+   thinkingBubble(retry?"دبیر دوباره در حال بررسی همین پیام است":"دبیر در حال بررسی پیام شماست");
+   setSending(true,retry?"در حال تلاش مجدد...":"در حال پردازش پیام...");
    try{
     const result=await post(path+"/turn"+query,{revision:d.revision,text,auto_advance:!!info.oauth_connected});
     await applyResult(result,fromVoice);
    }catch(e){
     const wait=chat.querySelector(".chat-bubble.thinking");if(wait)wait.remove();
-    addChatBubble("assistant","پردازش پیام انجام نشد. "+e.message,"error");
-    notes.value=previous||text;autosize();throw e;
+    const bubble=addChatBubble("assistant","پردازش پیام انجام نشد. "+e.message,"error");
+    const actions=el("div","chat-error-actions");
+    const retryButton=link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true),"button secondary");
+    const editButton=link("✎ ویرایش پیام",()=>{notes.value=text;autosize();notes.focus()},"button secondary");
+    add(actions,retryButton,editButton);add(bubble,actions);
+    return false;
    }finally{
     if(composer.isConnected)setSending(false,"");
    }
+   return true;
   }
 
   const file=el("input","secretary-hidden-input");file.type="file";
