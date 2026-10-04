@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | ورود</title>
-<link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
-<link rel="stylesheet" href="${url.resourcesPath?html}/css/login-scene.css">
-<script defer src="${url.resourcesPath?html}/js/login-scene.js" data-appearance-url="${url.resourcesPath?html}/generated/appearance.json" data-scene-root="${url.resourcesPath?html}/scene-data/"></script>
+<link rel="stylesheet" href="${url.resourcesPath}/css/avan.css">
+<link rel="stylesheet" href="${url.resourcesPath}/css/login-scene.css">
+<script defer src="${url.resourcesPath}/js/login-scene.js" data-appearance-url="${url.resourcesPath}/generated/appearance.json" data-scene-root="${url.resourcesPath}/scene-data/"></script>
 
 <#if antibotChallenge?? || turnstileSiteKey??>
-<script defer src="${url.resourcesPath?html}/js/captcha-ui.js"></script>
+<script defer src="${url.resourcesPath}/js/captcha-ui.js"></script>
 </#if></head>
 <body class="avan-signin">
  <main class="signin-layout">
@@ -31,24 +31,24 @@
    <div class="signin-brand"><span class="signin-mark" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><defs><linearGradient id="signinMarkGradient" x1="8" y1="7" x2="55" y2="57" gradientUnits="userSpaceOnUse"><stop stop-color="#24f0e0"/><stop offset=".48" stop-color="#10cbe8"/><stop offset="1" stop-color="#1689ff"/></linearGradient></defs><path d="M30.9 7.7c1.7-3 6-3 7.7 0l18 31.2c1.8 3.1-.4 7-4 7H39.1L32 33.6l-7.1 12.3H11.4c-3.6 0-5.8-3.9-4-7l18-31.2c1.2-2 4.2-2 5.5 0Z" fill="url(#signinMarkGradient)"/><path d="M32 33.6 39.1 46H24.9L32 33.6Z" fill="#08263b"/></svg></span><span class="signin-brand-copy"><strong>آوان</strong><small>AI AGENT</small></span></div>
    <div class="signin-heading"><span class="signin-label">AVAN · AI AGENT</span><h1 id="signin-heading">ورود به آوان</h1></div>
    <p class="login-reveal-subtitle">خوش آمدید؛ برای ادامه وارد حساب کاربری شوید.</p>
-   <#if message?has_content && message.type == 'error'><div class="signin-error" role="alert">${message.summary?html}</div></#if>
+   <#if message?has_content && message.type == 'error'><div class="signin-error" role="alert">${message.summary}</div></#if>
    <button class="login-reveal-toggle" type="button" aria-expanded="false"><span>ورود</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9.5 5 5 5-5"></path></svg></button>
-   <form id="kc-form-login" class="login-expand-body" action="${url.loginAction?html}" method="post" autocomplete="on">
+   <form id="kc-form-login" class="login-expand-body" action="${url.loginAction}" method="post" autocomplete="on">
     <label for="username">نام کاربری</label>
-    <input id="username" name="username" type="text" value="${(login.username!'')?html}" autocomplete="username" maxlength="256" required>
+    <input id="username" name="username" type="text" value="${(login.username!'')}" autocomplete="username" maxlength="256" required>
     <label for="password">رمز عبور</label>
     <input id="password" name="password" type="password" autocomplete="current-password" required>
     <#if antibotChallenge?? || turnstileSiteKey??>
     <div class="avan-captcha is-loading" data-avan-captcha
-         data-provider="${(antibotProvider!'altcha-self-hosted')?html}"
-         data-action="${(antibotAction!'avan-login')?html}"
-         data-site-key="${(turnstileSiteKey!'')?html}"
+         data-provider="${(antibotProvider!'altcha-self-hosted')}"
+         data-action="${(antibotAction!'avan-login')}"
+         data-site-key="${(turnstileSiteKey!'')}"
          data-turnstile-timeout="${(turnstileTimeoutMs!2500)?c}"
          data-force-local="${(antibotForceLocal!false)?c}"
-         data-algorithm="${(antibotAlgorithm!'')?html}"
-         data-challenge="${(antibotChallenge!'')?html}"
-         data-salt="${(antibotSalt!'')?html}"
-         data-signature="${(antibotSignature!'')?html}"
+         data-algorithm="${(antibotAlgorithm!'')}"
+         data-challenge="${(antibotChallenge!'')}"
+         data-salt="${(antibotSalt!'')}"
+         data-signature="${(antibotSignature!'')}"
          data-max-number="${(antibotMaxNumber!0)?c}"
          data-expires-in="${(antibotExpiresIn!120)?c}"
          aria-label="اعتبارسنجی امنیتی">
