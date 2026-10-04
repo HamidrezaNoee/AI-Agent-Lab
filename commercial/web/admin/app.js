@@ -1179,6 +1179,37 @@ async function renderUsers(m){
   });
  }))}
 
+ function migrateGodAdmin(user,host){open(host,()=>{
+  const form=node("form","grid"),out=node("div","full");
+  const username=field("نام کاربری ورود سازمانی","username",user.username||"godadmin");
+  const name=field("نام و نام خانوادگی","name","GodAdmin");
+  const email=field("ایمیل","email","",{type:"email"});
+  const password=field("رمز ورود سازمانی؛ حداقل ۱۶ نویسه","password","",{secret:true});
+  const repeat=field("تکرار رمز ورود","repeat","",{secret:true});
+  const otp=field("کد Authenticator فعلی GodAdmin","otp");
+  const submit=node("button","","انتقال GodAdmin به ورود سازمانی");submit.type="submit";
+  append(form,
+   info("این عملیات یک حساب GodAdmin در Keycloak می‌سازد و همان لحظه آن را به GodAdmin آوان متصل می‌کند. پس از موفقیت، ورود فقط از صفحه مشترک آوان انجام می‌شود."),
+   username,name,email,password,repeat,otp,submit,
+   btn("انصراف",()=>close(host),"secondary"),out);
+  append(host,form);
+  form.addEventListener("submit",async e=>{
+   e.preventDefault();busy(form,true);out.replaceChildren();
+   try{
+    const rawPassword=raw(form,"password");
+    if(rawPassword!==raw(form,"repeat"))throw Error("تکرار رمز ورود یکسان نیست.");
+    const result=await api("identity/create-godadmin-account",{
+     username:formValue(form,"username"),
+     name:formValue(form,"name"),
+     email:formValue(form,"email"),
+     password:rawPassword,
+     otp:formValue(form,"otp")
+    });
+    window.location.assign(result.login_url||"/auth/login");
+   }catch(err){showError(out,err);busy(form,false)}
+  });
+ })}
+
  function edit(user,host,passwordOnly){open(host,()=>{
   const local=user.local,fields=[];
   if(!passwordOnly){fields.push(field("نام کاربری","username",user.username));if(!local)fields.push(field("نام و نام خانوادگی","name",user.name),field("ایمیل","email",user.email,{type:"email"}))}
@@ -1358,6 +1389,7 @@ async function renderUsers(m){
   card.dataset.search=[user.username,user.name,user.email].filter(Boolean).join(" ").toLowerCase();
   append(card,node("span","connection-pill",user.local?"مدیر سامانه":user.approved?(user.enabled?"فعال":"غیرفعال"):user.pending?"در انتظار تأیید":"هویت بدون دسترسی AVAN"));
   append(actions,btn("ویرایش",()=>edit(user,host,false),"secondary"),btn("تغییر رمز",()=>edit(user,host,true),"secondary"));
+  if(user.local&&status.godadmin_local)append(actions,btn("انتقال به ورود سازمانی",()=>migrateGodAdmin(user,host)));
   if(user.approved&&!user.local){
    append(actions,btn("دسترسی‌ها",()=>open(host,()=>buildAccess(host,user)),"secondary"),btn(user.enabled?"غیرفعال‌کردن":"فعال‌کردن",async()=>{try{await api("users/enabled",{subject:user.subject,enabled:!user.enabled});await showSettings("users")}catch(err){showError(feedback,err)}},"secondary"));
   }else if(user.pending&&!user.local){
