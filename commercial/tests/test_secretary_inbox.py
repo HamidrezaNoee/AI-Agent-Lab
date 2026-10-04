@@ -389,3 +389,19 @@ def test_extract_prefers_official_responses_parse(pack):
  assert values=={}
  assert questions==['عنوان جلسه چیست؟']
  assert client.responses.calls==1
+
+
+
+def test_extracted_grid_merges_into_empty_string_without_attribute_error():
+ incoming={'1':{'MTG_ParticipantUserUID':'u1','MTG_ParticipantName':'کاربر'}}
+ merged=r._merge_extracted_value('',incoming)
+ assert merged==incoming
+
+
+def test_extracted_grid_preserves_existing_row_fields():
+ current={'1':{'MTG_ParticipantUserUID':'u1','MTG_ParticipantName':'قدیمی'}}
+ incoming={'1':{'MTG_ParticipantName':'جدید'},'2':{'MTG_ParticipantUserUID':'u2'}}
+ merged=r._merge_extracted_value(current,incoming)
+ assert merged['1']['MTG_ParticipantUserUID']=='u1'
+ assert merged['1']['MTG_ParticipantName']=='جدید'
+ assert merged['2']['MTG_ParticipantUserUID']=='u2'
