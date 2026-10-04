@@ -45,8 +45,7 @@ public final class AvanCaptchaForm extends UsernamePasswordForm {
         super(session);
     }
 
-    @Override
-    protected Response createLoginForm(LoginFormsProvider form) {
+    private boolean prepareSecurity(LoginFormsProvider form) {
         boolean providerReady = false;
         try {
             Map<String,Object> config = challenge();
@@ -79,6 +78,30 @@ public final class AvanCaptchaForm extends UsernamePasswordForm {
         if (!providerReady) {
             form.setError("سرویس امنیتی آوان موقتاً آماده نیست.");
         }
+        return providerReady;
+    }
+
+    /**
+     * Keycloak 26 renders the normal username/password page through
+     * challenge(context, formData), not createLoginForm(form).  Decorating only
+     * createLoginForm therefore leaves the first login page without anti-bot
+     * attributes.  Override the actual rendering path and attach the AVAN
+     * challenge before the theme is evaluated.
+     */
+    @Override
+    protected Response challenge(AuthenticationFlowContext context,
+                                 MultivaluedMap<String, String> formData) {
+        LoginFormsProvider form = context.form();
+        if (formData != null && !formData.isEmpty()) {
+            form.setFormData(formData);
+        }
+        prepareSecurity(form);
+        return form.createLoginUsernamePassword();
+    }
+
+    @Override
+    protected Response createLoginForm(LoginFormsProvider form) {
+        prepareSecurity(form);
         return super.createLoginForm(form);
     }
 
