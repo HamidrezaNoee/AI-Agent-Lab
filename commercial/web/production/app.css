@@ -99,3 +99,5 @@
  .secretary-file-bar{display:block}
  .secretary-file-bar input[type=file]{max-width:100%}
 }
+
+.secretary-file-bar.dragging{border-style:solid;border-color:var(--teal);background:#edf8f6}
