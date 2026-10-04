@@ -392,19 +392,25 @@ def login(request:Request):
     from .setup_console import get_setting,godadmin_identity
     if request.query_params.get('account')=='godadmin' and not godadmin_identity():
         return RedirectResponse('/admin/',status_code=303)
-    # OIDC state cookie is host-only. Normalize localhost to the configured
-    # 127.0.0.1 redirect origin BEFORE setting it, otherwise the callback
-    # cannot receive the cookie and valid authorization is rejected.
-    if (_public_origin()=="http://127.0.0.1:8188"
-        and request.url.hostname=="localhost"):
-        return RedirectResponse("http://127.0.0.1:8188/auth/login",status_code=303)
+    # OIDC cookies are host-only. Always start authentication on the exact
+    # configured public origin before setting browser/PKCE cookies. This covers
+    # localhost, machine names, LAN IPs and reverse-proxy host aliases.
+    origin=_public_origin()
+    canonical=urlsplit(origin)
+    request_host=(request.url.hostname or "").lower()
+    canonical_host=(canonical.hostname or "").lower()
+    request_port=request.url.port or (443 if request.url.scheme=="https" else 80)
+    canonical_port=canonical.port or (443 if canonical.scheme=="https" else 80)
+    if (request.url.scheme.lower()!=canonical.scheme.lower()
+        or request_host!=canonical_host
+        or request_port!=canonical_port):
+        return RedirectResponse(origin+"/auth/login",status_code=303)
     from .setup_console import password_state
     first_run=password_state()
     if not first_run["changed"] or not first_run["totp"]:
         raise HTTPException(status_code=403,
                             detail="ابتدا GodAdmin باید راه‌اندازی اولیه و تأیید دومرحله‌ای را تکمیل کند.")
     try:
-        origin=_public_origin()
         authorization,_,client_id,client_secret,_= _oidc_config()
     except ConfigurationFailed:
         raise HTTPException(status_code=503,detail="سامانه هویت سازمانی تنظیم نشده است.")
@@ -489,7 +495,18 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
             secret=client_secret,
         )
     if item is None or item["expires"]<time.time():
-        raise HTTPException(status_code=401,detail="مهلت ورود به پایان رسیده است.")
+        # A stale browser tab, a pre-deployment callback, or a transaction older
+        # than five minutes cannot be safely resumed because PKCE is one-time.
+        # Start a fresh authorization flow instead of leaving the user on a JSON
+        # dead-end. The current transaction cookie is cleared first.
+        response=RedirectResponse(
+            origin+"/auth/login?reauth=expired",
+            status_code=303,
+        )
+        response.delete_cookie(cookie_name,path="/")
+        response.delete_cookie("avan_login_state",path="/")
+        response.headers["Cache-Control"]="no-store"
+        return response
     browser_token=request.cookies.get(OIDC_BROWSER_COOKIE,"")
     browser_hash=item.get("browser_hash","")
     if (not _valid_oidc_browser_token(browser_token)
