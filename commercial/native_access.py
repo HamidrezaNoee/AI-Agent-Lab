@@ -26,6 +26,52 @@ def edit():
         )
 
 
+def ensure_godadmin_user(*,subject,tenant_id,company_name,username=None,name=None):
+    """Idempotently project the bound platform GodAdmin into AVAN authorization.
+
+    GodAdmin remains a distinct platform role. A null module_permissions value
+    intentionally means "all modules allowed by the organization license".
+    """
+    if not subject or not tenant_id:
+        return None
+    with agent_storage.transaction() as tx:
+        data=tx.get(
+            "organization_access",
+            {"tenant_id":str(tenant_id),"company_name":company_name,"users":[]},
+            lock=True,
+        )
+        if data.get("tenant_id") not in (None,str(tenant_id)):
+            return None
+        data["tenant_id"]=str(tenant_id)
+        if company_name:
+            data["company_name"]=company_name
+        users=data.setdefault("users",[])
+        user=next((u for u in users if u.get("subject")==subject),None)
+        if user is None:
+            user={
+                "subject":subject,
+                "username":username or "godadmin",
+                "email":None,
+                "name":name or "GodAdmin",
+                "role":"GodAdmin",
+                "department_name":"مدیریت سامانه",
+                "manager_subject":None,
+                "module_permissions":None,
+                "enabled":True,
+            }
+            users.append(user)
+        else:
+            user["role"]="GodAdmin"
+            user["enabled"]=True
+            user["module_permissions"]=None
+            user.setdefault("department_name","مدیریت سامانه")
+            if username:user["username"]=username
+            if name:user["name"]=name
+        tx.put("organization_access",data)
+        tx.audit(str(tenant_id),subject,"GODADMIN_ACCESS_ENSURED",{})
+        return dict(user)
+
+
 def seats(tenant_id):
     data = read()
     if data["tenant_id"] != tenant_id:
