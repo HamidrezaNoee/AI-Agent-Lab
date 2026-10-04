@@ -143,7 +143,8 @@ def ensure_installed_meeting_pack(source_id,actor='system:auto'):
  if len(meetings)!=1 or len(actions)!=1:return None
  meeting_native,meeting=meetings[0][1],meetings[0][2]
  action_native,action=actions[0][1],actions[0][2]
- pack=_compile_pair(meeting,action)
+ try:pack=_compile_pair(meeting,action)
+ except ValueError:return None
 
  with agent_storage.transaction() as tx:
   data=tx.get(STORE,[],lock=True)
