@@ -123,6 +123,17 @@ def test_selected_meeting_uid_is_used_by_native_parent_query(monkeypatch):
 
 
 
+def test_trusted_meeting_descriptor_matches_reviewed_process_contract():
+ trusted=c._trusted_meeting_pack()
+ assert trusted['adapter']=='meeting_v2'
+ assert trusted['meeting']['process_uid']=='f7f263ea31d8731d212820f220c65a48'
+ assert trusted['action']['process_uid']=='cd66870095907431106b6dd110e06fa7'
+ assert set(trusted['stages'])=={'invitation','invitation_approval','minutes','minutes_approval','monitoring','action_execution','action_review'}
+ assert trusted['stages']['invitation']['task_uid']=='4a6419a60141d7d36001ba9344db4eac'
+ assert trusted['stages']['action_execution']['task_uid']=='473bb4e227460a3ea6ac0f2cbf8ef8d4'
+ assert 'MTGA_ReviewStatus2' in trusted['stages']['action_review']['fields']
+
+
 def test_two_installed_native_processes_auto_promote_to_meeting_pack(pack,store,monkeypatch):
  meeting_native={
   'id':'a'*24,'source_id':'source','enabled':True,'revision':1,
@@ -145,6 +156,7 @@ def test_two_installed_native_processes_auto_promote_to_meeting_pack(pack,store,
   yield object()
  monkeypatch.setattr(user_bpms_bindings,'processmaker_profile',lambda source_id:{'mysql':{}})
  monkeypatch.setattr(processmaker_store,'open_production',opened)
+ monkeypatch.setattr(c,'_verify_trusted_pack',lambda source_id,pack:True)
  monkeypatch.setattr(
   c,'_installed_process',
   lambda con,uid:copy.deepcopy(pack['meeting'] if uid==pack['meeting']['process_uid'] else pack['action'])
