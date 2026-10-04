@@ -365,6 +365,18 @@ def update(scope,actor,task,revision,values,questions=(),*,turn_text=None,turn_s
   row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments);tx.put(key,row)
  return row
 
+def _merge_extracted_value(current,value):
+ if not isinstance(value,dict):return value
+ base=current if isinstance(current,dict) else {}
+ merged=dict(base)
+ for key,row in value.items():
+  if not isinstance(row,dict):continue
+  existing=base.get(key)
+  if not isinstance(existing,dict):existing={}
+  merged[key]={**existing,**row}
+ return merged
+
+
 def _evidence_text(value):
  text=str(value or '').strip().replace('\u200c',' ').replace('ي','ی').replace('ك','ک')
  return re.sub(r'\s+',' ',text)
@@ -437,17 +449,7 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
     for a in parsed.assignments:
      if a.field not in form(task) or not _evidence_in_notes(a.quote,notes):raise AgentInvalid('Invalid assignment evidence')
      val=normalize(json.loads(a.value_json))
-     if isinstance(val,dict):
-      base=values.get(a.field)
-      if not isinstance(base,dict):base={}
-      merged=dict(base)
-      for n,row in val.items():
-       if not isinstance(row,dict):continue
-       existing=base.get(n)
-       if not isinstance(existing,dict):existing={}
-       merged[n]={**existing,**row}
-      val=merged
-     values[a.field]=val
+     values[a.field]=_merge_extracted_value(values.get(a.field),val)
     validate(values,task,scope)
     return values,parsed.questions
    except (AgentInvalid,ValueError) as exc:
