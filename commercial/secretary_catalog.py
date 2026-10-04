@@ -290,10 +290,52 @@ def packs(source_id,enabled_only=False):
  with agent_storage.transaction() as tx:data=tx.get(STORE,[])
  return [p for p in data if p['source_id']==source_id and (p['enabled'] or not enabled_only)]
 
+def runtime_pack_id(source_id):
+ return hashlib.sha256(('meeting-runtime-v1:'+str(source_id)).encode()).hexdigest()[:24]
+
+def runtime_meeting_pack(source_id):
+ """Return an executable typed meeting pack even before catalog promotion.
+
+ The source must already contain both reviewed native process bindings. Native
+ task ownership is still revalidated from ProcessMaker for every operation.
+ """
+ saved=packs(source_id,True)
+ real=next((p for p in saved if p.get('adapter')=='meeting_v2'),None)
+ if real:return real
+ native=[p for p in saved if p.get('adapter')=='native_tasks_v1' and p.get('enabled')]
+ trusted=_trusted_meeting_pack()
+ by_uid={p.get('process',{}).get('process_uid'):p for p in native}
+ meeting_native=by_uid.get(trusted['meeting']['process_uid'])
+ action_native=by_uid.get(trusted['action']['process_uid'])
+ if not meeting_native or not action_native:return None
+ return {**trusted,
+  'id':runtime_pack_id(source_id),'source_id':source_id,'enabled':True,
+  'revision':max(int(meeting_native.get('revision',0)),int(action_native.get('revision',0)))+100000,
+  'monitor_lead_minutes':int(meeting_native.get('monitor_lead_minutes',1440) or 1440),
+  'action_lead_minutes':int(action_native.get('action_lead_minutes',60) or 60),
+  'runtime_virtual':True,
+  'source_native_pack_ids':[meeting_native['id'],action_native['id']],
+  'tools':['extract_fields','request_missing_fields','submit_invitation','review_invitation',
+           'submit_minutes','review_minutes','submit_action_report','review_action',
+           'prepare_monitoring','propose_followup']}
+
+def runtime_meeting_packs(source_id):
+ real=[p for p in packs(source_id,True) if p.get('adapter')=='meeting_v2']
+ if real:return real
+ virtual=runtime_meeting_pack(source_id)
+ return [virtual] if virtual else []
+
 def get(source_id,identifier):
  found=next((p for p in packs(source_id,True) if p['id']==identifier),None)
- if not found:raise PermissionError('بسته دبیر این فرایند فعال نیست.')
- return found
+ if found:return found
+ if identifier==runtime_pack_id(source_id):
+  virtual=runtime_meeting_pack(source_id)
+  if virtual:return virtual
+  # Existing draft/session references remain valid if catalog promotion happens
+  # after the conversation started.
+  real=next((p for p in packs(source_id,True) if p.get('adapter')=='meeting_v2'),None)
+  if real:return {**real,'id':identifier,'runtime_virtual':True}
+ raise PermissionError('بسته دبیر این فرایند فعال نیست.')
 
 def save(source_id,pack,actor,*,identifier=None,revision=None,enabled=True,monitor_lead_minutes=1440,action_lead_minutes=60):
  from .process_workspace import native_ids
