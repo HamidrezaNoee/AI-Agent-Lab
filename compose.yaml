@@ -114,7 +114,7 @@ services:
         export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
         export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
         export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
-        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
+        exec /opt/keycloak/bin/kc.sh start --optimized --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/avan_keycloak
