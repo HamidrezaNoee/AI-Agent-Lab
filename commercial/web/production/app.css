@@ -67,40 +67,64 @@
 }
 
 
-/* Conversational intelligent secretary */
-.secretary-conversation{padding:0;overflow:hidden}
-.secretary-conversation>h2,.secretary-conversation>.sub{padding-left:22px;padding-right:22px}
-.secretary-conversation>h2{padding-top:22px}
-.secretary-chat{display:flex;flex-direction:column;gap:12px;padding:18px 22px;max-height:520px;overflow:auto;background:linear-gradient(180deg,rgba(244,248,251,.72),rgba(255,255,255,.96));border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-.chat-bubble{max-width:min(760px,88%);padding:13px 15px;border-radius:16px;line-height:2;white-space:pre-wrap;overflow-wrap:anywhere}
-.chat-bubble small{display:block;margin-bottom:5px;font-size:10px;opacity:.7;font-weight:800}
-.chat-bubble.assistant{align-self:flex-start;background:white;border:1px solid var(--border);border-bottom-right-radius:5px}
-.chat-bubble.user{align-self:flex-end;background:#e7f5f2;border:1px solid #c7e5df;border-bottom-left-radius:5px}
-.chat-summary,.secretary-invitation-summary pre{white-space:pre-wrap;font:inherit;line-height:2;margin:8px 0 0}
-.secretary-invitation-summary{margin:18px 22px 0;padding:15px;border:1px solid #cbe1de;background:#f2faf8;border-radius:13px}
-.secretary-invitation-summary strong{color:var(--teal)}
-.secretary-missing{margin:14px 22px;padding:14px 16px;border-right:4px solid #c68b24;background:#fff9ed;border-radius:10px}
-.secretary-missing p{margin:5px 0;font-size:12px}
-.secretary-composer{padding:18px 22px 22px}
-.secretary-composer>.field{margin-top:0}
-.secretary-composer textarea{min-height:105px}
-.voice-auto{display:flex!important;align-items:center;gap:8px;margin:8px 0!important;font-size:12px;color:var(--muted)}
-.voice-auto input{width:auto!important}
-.secretary-file-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0;padding:10px;border:1px dashed #c6d5df;border-radius:11px}
-.secretary-file-bar input[type=file]{max-width:420px}
-.secretary-quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
-.secretary-attachments{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:12px}
+/* Conversational intelligent secretary — chat-first workspace */
+.secretary-conversation{padding:0;overflow:hidden;display:flex;flex-direction:column;min-height:620px}
+.secretary-conversation>h2,.secretary-conversation>.sub{padding-left:24px;padding-right:24px}
+.secretary-conversation>h2{padding-top:22px;margin-bottom:5px}
+.secretary-conversation>.sub{margin-bottom:14px}
+.secretary-chat{display:flex;flex-direction:column;gap:14px;padding:24px max(24px,8%);height:min(58vh,650px);min-height:360px;overflow:auto;scroll-behavior:smooth;background:linear-gradient(180deg,#fbfcfd 0%,#f7fafc 100%);border-top:1px solid var(--border)}
+.chat-bubble{max-width:min(780px,82%);padding:13px 16px;border-radius:20px;line-height:2;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(23,47,75,.04)}
+.chat-bubble small{display:block;margin-bottom:4px;font-size:10px;opacity:.62;font-weight:800}
+.chat-bubble-text{font-size:14px;line-height:2.05}
+.chat-bubble.assistant{align-self:flex-start;background:transparent;border:0;box-shadow:none;padding-right:2px}
+.chat-bubble.user{align-self:flex-end;background:#e8f5f2;border:1px solid #c7e6df;border-bottom-left-radius:7px}
+.chat-bubble.error{background:#fff4f2;border:1px solid #f1d0cb;color:#8d3434;padding:12px 15px}
+.chat-bubble.thinking{opacity:.85}
+.typing-row{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:12px}
+.typing-dots{display:inline-flex;gap:4px;direction:ltr}
+.typing-dots i{width:6px;height:6px;border-radius:50%;background:currentColor;animation:secretaryDot 1.2s infinite ease-in-out}
+.typing-dots i:nth-child(2){animation-delay:.15s}.typing-dots i:nth-child(3){animation-delay:.3s}
+@keyframes secretaryDot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+.chat-summary-details{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+.chat-summary-details summary,.secretary-context-summary summary{cursor:pointer;color:var(--teal);font-size:11px;font-weight:800}
+.chat-summary,.secretary-context-summary pre{white-space:pre-wrap;font:inherit;line-height:2;margin:8px 0 0}
+.secretary-progress{margin:0;padding:8px 24px;border-top:1px solid var(--border);color:var(--muted);background:#fbfcfd;font-size:11px}
+.secretary-context-summary{margin:0 24px 10px;padding:10px 13px;border:1px solid var(--border);border-radius:12px;background:#fbfcfd}
+.secretary-composer{position:sticky;bottom:0;z-index:3;padding:12px max(24px,8%) 20px;background:linear-gradient(180deg,rgba(255,255,255,.7),#fff 28%);backdrop-filter:blur(8px)}
+.secretary-composer-box{border:1px solid #cbd8e3;background:#fff;border-radius:22px;padding:10px 12px 9px;box-shadow:0 8px 30px rgba(23,47,75,.08);transition:border-color .15s,box-shadow .15s}
+.secretary-composer-box:focus-within{border-color:#77b9b0;box-shadow:0 8px 32px rgba(8,126,115,.12)}
+.secretary-composer-box.dragging{border-color:var(--teal);background:#f1faf8}
+.secretary-composer-input{display:block!important;width:100%!important;min-height:38px!important;max-height:180px!important;resize:none!important;border:0!important;outline:0!important;box-shadow:none!important;padding:7px 5px!important;margin:0!important;background:transparent!important;line-height:1.9}
+.secretary-composer-tools{display:flex;align-items:center;gap:7px;margin-top:4px}
+.secretary-composer-tools .icon-button{width:36px;height:36px;min-width:36px;padding:0!important;border-radius:50%;display:grid;place-items:center;font-size:18px;margin:0!important}
+.secretary-send{margin-right:auto!important;width:38px;height:38px;min-width:38px;padding:0!important;border-radius:50%!important;font-size:19px;line-height:1}
+.secretary-hidden-input{display:none!important}
+.secretary-send-status{min-height:20px;padding:5px 10px 0;text-align:right}
+.secretary-composer.is-sending .secretary-composer-box{opacity:.88}
+.voice-bar.compact{display:flex;align-items:center;gap:6px;padding:0;margin:0;background:transparent;border:0}
+.voice-bar.compact .button{margin:0!important}
+.voice-compact-status{max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.voice-auto{display:flex!important;align-items:center;gap:5px;margin:0 4px!important;font-size:10px;color:var(--muted);white-space:nowrap}
+.voice-auto input{width:auto!important;margin:0}
+.secretary-audio{width:100%;margin-top:8px;height:34px}
+.secretary-quick-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 4px 0}
+.secretary-attachments{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:10px 4px 0}
 .secretary-form-details{margin-top:18px;border:1px solid var(--border);border-radius:14px;background:white}
 .secretary-form-details>summary{cursor:pointer;padding:16px 18px;font-weight:800;color:var(--blue)}
 .secretary-form-body{padding:0 18px 18px}
-:root[data-theme='dark'] .secretary-chat{background:var(--surface-soft,#101b27)}
-:root[data-theme='dark'] .chat-bubble.assistant,:root[data-theme='dark'] .secretary-form-details{background:var(--surface,#172333)}
+:root[data-theme='dark'] .secretary-chat{background:linear-gradient(180deg,var(--surface-soft,#101b27),var(--canvas,#0d1824))}
+:root[data-theme='dark'] .chat-bubble.user{background:#123e3a;border-color:#215c56}
+:root[data-theme='dark'] .chat-bubble.assistant{background:transparent}
+:root[data-theme='dark'] .secretary-progress,:root[data-theme='dark'] .secretary-context-summary{background:var(--surface-soft,#101b27)}
+:root[data-theme='dark'] .secretary-composer{background:linear-gradient(180deg,rgba(13,24,36,.5),var(--canvas,#0d1824) 30%)}
+:root[data-theme='dark'] .secretary-composer-box,:root[data-theme='dark'] .secretary-form-details{background:var(--surface,#172333);border-color:var(--line,#294057)}
+:root[data-theme='dark'] .secretary-composer-input{color:var(--ink,#eef4f8)!important}
 @media(max-width:650px){
- .chat-bubble{max-width:96%}
- .secretary-chat,.secretary-composer{padding-left:12px;padding-right:12px}
- .secretary-invitation-summary,.secretary-missing{margin-left:12px;margin-right:12px}
- .secretary-file-bar{display:block}
- .secretary-file-bar input[type=file]{max-width:100%}
+ .secretary-conversation{min-height:520px}
+ .secretary-chat{height:55vh;min-height:300px;padding:16px 12px}
+ .chat-bubble{max-width:94%}
+ .secretary-composer{padding:10px 12px 14px}
+ .secretary-context-summary{margin-left:12px;margin-right:12px}
+ .voice-auto span{display:none}
+ .voice-compact-status{display:none}
 }
-
-.secretary-file-bar.dragging{border-style:solid;border-color:var(--teal);background:#edf8f6}
