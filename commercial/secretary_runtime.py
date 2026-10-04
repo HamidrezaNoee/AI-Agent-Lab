@@ -1,6 +1,6 @@
 """Typed tools for role-scoped native tasks, draft proposals, inbox and reminders."""
 from __future__ import annotations
-import copy,hashlib,json,re,secrets
+import copy,hashlib,json,logging,re,secrets
 from datetime import datetime,timedelta,timezone
 from . import agent_storage,secretary_catalog as catalog,secretary_workflow as legacy
 from .agent_workspace import source_user_key,scope_stamp,RevisionConflict
@@ -16,6 +16,8 @@ FIELDS={**legacy.WRITE_FIELDS,
  'action_review':{'MTGA_ReviewStatus2','MTGA_SecretaryProgressPercent2','MTGA_SecretaryActualCompletionDateTime2','MTGA_SecretaryActualCompletionTime2','MTGA_SecretaryActualEffortMinutes2','MTGA_SecretaryComment1'},
  'monitoring':{'MTG_ClosingNote','MTG_ActionSummary'},
 }
+logger=logging.getLogger(__name__)
+
 STAGE_LABELS={'invitation':'دعوت‌نامه','invitation_approval':'تأیید دعوت‌نامه','minutes':'صورتجلسه','minutes_approval':'تأیید صورتجلسه','action_execution':'گزارش اجرای اقدام','action_review':'بررسی اقدام','monitoring':'پایش و اختتام'}
 
 
@@ -371,6 +373,25 @@ def _evidence_in_notes(quote,notes):
  q=_evidence_text(quote);n=_evidence_text(notes)
  return bool(q) and q in n
 
+def _model_failure(exc):
+ name=exc.__class__.__name__
+ status=getattr(exc,'status_code',None)
+ logger.warning('Secretary extraction provider failure type=%s status=%s',name,status)
+ if name in ('APITimeoutError','TimeoutException','ReadTimeout','ConnectTimeout'):
+  return 'سرویس هوش مصنوعی در زمان مقرر پاسخ نداد؛ دوباره تلاش کنید.'
+ if name in ('APIConnectionError','ConnectError','ConnectionError','NameResolutionError'):
+  return 'ارتباط AVAN با سرویس هوش مصنوعی برقرار نشد؛ اینترنت، DNS و دسترسی سرور بررسی شود.'
+ if name in ('AuthenticationError','PermissionDeniedError') or status in (401,403):
+  return 'احراز هویت سرویس هوش مصنوعی نامعتبر است؛ API Key و دسترسی مدل در مدیریت سامانه بررسی شود.'
+ if name=='RateLimitError' or status==429:
+  return 'سهمیه یا نرخ درخواست سرویس هوش مصنوعی محدود شده است؛ کمی بعد دوباره تلاش کنید یا اعتبار حساب را بررسی کنید.'
+ if name in ('BadRequestError','UnprocessableEntityError') or status in (400,422):
+  return 'مدل انتخاب‌شده پاسخ ساختاری موردنیاز دبیر هوشمند را نپذیرفت؛ مدل AI یا تنظیم Structured Output در مدیریت سامانه بررسی شود.'
+ if isinstance(status,int) and status>=500:
+  return 'سرویس هوش مصنوعی موقتاً در دسترس نیست؛ چند لحظه بعد دوباره تلاش کنید.'
+ return 'استخراج اطلاعات توسط مدل انجام نشد؛ دوباره تلاش کنید. اگر تکرار شد، تنظیم مدل AI بررسی شود.'
+
+
 def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
  owned=client is None
  if owned:client,model=configured_client()
@@ -400,7 +421,7 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
     raise
   raise last or AgentInvalid('Invalid extraction')
  except (AgentInvalid,ValueError):raise
- except Exception as exc:raise AgentUnavailable('استخراج اطلاعات این وظیفه انجام نشد.') from exc
+ except Exception as exc:raise AgentUnavailable(_model_failure(exc)) from exc
  finally:
   if owned:client.close()
 
