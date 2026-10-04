@@ -407,9 +407,9 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
     result=client.responses.create(model=model,store=False,timeout=60,max_output_tokens=7000,input=[
      {'role':'system','content':instruction},
      {'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
-     text={'format':{'type':'json_schema','name':'secretary_task_fields','strict':True,'schema':legacy.Extraction.model_json_schema()}})
+     text={'format':{'type':'json_schema','name':'secretary_task_fields','strict':True,'schema':legacy.model_schema(legacy.Extraction)}})
     if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
-    parsed=legacy.Extraction.model_validate_json(result.output_text);values=copy.deepcopy(current)
+    parsed=legacy.validate_model_json(legacy.Extraction,legacy.response_text(result));values=copy.deepcopy(current)
     for a in parsed.assignments:
      if a.field not in form(task) or not _evidence_in_notes(a.quote,notes):raise AgentInvalid('Invalid assignment evidence')
      val=normalize(json.loads(a.value_json))
