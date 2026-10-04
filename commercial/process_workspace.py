@@ -86,6 +86,14 @@ def configured(scope,diagnostics=None):
         try:resolve(pack,scope)
         except PermissionError:continue
         results.append(pack)
+    # Runtime meeting agent is intentionally independent from catalog migration.
+    # If the reviewed meeting/action pair is already bound as native processes,
+    # expose one typed meeting workspace immediately.
+    runtime_pack=catalog.runtime_meeting_pack(scope['source_id']) if 2 in set(scope['license']['modules']) else None
+    if runtime_pack and not any(p.get('adapter')=='meeting_v2' for p in results):
+        try:resolve(runtime_pack,scope)
+        except PermissionError:pass
+        else:results.append(runtime_pack)
     return results
 
 def identity(pack,adapter):
@@ -174,6 +182,7 @@ def register(app,authorized):
                     'id':p['id'],
                     'enabled':bool(p.get('enabled')),
                     'revision':p.get('revision'),
+                    'runtime_virtual':bool(p.get('runtime_virtual')),
                     'meeting_title':(p.get('meeting') or {}).get('title'),
                     'action_title':(p.get('action') or {}).get('title'),
                 } for p in meeting_packs],
