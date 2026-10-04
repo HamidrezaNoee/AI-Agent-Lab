@@ -1223,6 +1223,21 @@ async function renderUsers(m){
    else await api("users/profile",{subject:user.subject,username:formValue(f,"username"),name:formValue(f,"name"),email:formValue(f,"email")});
   });
  })}
+ const roleLabels={Expert:"کارشناس",Manager:"مدیر",SysAdmin:"مدیر سیستم",GodAdmin:"GodAdmin"};
+ function changeRole(user,host){open(host,()=>{
+  if(!user.approved||user.local){append(host,info("تغییر نقش فقط برای کاربران فعال AVAN انجام می‌شود.",true));return}
+  saveForm(host,[
+   selectField("نقش AVAN","role",[
+    {value:"Expert",label:"کارشناس"},
+    {value:"Manager",label:"مدیر"},
+    {value:"SysAdmin",label:"مدیر سیستم"}
+   ],user.role||"Expert")
+  ],async f=>{
+   const result=await api("users/role",{subject:user.subject,role:formValue(f,"role")});
+   if(result.requires_login)append(feedback,info("نقش تغییر کرد و نشست‌های کاربر برای دریافت Token جدید بسته شد."));
+  });
+ })}
+
  const moduleLabels={
   1:"جلسات و دستیار",
   2:"دبیر هوشمند",
@@ -1387,8 +1402,9 @@ async function renderUsers(m){
   const card=panel(user.name||user.username,user.username||""),actions=node("div","actions"),host=node("div","editor-slot");
   card.classList.add("avan-user-card");
   card.dataset.search=[user.username,user.name,user.email].filter(Boolean).join(" ").toLowerCase();
-  append(card,node("span","connection-pill",user.local?"مدیر سامانه":user.approved?(user.enabled?"فعال":"غیرفعال"):user.pending?"در انتظار تأیید":"هویت بدون دسترسی AVAN"));
+  append(card,node("span","connection-pill",user.local?"مدیر سامانه":user.approved?(user.enabled?"فعال · "+(roleLabels[user.role]||user.role||"بدون نقش"):"غیرفعال · "+(roleLabels[user.role]||user.role||"بدون نقش")):user.pending?"در انتظار تأیید":"هویت بدون دسترسی AVAN"));
   append(actions,btn("ویرایش",()=>edit(user,host,false),"secondary"),btn("تغییر رمز",()=>edit(user,host,true),"secondary"));
+  if(user.approved&&!user.local&&user.subject!==status.godadmin_subject)append(actions,btn("تغییر نقش",()=>changeRole(user,host),"secondary"));
   if(user.local&&status.godadmin_local)append(actions,btn("انتقال به ورود سازمانی",()=>migrateGodAdmin(user,host)));
   if(user.approved&&!user.local){
    append(actions,btn("دسترسی‌ها",()=>open(host,()=>buildAccess(host,user)),"secondary"),btn(user.enabled?"غیرفعال‌کردن":"فعال‌کردن",async()=>{try{await api("users/enabled",{subject:user.subject,enabled:!user.enabled});await showSettings("users")}catch(err){showError(feedback,err)}},"secondary"));
