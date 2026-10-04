@@ -6,11 +6,14 @@ from .setup_console import get_setting
 MAX_AUDIO = 8 * 1024 * 1024
 FORMATS = {
     "audio/webm": ("webm", b"\x1aE\xdf\xa3"),
+    "video/webm": ("webm", b"\x1aE\xdf\xa3"),
     "audio/ogg": ("ogg", b"OggS"),
+    "application/ogg": ("ogg", b"OggS"),
     "audio/wav": ("wav", b"RIFF"),
     "audio/x-wav": ("wav", b"RIFF"),
     "audio/mpeg": ("mp3", None),
     "audio/mp4": ("m4a", None),
+    "audio/x-m4a": ("m4a", None),
     "video/mp4": ("mp4", None),
 }
 
@@ -22,22 +25,45 @@ def configuration():
     return cfg
 
 
+def _sniff_mime(data):
+    head=data[:64]
+    if b"\x1aE\xdf\xa3" in head[:16]:
+        return "audio/webm"
+    if head.startswith(b"OggS"):
+        return "audio/ogg"
+    if head.startswith(b"RIFF") and len(head)>=12 and head[8:12]==b"WAVE":
+        return "audio/wav"
+    if head.startswith(b"ID3") or (len(head)>=2 and head[0]==255 and head[1] & 224 == 224):
+        return "audio/mpeg"
+    if b"ftyp" in head[:32]:
+        return "audio/mp4"
+    return None
+
+
 def audio_format(data, content_type):
-    mime = content_type.split(";")[0].lower()
-    if mime not in FORMATS or not 16 <= len(data) <= MAX_AUDIO:
-        raise AgentInvalid("Invalid audio size or type")
+    if not 16 <= len(data) <= MAX_AUDIO:
+        raise AgentInvalid("حجم فایل صوت معتبر نیست.")
+    declared=(content_type or "").split(";")[0].strip().lower()
+    sniffed=_sniff_mime(data)
+    mime=declared if declared in FORMATS else sniffed
+    if not mime:
+        raise AgentInvalid("قالب فایل صوتی توسط مرورگر قابل تشخیص نیست.")
     extension, magic = FORMATS[mime]
     valid = (
-        data.startswith(magic)
+        (magic in data[:16])
         if magic
         else (
             (data.startswith(b"ID3") or data[0] == 255 and data[1] & 224 == 224)
             if mime == "audio/mpeg"
-            else data[4:8] == b"ftyp"
+            else b"ftyp" in data[:32]
         )
     )
+    if not valid and sniffed:
+        mime=sniffed
+        extension,_=FORMATS[mime]
+        valid=True
     if not valid:
-        raise AgentInvalid("Audio content does not match its type")
+        raise AgentInvalid("محتوای فایل صوت با قالب اعلام‌شده سازگار نیست.")
     return extension, mime
 
 
@@ -54,8 +80,10 @@ def transcribe(data, content_type):
             timeout=60,
         )
         text = response.text.strip()
-        if not text or len(text) > 18000:
-            raise AgentInvalid("Transcript empty or too long")
+        if not text:
+            raise AgentInvalid("صدای قابل تشخیص در فایل پیدا نشد؛ نزدیک میکروفن صحبت کنید و دوباره امتحان کنید.")
+        if len(text) > 18000:
+            raise AgentInvalid("متن تبدیل‌شده از حد مجاز بیشتر است.")
         return text
     except AgentInvalid:
         raise
