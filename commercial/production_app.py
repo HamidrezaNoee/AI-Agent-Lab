@@ -466,6 +466,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     if not stored and not platform_admin:
         _stage_verified_identity(principal,claims,access)
         response=RedirectResponse("/auth/pending",status_code=303)
+        response.delete_cookie(cookie_name,path="/auth/callback")
         response.delete_cookie("avan_login_state",path="/")
         return response
     if stored and not stored.get("enabled"):
