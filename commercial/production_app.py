@@ -7,7 +7,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-import hashlib, hmac, os, secrets, time, threading
+import base64, hashlib, hmac, json, os, secrets, time, threading
 from urllib.parse import urlencode, urlsplit
 
 import httpx
@@ -168,6 +168,57 @@ def _valid_oidc_browser_token(value:str)->bool:
 
 def _oidc_browser_hash(value:str)->str:
     return hashlib.sha256(value.encode("ascii")).hexdigest()
+
+
+def _b64u(data:bytes)->str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+
+def _b64u_decode(value:str)->bytes:
+    return base64.urlsafe_b64decode(value+"="*((4-len(value)%4)%4))
+
+
+def _oidc_tx_encode(*,state:str,verifier:str,browser_hash:str,expires:float,secret:str)->str:
+    payload=_b64u(json.dumps({
+        "s":state,
+        "v":verifier,
+        "b":browser_hash,
+        "e":int(expires),
+    },separators=(",",":"),sort_keys=True).encode("utf-8"))
+    signature=_b64u(hmac.new(
+        secret.encode("utf-8"),
+        ("avan-oidc-tx-v1."+payload).encode("ascii"),
+        hashlib.sha256,
+    ).digest())
+    return payload+"."+signature
+
+
+def _oidc_tx_decode(value:str,*,state:str,secret:str)->dict|None:
+    try:
+        payload,signature=value.split(".",1)
+        expected=_b64u(hmac.new(
+            secret.encode("utf-8"),
+            ("avan-oidc-tx-v1."+payload).encode("ascii"),
+            hashlib.sha256,
+        ).digest())
+        if not hmac.compare_digest(signature,expected):
+            return None
+        data=json.loads(_b64u_decode(payload))
+        if (not isinstance(data,dict)
+            or data.get("s")!=state
+            or not isinstance(data.get("v"),str)
+            or not 32<=len(data["v"])<=128
+            or not isinstance(data.get("b"),str)
+            or len(data["b"])!=64
+            or not isinstance(data.get("e"),int)):
+            return None
+        return {
+            "verifier":data["v"],
+            "browser_hash":data["b"],
+            "expires":float(data["e"]),
+        }
+    except (ValueError,TypeError,KeyError,json.JSONDecodeError):
+        return None
 
 
 def _principal_for_request(request:Request):
@@ -354,7 +405,7 @@ def login(request:Request):
                             detail="ابتدا GodAdmin باید راه‌اندازی اولیه و تأیید دومرحله‌ای را تکمیل کند.")
     try:
         origin=_public_origin()
-        authorization,_,client_id,_,_= _oidc_config()
+        authorization,_,client_id,client_secret,_= _oidc_config()
     except ConfigurationFailed:
         raise HTTPException(status_code=503,detail="سامانه هویت سازمانی تنظیم نشده است.")
     _purge()
@@ -394,11 +445,18 @@ def login(request:Request):
         samesite="lax",
         path="/",
     )
-    # Keep the transaction cookie for one release as a compatibility aid, but
-    # callback security is now bound to the stable browser token above.
+    # Persist a tamper-evident, HttpOnly OIDC transaction token in the browser.
+    # RAM remains only an optimization: a container restart or another worker
+    # can reconstruct the PKCE verifier and browser binding from this cookie.
     response.set_cookie(
         _oidc_state_cookie_name(state),
-        state,
+        _oidc_tx_encode(
+            state=state,
+            verifier=verifier,
+            browser_hash=_oidc_browser_hash(browser_token),
+            expires=time.time()+300,
+            secret=client_secret,
+        ),
         max_age=300,
         httponly=True,
         secure=_public_origin().startswith("https://"),
@@ -413,7 +471,23 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     if not code or not state or len(state)>512:
         raise HTTPException(status_code=401,detail="درخواست ورود معتبر نیست.")
     cookie_name=_oidc_state_cookie_name(state)
+    # Distinct, safe failures are important here: an authorized Keycloak
+    # identity can be pending enrollment, while a missing tenant claim, SQL
+    # outage, or license problem must NOT masquerade as a wrong password.
+    try:
+        origin=_public_origin()
+        _,token_url,client_id,client_secret,authenticator=_oidc_config()
+    except ConfigurationFailed:
+        raise HTTPException(status_code=503,
+            detail="تنظیمات ورود سازمانی آوان کامل نیست؛ اتصال Keycloak در GodAdmin بررسی شود.")
+
     item=pending.pop(state,None)
+    if item is None:
+        item=_oidc_tx_decode(
+            request.cookies.get(cookie_name,""),
+            state=state,
+            secret=client_secret,
+        )
     if item is None or item["expires"]<time.time():
         raise HTTPException(status_code=401,detail="مهلت ورود به پایان رسیده است.")
     browser_token=request.cookies.get(OIDC_BROWSER_COOKIE,"")
@@ -425,15 +499,6 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
             browser_hash,
         )):
         raise HTTPException(status_code=401,detail="درخواست ورود معتبر نیست.")
-    # Distinct, safe failures are important here: an authorized Keycloak
-    # identity can be pending enrollment, while a missing tenant claim, SQL
-    # outage, or license problem must NOT masquerade as a wrong password.
-    try:
-        origin=_public_origin()
-        _,token_url,client_id,client_secret,authenticator=_oidc_config()
-    except ConfigurationFailed:
-        raise HTTPException(status_code=503,
-            detail="تنظیمات ورود سازمانی آوان کامل نیست؛ اتصال Keycloak در GodAdmin بررسی شود.")
     try:
         with httpx.Client(timeout=8,follow_redirects=False,trust_env=False) as client:
             token_response=client.post(token_url,data={
