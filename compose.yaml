@@ -111,10 +111,8 @@ services:
         export PGPASSWORD="$$(cat /run/secrets/keycloak_db_password)"
         if [ "$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT to_regclass('public.realm')")" = "realm" ]; then
           psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "UPDATE realm SET login_theme='avan' WHERE name='avan' AND COALESCE(login_theme,'') <> 'avan';"
-          FLOW_ID="$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT af.id FROM authentication_flow af JOIN realm r ON r.id=af.realm_id WHERE r.name='avan' AND af.alias='avan-browser' ORDER BY af.id LIMIT 1")"
-          if [ -n "$FLOW_ID" ]; then
-            psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "UPDATE realm SET browser_flow='$FLOW_ID' WHERE name='avan' AND COALESCE(browser_flow,'') <> '$FLOW_ID';"
-          fi
+          psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "UPDATE realm r SET browser_flow=af.id FROM authentication_flow af WHERE r.name='avan' AND af.realm_id=r.id AND af.alias='avan-browser' AND COALESCE(r.browser_flow,'') <> af.id;"
+          psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "SELECT 1 / CASE WHEN EXISTS (SELECT 1 FROM realm r JOIN authentication_flow af ON af.id=r.browser_flow WHERE r.name='avan' AND af.alias='avan-browser') THEN 1 ELSE 0 END AS avan_browser_flow_bound;"
         fi
     secrets:
       - keycloak_db_password
