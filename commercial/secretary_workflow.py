@@ -31,6 +31,40 @@ class Extraction(BaseModel):
  questions:list[str]=Field(max_length=12)
 
 
+def model_schema(model):
+ method=getattr(model,'model_json_schema',None)
+ if callable(method):return method()
+ method=getattr(model,'schema',None)
+ if callable(method):return method()
+ raise AgentInvalid('Structured schema API is unavailable')
+
+
+def validate_model_json(model,payload):
+ method=getattr(model,'model_validate_json',None)
+ if callable(method):return method(payload)
+ method=getattr(model,'parse_raw',None)
+ if callable(method):return method(payload)
+ raise AgentInvalid('Structured validation API is unavailable')
+
+
+def response_text(result):
+ direct=getattr(result,'output_text',None)
+ if isinstance(direct,str) and direct.strip():return direct
+ chunks=[]
+ for item in getattr(result,'output',[]) or []:
+  content=getattr(item,'content',None)
+  if content is None and isinstance(item,dict):content=item.get('content')
+  for part in content or []:
+   kind=getattr(part,'type',None)
+   if kind is None and isinstance(part,dict):kind=part.get('type')
+   if kind not in (None,'output_text','text'):continue
+   value=getattr(part,'text',None)
+   if value is None and isinstance(part,dict):value=part.get('text')
+   if isinstance(value,str) and value:chunks.append(value)
+ if chunks:return ''.join(chunks)
+ raise AgentInvalid('Structured response did not contain output text')
+
+
 def extract(text,stage,existing,directory,*,client=None,model=None):
  owned=client is None
  if owned:client,model=configured_client()
@@ -48,9 +82,9 @@ def extract(text,stage,existing,directory,*,client=None,model=None):
     {'role':'user','content':json.dumps({'notes':text,'stage':stage,'current':existing,
      'allowed_fields':{k:FORMS[stage][k] for k in WRITE_FIELDS[stage]},
      'directory':directory,'now':datetime.now(ZoneInfo('Asia/Tehran')).isoformat()},ensure_ascii=False)}],
-   text={'format':{'type':'json_schema','name':'secretary_fields','strict':True,'schema':Extraction.model_json_schema()}})
+   text={'format':{'type':'json_schema','name':'secretary_fields','strict':True,'schema':model_schema(Extraction)}})
   if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
-  output=Extraction.model_validate_json(result.output_text)
+  output=validate_model_json(Extraction,response_text(result))
   values=dict(existing)
   for a in output.assignments:
    if a.field not in WRITE_FIELDS[stage] or a.quote not in text:raise AgentInvalid('Unsupported extraction')
