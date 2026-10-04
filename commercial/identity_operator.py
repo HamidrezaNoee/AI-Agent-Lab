@@ -246,6 +246,58 @@ class ManagedIdentityService:
             )
         return roles[0]
 
+    def set_avan_role(self, subject: str, role: str) -> str:
+        """Replace the user's AVAN realm role atomically at the identity layer."""
+        if role not in {"Expert", "Manager", "SysAdmin"}:
+            raise IdentityError("نقش AVAN معتبر نیست.")
+        subject = str(UUID(str(subject)))
+        self.get(subject)
+
+        current = self.call(
+            "GET", "/users/" + subject + "/role-mappings/realm"
+        ).json()
+        if not isinstance(current, list):
+            raise IdentityError("نقش‌های فعلی حساب در سرویس هویت معتبر نیست.")
+
+        avan_roles = [
+            row for row in current
+            if isinstance(row, dict)
+            and row.get("name") in {"Expert", "Manager", "SysAdmin"}
+        ]
+        selected = self.call("GET", "/roles/" + role).json()
+        if not isinstance(selected, dict) or selected.get("name") != role:
+            raise IdentityError("نقش انتخاب‌شده در سرویس هویت پیدا نشد.")
+
+        # Remove all existing AVAN user roles, then attach exactly one role.
+        # Other realm roles are untouched.
+        if avan_roles:
+            self.call(
+                "DELETE",
+                "/users/" + subject + "/role-mappings/realm",
+                json=avan_roles,
+            )
+        try:
+            self.call(
+                "POST",
+                "/users/" + subject + "/role-mappings/realm",
+                json=[selected],
+            )
+        except Exception:
+            # Best-effort rollback keeps identity authorization from being left
+            # without an AVAN role if Keycloak rejects the replacement.
+            if avan_roles:
+                try:
+                    self.call(
+                        "POST",
+                        "/users/" + subject + "/role-mappings/realm",
+                        json=avan_roles,
+                    )
+                except Exception:
+                    pass
+            raise
+
+        return role
+
     def update(self, subject: str, username: str, name: str, email: str):
         username = str(username or "").strip()
         name = str(name or "").strip()
