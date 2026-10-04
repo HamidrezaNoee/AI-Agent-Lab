@@ -72,10 +72,15 @@ def configured(scope,diagnostics=None):
             from .processmaker_store import ProductionUnavailable
             from .user_bpms_bindings import BindingError
             from .agent_storage import AgentStorageUnavailable
-            if not isinstance(exc,(ProductionUnavailable,BindingError,AgentStorageUnavailable)):
+            from .secretary_catalog import MeetingPromotionUnavailable
+            if isinstance(exc,MeetingPromotionUnavailable):
+                diagnostics['promotion_state']='incompatible'
+                diagnostics['promotion_warning']='بسته تخصصی مدیریت جلسات فعال نشد: '+str(exc)
+            elif isinstance(exc,(ProductionUnavailable,BindingError,AgentStorageUnavailable)):
+                diagnostics['promotion_state']='unavailable'
+                diagnostics['promotion_warning']='ارتقای خودکار بسته مدیریت جلسات انجام نشد؛ اتصال ProcessMaker یا مخزن AVAN موقتاً در دسترس نیست.'
+            else:
                 raise
-            diagnostics['promotion_state']='unavailable'
-            diagnostics['promotion_warning']='ارتقای خودکار بسته مدیریت جلسات انجام نشد؛ فرایندهای متصل همچنان به‌صورت کارتابل عمومی قابل انتخاب‌اند.'
     results=[]
     for pack in catalog.packs(scope['source_id'],True):
         try:resolve(pack,scope)
