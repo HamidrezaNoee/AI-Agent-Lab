@@ -206,3 +206,29 @@ def test_meeting_promotion_incompatibility_is_reported_but_native_processes_rema
  assert [x['id'] for x in rows]==[generic['id']]
  assert diagnostics['promotion_state']=='incompatible'
  assert 'UID فرم نصب‌شده متفاوت است' in diagnostics['promotion_warning']
+
+
+
+def test_runtime_meeting_agent_is_available_even_when_catalog_promotion_is_unavailable(store,monkeypatch):
+ trusted=c._trusted_meeting_pack()
+ store[c.STORE]=[
+  {'id':'a'*24,'source_id':'source','enabled':True,'revision':3,'adapter':'native_tasks_v1',
+   'process':{'process_uid':trusted['meeting']['process_uid'],'title':'فرایند مدیریت جلسات'},
+   'monitor_lead_minutes':1440,'action_lead_minutes':60,'tools':['read_own_tasks']},
+  {'id':'b'*24,'source_id':'source','enabled':True,'revision':4,'adapter':'native_tasks_v1',
+   'process':{'process_uid':trusted['action']['process_uid'],'title':'فرایند اقدام مصوب جلسه'},
+   'monitor_lead_minutes':1440,'action_lead_minutes':60,'tools':['read_own_tasks']},
+ ]
+ from commercial.processmaker_store import ProductionUnavailable
+ monkeypatch.setattr(
+  c,'ensure_installed_meeting_pack',
+  lambda source_id:(_ for _ in ()).throw(ProductionUnavailable('promotion probe unavailable'))
+ )
+ diagnostics={}
+ rows=w.configured({**S,'license':{'modules':{1,2}}},diagnostics)
+ virtual=[x for x in rows if x.get('adapter')=='meeting_v2']
+ assert len(virtual)==1 and virtual[0]['runtime_virtual']
+ assert virtual[0]['id']==c.runtime_pack_id('source')
+ assert diagnostics['promotion_state']=='unavailable'
+ listed=w.processes({**S,'license':{'modules':{1,2}}})['processes']
+ assert any(x['adapter']=='meeting_v2' and x['renderer']=='meeting' for x in listed)
