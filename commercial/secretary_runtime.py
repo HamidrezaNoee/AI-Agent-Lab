@@ -254,6 +254,37 @@ def apply_explicit_decision(text,stage,values):
  values[key]=decision
  return decision
 
+def apply_explicit_workflow_intent(text,stage,values):
+ """Apply only unambiguous human workflow commands; never model inference."""
+ raw=_intent_text(text)
+ if stage=='action_execution':
+  if any(x in raw for x in ('اقدام تکمیل شد','اقدام را تکمیل کردم','کار تکمیل شد','کار تمام شد','اعلام تکمیل')):
+   values['MTGA_SubmissionType']='CompletionClaim';values['MTGA_ProgressPercent']='100'
+   return 'completion'
+  if 'گزارش پیشرفت' in raw:
+   values['MTGA_SubmissionType']='ProgressUpdate'
+   return 'progress'
+ if stage=='action_review':
+  if any(x in raw for x in ('تأیید و بستن','تایید و بستن','تأیید و ببند','تایید و ببند','اقدام را ببند')):
+   values['MTGA_ReviewStatus2']='Closed';return 'closed'
+  if any(x in raw for x in ('بازگشت برای اصلاح','برای اصلاح برگردان','ادامه اقدام','نیاز به اصلاح')):
+   values['MTGA_ReviewStatus2']='Rework';return 'rework'
+ return None
+
+def explicit_advance_intent(text,stage,workflow_intent=None):
+ raw=_intent_text(text)
+ if stage in ('invitation_approval','minutes_approval'):
+  return explicit_decision_value(text,stage) is not None
+ if stage=='action_review' and workflow_intent in ('closed','rework'):return True
+ if stage=='action_execution' and workflow_intent=='completion':return True
+ common=any(x in raw for x in (
+  'ثبت و ارسال کن','ثبت و ارسال','ارسال به مرحله بعد','به مرحله بعد بفرست',
+  'ارسال کن','ثبت کن و بفرست'))
+ if stage in ('minutes','action_execution') and common:return True
+ if stage=='monitoring' and (common or any(x in raw for x in (
+  'جلسه را خاتمه بده','جلسه را ببند','اختتام جلسه','پایش را ثبت کن'))):return True
+ return False
+
 def explicit_start_intent(text):
  """A new PM case is a side effect and needs a direct user instruction."""
  raw=_intent_text(text)
