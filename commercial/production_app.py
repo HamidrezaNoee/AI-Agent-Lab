@@ -153,6 +153,23 @@ def _oidc_state_cookie_name(state:str)->str:
     return "avan_oidc_state_"+digest
 
 
+OIDC_BROWSER_COOKIE="avan_oidc_browser"
+
+
+def _new_oidc_browser_token()->str:
+    return secrets.token_urlsafe(32)
+
+
+def _valid_oidc_browser_token(value:str)->bool:
+    return bool(value) and 32 <= len(value) <= 128 and all(
+        ch.isalnum() or ch in "-_" for ch in value
+    )
+
+
+def _oidc_browser_hash(value:str)->str:
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
+
+
 def _principal_for_request(request:Request):
     _purge()
     session_id=request.cookies.get("avan_session","")
@@ -348,7 +365,14 @@ def login(request:Request):
     challenge=__import__("base64").urlsafe_b64encode(
         hashlib.sha256(verifier.encode("ascii")).digest()
     ).decode("ascii").rstrip("=")
-    pending[state]={"verifier":verifier,"expires":time.time()+300}
+    browser_token=request.cookies.get(OIDC_BROWSER_COOKIE,"")
+    if not _valid_oidc_browser_token(browser_token):
+        browser_token=_new_oidc_browser_token()
+    pending[state]={
+        "verifier":verifier,
+        "expires":time.time()+300,
+        "browser_hash":_oidc_browser_hash(browser_token),
+    }
     redirect_url=authorization+"?"+urlencode({
         "response_type":"code","client_id":client_id,
         "redirect_uri":origin+"/auth/callback",
@@ -362,13 +386,24 @@ def login(request:Request):
     # callback-scoped cookie.
     response.delete_cookie("avan_login_state",path="/")
     response.set_cookie(
+        OIDC_BROWSER_COOKIE,
+        browser_token,
+        max_age=600,
+        httponly=True,
+        secure=_public_origin().startswith("https://"),
+        samesite="lax",
+        path="/",
+    )
+    # Keep the transaction cookie for one release as a compatibility aid, but
+    # callback security is now bound to the stable browser token above.
+    response.set_cookie(
         _oidc_state_cookie_name(state),
         state,
         max_age=300,
         httponly=True,
         secure=_public_origin().startswith("https://"),
         samesite="lax",
-        path="/auth/callback",
+        path="/",
     )
     return response
 
@@ -378,16 +413,18 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     if not code or not state or len(state)>512:
         raise HTTPException(status_code=401,detail="درخواست ورود معتبر نیست.")
     cookie_name=_oidc_state_cookie_name(state)
-    cookie_state=request.cookies.get(cookie_name,"")
-    # Temporary migration fallback for an authorization request that started
-    # immediately before this deployment. New logins never use the old name.
-    if not cookie_state:
-        cookie_state=request.cookies.get("avan_login_state","")
-    if not cookie_state or not hmac.compare_digest(cookie_state,state):
-        raise HTTPException(status_code=401,detail="درخواست ورود معتبر نیست.")
     item=pending.pop(state,None)
     if item is None or item["expires"]<time.time():
         raise HTTPException(status_code=401,detail="مهلت ورود به پایان رسیده است.")
+    browser_token=request.cookies.get(OIDC_BROWSER_COOKIE,"")
+    browser_hash=item.get("browser_hash","")
+    if (not _valid_oidc_browser_token(browser_token)
+        or not browser_hash
+        or not hmac.compare_digest(
+            _oidc_browser_hash(browser_token),
+            browser_hash,
+        )):
+        raise HTTPException(status_code=401,detail="درخواست ورود معتبر نیست.")
     # Distinct, safe failures are important here: an authorized Keycloak
     # identity can be pending enrollment, while a missing tenant claim, SQL
     # outage, or license problem must NOT masquerade as a wrong password.
@@ -445,7 +482,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         # admin console. Until then no OIDC user obtains an application session.
         _stage_verified_identity(principal,claims,access)
         response=RedirectResponse("/auth/pending",status_code=303)
-        response.delete_cookie(cookie_name,path="/auth/callback")
+        response.delete_cookie(cookie_name,path="/")
         response.delete_cookie("avan_login_state",path="/")
         return response
 
@@ -466,7 +503,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
     if not stored and not platform_admin:
         _stage_verified_identity(principal,claims,access)
         response=RedirectResponse("/auth/pending",status_code=303)
-        response.delete_cookie(cookie_name,path="/auth/callback")
+        response.delete_cookie(cookie_name,path="/")
         response.delete_cookie("avan_login_state",path="/")
         return response
     if stored and not stored.get("enabled"):
@@ -515,7 +552,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
                           "refresh_token":data.get("refresh_token")}
     response=RedirectResponse("/",status_code=303)
     response.set_cookie("avan_session",session_id,max_age=SESSION_MAX_SECONDS,**_cookie_options())
-    response.delete_cookie(cookie_name,path="/auth/callback")
+    response.delete_cookie(cookie_name,path="/")
     response.delete_cookie("avan_login_state",path="/")
     return response
 
