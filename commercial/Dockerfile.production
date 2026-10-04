@@ -74,7 +74,7 @@ COPY --chown=10001:10001 commercial/identity_recovery.py /app/commercial/identit
 COPY --chown=10001:10001 commercial/local_godadmin.py /app/commercial/local_godadmin.py
 COPY --chown=10001:10001 commercial/user_accounts.py /app/commercial/user_accounts.py
 COPY --chown=10001:10001 commercial/secretary_workflow.py commercial/secretary_processmaker.py commercial/secretary_routes.py commercial/secretary_pmx.json /app/commercial/
-COPY --chown=10001:10001 commercial/secretary_catalog.py commercial/secretary_credentials.py commercial/secretary_runtime.py commercial/secretary_inbox_routes.py commercial/secretary_evidence.py commercial/process_workspace.py commercial/process_context.py /app/commercial/
+COPY --chown=10001:10001 commercial/secretary_catalog.py commercial/secretary_credentials.py commercial/secretary_runtime.py commercial/secretary_inbox_routes.py commercial/secretary_evidence.py commercial/secretary_uploads.py commercial/process_workspace.py commercial/process_context.py /app/commercial/
 USER 10001:10001
 EXPOSE 8188
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
