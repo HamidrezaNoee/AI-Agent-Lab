@@ -39,7 +39,7 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
  const send=()=>buttons().find(b=>b.textContent.includes('تأیید بازبینی و ارسال'));
  assert(send().disabled);assert.equal(w.document.querySelectorAll('script').length,0);
  vote.value='Approved';vote.dispatchEvent(new w.Event('input',{bubbles:true}));assert(send().disabled);
- buttons().find(b=>b.textContent==='ذخیره اصلاحات').click();await tick();assert.equal(row.revision,2);assert(!send().disabled);
+ buttons().find(b=>b.textContent==='ذخیره اصلاحات').click();await tick();assert.equal(row.revision,3);assert(!send().disabled);
  send().click();await tick();const submit=calls.find(c=>c.url.includes('/submit?'));assert(submit);assert.equal(submit.options.headers['X-AVAN-CSRF'],'csrf-test');
  assert(calls.every(c=>c.url.startsWith('/api/sources/'+source+'/')));assert(w.document.body.textContent.includes('به مرحله بعد ارسال شد'));
  w.testAVAN.cleanMedia();w.close();console.log('Secretary DOM integration passed: chair vote, dirty guard, revision, CSRF, source scope, text escaping.');
