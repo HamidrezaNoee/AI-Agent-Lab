@@ -110,3 +110,22 @@ def test_minutes_requires_owner_deadline_and_real_decision():
  gaps=f.missing(values,'minutes')
  assert any('MTG_ActionOwnerUID' in x['field'] for x in gaps)
  assert any('decision' in x['field'] for x in gaps)
+
+
+
+def test_structured_response_text_falls_back_to_output_content_without_output_text():
+ class Part:
+  type='output_text'
+  text='{"assignments":[],"questions":["تاریخ جلسه؟"]}'
+ class Item:
+  content=[Part()]
+ class Result:
+  output=[Item()]
+ assert f.response_text(Result())=='{"assignments":[],"questions":["تاریخ جلسه؟"]}'
+
+
+def test_structured_model_helpers_support_current_pydantic_api():
+ schema=f.model_schema(f.Extraction)
+ assert schema['type']=='object'
+ parsed=f.validate_model_json(f.Extraction,'{"assignments":[],"questions":[]}')
+ assert parsed.assignments==[] and parsed.questions==[]
