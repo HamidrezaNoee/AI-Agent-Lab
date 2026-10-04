@@ -102,6 +102,22 @@ services:
       timeout: 5s
       retries: 15
 
+  keycloak-realm-theme-init:
+    image: postgres:17-alpine
+    restart: "no"
+    entrypoint: ["/bin/sh","-ec"]
+    command:
+      - |
+        export PGPASSWORD="$(cat /run/secrets/keycloak_db_password)"
+        if [ "$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT to_regclass('public.realm')")" = "realm" ]; then
+          psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "UPDATE realm SET login_theme='avan' WHERE name='avan' AND COALESCE(login_theme,'') <> 'avan';"
+        fi
+    secrets:
+      - keycloak_db_password
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+
   keycloak:
     image: avan-keycloak:local
     build:
@@ -114,7 +130,7 @@ services:
         export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
         export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
         export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
-        exec /opt/keycloak/bin/kc.sh start --optimized --server-async-bootstrap=false --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
+        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/avan_keycloak
@@ -142,17 +158,8 @@ services:
         condition: service_started
       keycloak-db:
         condition: service_healthy
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          exec 3<>/dev/tcp/127.0.0.1/9000;
-          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3;
-          grep -q '200 OK' <&3
-      interval: 5s
-      timeout: 3s
-      start_period: 20s
-      retries: 12
+      keycloak-realm-theme-init:
+        condition: service_completed_successfully
 
   avan:
     image: avan-enterprise:local
@@ -203,7 +210,7 @@ services:
       antibot:
         condition: service_started
       keycloak:
-        condition: service_healthy
+        condition: service_started
       agent-sql-init:
         condition: service_completed_successfully
     healthcheck:
