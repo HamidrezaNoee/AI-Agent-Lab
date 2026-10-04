@@ -594,14 +594,23 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const voiceAutoLabel=el("label","voice-auto");add(voiceAutoLabel,voiceAuto,el("span","","حالت دستیار صوتی؛ بعد از تبدیل صوت، پیام ارسال شود"));
   add(composer,voiceAutoLabel);
 
+  async function detachedSpeech(){
+   try{
+    const speechQuery=isSession?"?part=0":query+"&part=0";
+    const response=await request(base+path+"/speech"+speechQuery,{method:"POST",binary:true});
+    const url=URL.createObjectURL(await response.blob()),player=new Audio(url);
+    player.onended=()=>URL.revokeObjectURL(url);player.onerror=()=>URL.revokeObjectURL(url);
+    await player.play();
+   }catch(e){toast("پاسخ متنی آماده است؛ پخش خودکار صوت در مرورگر انجام نشد.")}
+  }
   async function applyResult(result,fromVoice=false){
    if(result.advanced){
     editor.replaceChildren(note(result.assistant?.message||"پرونده به مرحله بعد منتقل شد."));
     await load();return
    }
+   if(fromVoice)await detachedSpeech();
    if(isSession)render({...result,draft:result.session,task:result.task||{stage:"invitation",title:result.session?.values?.MTG_MeetingTitle||"جلسه جدید"}},true);
    else render(result,false);
-   if(fromVoice)toast("پاسخ دبیر آماده است؛ برای شنیدن، «پخش پاسخ دبیر» را بزنید.");
   }
   async function sendTurn(textValue=null,fromVoice=false){
    if(locked)return;
@@ -611,14 +620,15 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    await applyResult(result,fromVoice);
   }
   const sendMessage=link("ارسال به دبیر",checked(()=>sendTurn()),"button primary");add(composer,sendMessage);
+  notes.input.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendTurn().catch(err=>toast(err.message))}});
   attachVoiceInput(composer,notes.input,false,sourceId,async text=>{if(voiceAuto.checked)await sendTurn(text,true)});
 
   const fileWrap=el("div","secretary-file-bar"),file=el("input");
   file.type="file";file.accept=".pdf,.docx,.txt,.md,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json";
   file.setAttribute("aria-label","افزودن فایل به گفت‌وگوی دبیر");
   const fileStatus=el("small","muted","PDF متنی، DOCX، TXT، MD، CSV یا JSON تا ۸ مگابایت");
-  file.addEventListener("change",async()=>{
-   const selected=file.files?.[0];if(!selected)return;
+  async function uploadConversationFile(selected){
+   if(!selected)return;
    if(dirty){fileStatus.textContent="ابتدا اصلاحات دستی فرم را ذخیره کنید.";file.value="";return}
    file.disabled=true;fileStatus.textContent="در حال خواندن و استخراج اطلاعات فایل...";
    try{
@@ -630,7 +640,11 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     });
     await applyResult(result,false);
    }catch(e){fileStatus.textContent=e.message}finally{file.disabled=false}
-  });
+  }
+  file.addEventListener("change",()=>uploadConversationFile(file.files?.[0]));
+  fileWrap.addEventListener("dragover",e=>{e.preventDefault();fileWrap.classList.add("dragging")});
+  fileWrap.addEventListener("dragleave",()=>fileWrap.classList.remove("dragging"));
+  fileWrap.addEventListener("drop",e=>{e.preventDefault();fileWrap.classList.remove("dragging");uploadConversationFile(e.dataTransfer?.files?.[0])});
   add(fileWrap,file,fileStatus);add(composer,fileWrap);
 
   if(["invitation_approval","minutes_approval"].includes(t.stage)){
