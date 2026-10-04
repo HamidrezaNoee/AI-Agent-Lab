@@ -142,9 +142,12 @@ def verified_scope(con, principal, source_id=None):
         raise EmployeeMappingRequired("Active ProcessMaker binding required")
 
     role = current.get("role")
-    if role not in ("Expert", "Manager", "SysAdmin") or (
-        role == "SysAdmin" and "SysAdmin" not in principal.roles
-    ):
+    platform_godadmin = role == "GodAdmin" and setup.is_godadmin(principal)
+    if role not in ("Expert", "Manager", "SysAdmin", "GodAdmin"):
+        raise ProductionAccessDenied("Role not authorized")
+    if role == "GodAdmin" and not platform_godadmin:
+        raise ProductionAccessDenied("GodAdmin identity is not bound")
+    if role == "SysAdmin" and "SysAdmin" not in principal.roles:
         raise ProductionAccessDenied("Role not authorized")
 
     visible_subjects = {principal.subject}
@@ -168,7 +171,7 @@ def verified_scope(con, principal, source_id=None):
             visible |= more_uids
         else:
             raise ProductionAccessDenied("Hierarchy depth exceeded")
-    elif role == "SysAdmin":
+    elif role in ("SysAdmin", "GodAdmin"):
         for subject, user in avan_users.items():
             uid = external_uid(user)
             if uid and users.get(uid, {}).get("active"):
