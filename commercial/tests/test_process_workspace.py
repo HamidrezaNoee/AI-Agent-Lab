@@ -190,3 +190,19 @@ def test_process_list_stays_selectable_when_meeting_auto_promotion_is_unavailabl
  assert diagnostics['promotion_state']=='unavailable'
  assert diagnostics['promotion_warning']
  assert w.processes(scope)['processes'][0]['title']=='فرایند عمومی نصب‌شده'
+
+
+
+def test_meeting_promotion_incompatibility_is_reported_but_native_processes_remain(store,monkeypatch):
+ scope={**S,'license':{'modules':{1,2}}}
+ generic=c.save('source',{'adapter':'native_tasks_v1','process':{
+  'process_uid':'f'*32,'title':'فرایند عمومی'}},'admin')
+ monkeypatch.setattr(
+  c,'ensure_installed_meeting_pack',
+  lambda source_id:(_ for _ in ()).throw(c.MeetingPromotionUnavailable('UID فرم نصب‌شده متفاوت است.'))
+ )
+ diagnostics={}
+ rows=w.configured(scope,diagnostics)
+ assert [x['id'] for x in rows]==[generic['id']]
+ assert diagnostics['promotion_state']=='incompatible'
+ assert 'UID فرم نصب‌شده متفاوت است' in diagnostics['promotion_warning']
