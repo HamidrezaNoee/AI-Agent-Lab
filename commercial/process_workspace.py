@@ -56,9 +56,26 @@ def resolve(pack, scope):
         raise ValueError('قرارداد بسته فرایندی معتبر نیست.')
     return adapter
 
-def configured(scope):
+def configured(scope,diagnostics=None):
+    diagnostics=diagnostics if diagnostics is not None else {}
+    diagnostics.setdefault('promotion_state','not_requested')
+    diagnostics.setdefault('promotion_warning',None)
     if 2 in set(scope['license']['modules']):
-        catalog.ensure_installed_meeting_pack(scope['source_id'])
+        try:
+            promoted=catalog.ensure_installed_meeting_pack(scope['source_id'])
+            diagnostics['promotion_state']='promoted' if promoted else 'unchanged'
+        except Exception as exc:
+            # Promotion is an optional enhancement. A read-only ProcessMaker
+            # connection with already configured native process packs must
+            # remain selectable even if schema introspection cannot recognize
+            # the specialized meeting contract.
+            from .processmaker_store import ProductionUnavailable
+            from .user_bpms_bindings import BindingError
+            from .agent_storage import AgentStorageUnavailable
+            if not isinstance(exc,(ProductionUnavailable,BindingError,AgentStorageUnavailable)):
+                raise
+            diagnostics['promotion_state']='unavailable'
+            diagnostics['promotion_warning']='ارتقای خودکار بسته مدیریت جلسات انجام نشد؛ فرایندهای متصل همچنان به‌صورت کارتابل عمومی قابل انتخاب‌اند.'
     results=[]
     for pack in catalog.packs(scope['source_id'],True):
         try:resolve(pack,scope)
@@ -137,8 +154,10 @@ def register(app,authorized):
     @app.get('/api/sources/{source_id}/process-workspace/status')
     def process_status(source_id:str,value=Depends(authorized)):
         def build(con,scope,principal):
-            enabled_packs=configured(scope)
+            diagnostics={}
+            enabled_packs=configured(scope,diagnostics)
             meeting_packs=[p for p in enabled_packs if p.get('adapter')=='meeting_v2']
+            native_packs=[p for p in enabled_packs if p.get('adapter')=='native_tasks_v1']
             return {
                 'source_id':scope['source_id'],
                 'external_user_id':scope['external_user_id'],
@@ -153,6 +172,10 @@ def register(app,authorized):
                     'meeting_title':(p.get('meeting') or {}).get('title'),
                     'action_title':(p.get('action') or {}).get('title'),
                 } for p in meeting_packs],
+                'native_process_packs':[identity(p,resolve(p,scope)) for p in native_packs],
+                'promotion_state':diagnostics.get('promotion_state'),
+                'promotion_warning':diagnostics.get('promotion_warning'),
+                'ready_for_process_selection':bool(enabled_packs),
                 'ready_for_meeting_management':bool(meeting_packs) and 2 in set(scope['license']['modules']),
             }
         return read(value,source_id,build)
