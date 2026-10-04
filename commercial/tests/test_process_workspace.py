@@ -120,3 +120,43 @@ def test_selected_meeting_uid_is_used_by_native_parent_query(monkeypatch):
  monkeypatch.setattr(pm,'query',lambda con,sql,args:calls.append(args) or [])
  pm.authorized_meetings_page(None,{**S,'visible_uids':{S['external_user_id']},'meeting_process_uid':'d'*32})
  assert calls[0][0]=='d'*32
+
+
+
+def test_two_installed_native_processes_auto_promote_to_meeting_pack(pack,store,monkeypatch):
+ meeting_native={
+  'id':'a'*24,'source_id':'source','enabled':True,'revision':1,
+  'adapter':'native_tasks_v1',
+  'process':{'process_uid':pack['meeting']['process_uid'],'title':'فرایند مدیریت جلسات'},
+  'monitor_lead_minutes':1440,'action_lead_minutes':60,'tools':['read_own_tasks'],
+ }
+ action_native={
+  'id':'b'*24,'source_id':'source','enabled':True,'revision':1,
+  'adapter':'native_tasks_v1',
+  'process':{'process_uid':pack['action']['process_uid'],'title':'فرایند اقدام مصوب جلسه'},
+  'monitor_lead_minutes':1440,'action_lead_minutes':60,'tools':['read_own_tasks'],
+ }
+ store[c.STORE]=[meeting_native,action_native]
+
+ from commercial import user_bpms_bindings,processmaker_store
+ from contextlib import contextmanager
+ @contextmanager
+ def opened(profile):
+  yield object()
+ monkeypatch.setattr(user_bpms_bindings,'processmaker_profile',lambda source_id:{'mysql':{}})
+ monkeypatch.setattr(processmaker_store,'open_production',opened)
+ monkeypatch.setattr(
+  c,'_installed_process',
+  lambda con,uid:copy.deepcopy(pack['meeting'] if uid==pack['meeting']['process_uid'] else pack['action'])
+ )
+
+ promoted=c.ensure_installed_meeting_pack('source')
+ assert promoted and promoted['adapter']=='meeting_v2'
+ assert promoted['id']==meeting_native['id']
+ assert len(store[c.STORE])==1
+ assert {store[c.STORE][0]['meeting']['process_uid'],store[c.STORE][0]['action']['process_uid']}=={
+  pack['meeting']['process_uid'],pack['action']['process_uid']
+ }
+ result=w.processes(S)
+ assert result['processes'][0]['renderer']=='meeting'
+ assert result['processes'][0]['title']==pack['meeting']['title']
