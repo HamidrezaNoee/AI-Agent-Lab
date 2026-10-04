@@ -1,6 +1,7 @@
 """Task inbox and secretary tools; all writes retain current native assignment checks."""
-from fastapi import Depends,HTTPException,Query
+from fastapi import Depends,HTTPException,Query,Request
 from fastapi.responses import Response
+from urllib.parse import unquote
 from pydantic import BaseModel,ConfigDict,Field
 from . import secretary_runtime as runtime,secretary_catalog as catalog,secretary_credentials as credentials
 from .agent_workspace import RevisionConflict
@@ -21,6 +22,7 @@ class Turn(BaseModel):
  model_config=ConfigDict(extra='forbid')
  revision:int=Field(ge=1)
  text:str=Field(min_length=1,max_length=18000)
+ auto_advance:bool=True
 class Submit(BaseModel):
  model_config=ConfigDict(extra='forbid')
  revision:int=Field(ge=1)
@@ -56,7 +58,18 @@ def register(app,authorized,csrf):
  def native(value,source_id,ref):return access(value,source_id,lambda con,s,p:(s,runtime.task(con,s,ref.case_uid,ref.index,ref.pack_id)))
  def response(s,p,t,row):
   context={k:v for k,v in t['native'].items() if k in t['pack']['stages'][t['stage']]['fields'] and not any(x in k for x in ('File','Evidence','Json','History'))}
-  return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},'draft':{k:row[k] for k in ('values','revision','status','questions')},'form':runtime.form(t),'context':context,'missing':runtime.gaps(row['values'],t),'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
+  assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
+  return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},
+          'draft':{k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments')},
+          'form':runtime.form(t),'context':context,'missing':assistant['missing'],'assistant':assistant,
+          'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
+
+ def session_response(s,p,row,t):
+  assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
+  return {'session':{k:v for k,v in row.items() if k not in ('actor','scope')},
+          'task':{'stage':'invitation','title':row['values'].get('MTG_MeetingTitle') or 'جلسه جدید'},
+          'form':runtime.form(t),'missing':assistant['missing'],'assistant':assistant,
+          'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
  @app.get(base+'/inbox')
  def inbox(source_id:str,pack_id:str|None=Query(None,pattern=r'^[0-9a-f]{24}$'),value=Depends(authorized)):
   def run(con,s,p):
