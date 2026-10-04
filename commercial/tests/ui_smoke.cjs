@@ -67,6 +67,7 @@ const server=http.createServer((req,res)=>{
   else if(apiPath==='/api/meetings')data={meetings:[],has_more:false};
   else if(apiPath==='/api/questions')data={questions:['عملکرد واحدها در اجرای مصوبات چگونه بوده است؟']};
   else if(apiPath==='/api/agent/status')data={enabled:true,voice_enabled:true,model:'test',modules:[1,2,3,4]};
+  else if(rawPath==='/api/platform/status')data={enabled:true,voice_enabled:true,sources:[],processmaker_access:false};
   else if(apiPath==='/api/conversations')data={conversations:[{id:'conversation1',title:'گفتگوی ذخیره‌شده',updated_at:'2026-10-03'}]};
   else if(apiPath==='/api/conversations/conversation1')data={turns:[{id:'turn1',question:'گفتگوی ذخیره‌شده',created_at:'2026-10-03',answer}]};
   else if(apiPath==='/api/ask')data=answer;
@@ -114,6 +115,14 @@ const server=http.createServer((req,res)=>{
  const csv=page.waitForEvent('download');
  await page.getByRole('button',{name:'دریافت CSV فرایندها'}).click();
  await csv;
+
+ // Connected BPMS report must include native ProcessMaker even with zero AVAN REST v1 adapters.
+ await page.locator('[data-page=platform-bi]').click();
+ await page.getByRole('heading',{name:'گزارش BPMSهای متصل',exact:true}).waitFor();
+ await page.getByText('ProcessMaker اصلی',{exact:true}).last().waitFor();
+ if(await page.getByText('هنوز هیچ مبدل خواندنی AVAN REST v1 فعال نشده است.',{exact:true}).count())throw Error('Native ProcessMaker incorrectly hidden behind REST-v1 empty state');
+ await page.getByRole('button',{name:'باز کردن BI این اتصال',exact:true}).click();
+ await page.getByText('تأیید خرید',{exact:true}).waitFor();
 
  await page.setViewportSize({width:390,height:844});
  if(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2))throw Error('Mobile horizontal overflow');
