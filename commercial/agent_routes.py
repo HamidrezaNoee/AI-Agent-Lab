@@ -313,7 +313,7 @@ def register(app,authorized,csrf):
         def work():
             with run_slot((str(principal.tenant_id),principal.subject)):
                 try:content=agent_voice.transcribe(bytes(data),request.headers.get('content-type',''))
-                except AgentInvalid:raise HTTPException(422,'فایل صوت معتبر نیست یا متن از حد مجاز بیشتر است.')
+                except AgentInvalid as exc:raise HTTPException(422,str(exc))
                 from .production_app import _oidc_config
                 _oidc_config()[4].authenticate('Bearer '+value[1]['access_token'])
                 ensure_still_authorized(principal,scope,rows,1,source_id=source_id)
