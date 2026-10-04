@@ -200,6 +200,60 @@ def health():
             "database_checked":False,"identity_checked":False}
 
 
+def _internal_security_secret()->str:
+    path=Path(os.getenv("AVAN_SECURITY_BRIDGE_TOKEN_PATH",
+                        "/run/secrets/avan_bff_client_secret"))
+    try:
+        value=path.read_text(encoding="utf-8").strip()
+    except OSError:
+        raise HTTPException(status_code=503,detail="Internal security bridge is not configured")
+    if len(value)<16 or len(value)>4096 or any(ch in value for ch in "\r\n"):
+        raise HTTPException(status_code=503,detail="Internal security bridge is not configured")
+    return value
+
+
+def _require_internal_security(request:Request):
+    supplied=request.headers.get("X-AVAN-Internal-Token","")
+    expected=_internal_security_secret()
+    if not supplied or not hmac.compare_digest(supplied.encode(),expected.encode()):
+        raise HTTPException(status_code=403,detail="Internal security bridge denied")
+
+
+@app.get("/internal/security/challenge")
+def internal_security_challenge(request:Request,
+                                action:str=Query(min_length=1,max_length=64)):
+    _require_internal_security(request)
+    from .turnstile import public_config,TurnstileUnavailable
+    try:
+        config=public_config(action)
+    except TurnstileUnavailable:
+        raise HTTPException(status_code=503,detail="AVAN anti-bot is unavailable")
+    cloudflare=config.get("cloudflare") or {}
+    return {
+        "action":action,
+        "local":config.get("local"),
+        "cloudflare":{
+            "enabled":bool(cloudflare.get("enabled")),
+            "siteKey":str(cloudflare.get("site_key") or ""),
+            "timeoutMs":int(cloudflare.get("timeout_ms") or 2500),
+        },
+    }
+
+
+class InternalSecurityVerify(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    action:str=Field(min_length=1,max_length=64,
+                     pattern=r"^[a-z0-9][a-z0-9:_-]{0,63}$")
+    envelope:str=Field(min_length=1,max_length=12288)
+
+
+@app.post("/internal/security/verify")
+def internal_security_verify(request:Request,body:InternalSecurityVerify):
+    _require_internal_security(request)
+    from .turnstile import verify
+    return {"verified":bool(verify(body.envelope,action=body.action,remote_ip=None))}
+
+
 @app.get("/")
 def home(request:Request):
     from .setup_console import get_setting,godadmin_identity,password_state
