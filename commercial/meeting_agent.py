@@ -87,6 +87,40 @@ def run_slot(key):
         _CAPACITY.release()
 
 
+def _model_schema(model):
+    method=getattr(model,'model_json_schema',None)
+    if callable(method):return method()
+    method=getattr(model,'schema',None)
+    if callable(method):return method()
+    raise AgentInvalid('Structured schema API is unavailable')
+
+
+def _response_text(result):
+    direct=getattr(result,'output_text',None)
+    if isinstance(direct,str) and direct.strip():return direct
+    chunks=[]
+    for item in getattr(result,'output',[]) or []:
+        content=getattr(item,'content',None)
+        if content is None and isinstance(item,dict):content=item.get('content')
+        for part in content or []:
+            kind=getattr(part,'type',None)
+            if kind is None and isinstance(part,dict):kind=part.get('type')
+            if kind not in (None,'output_text','text'):continue
+            value=getattr(part,'text',None)
+            if value is None and isinstance(part,dict):value=part.get('text')
+            if isinstance(value,str) and value:chunks.append(value)
+    if chunks:return ''.join(chunks)
+    raise AgentInvalid('Structured response did not contain output text')
+
+
+def _model_validate_json(model,payload):
+    method=getattr(model,'model_validate_json',None)
+    if callable(method):return method(payload)
+    method=getattr(model,'parse_raw',None)
+    if callable(method):return method(payload)
+    raise AgentInvalid('Structured validation API is unavailable')
+
+
 def configured_client():
     from .setup_console import get_setting
     cfg=get_setting('ai') or {}
@@ -122,7 +156,7 @@ def run_agent(question,tools:MeetingTools,*,history=(),client=None,model=None,sy
                 parallel_tool_calls=False,store=False,max_output_tokens=2600,
                 timeout=min(35,remaining),
                 text={'format':{'type':'json_schema','name':'meeting_analysis',
-                     'schema':AgentAnswer.model_json_schema(),'strict':True}})
+                     'schema':_model_schema(AgentAnswer),'strict':True}})
             if getattr(result,'usage',None):
                 usage['input_tokens']+=result.usage.input_tokens or 0
                 usage['output_tokens']+=result.usage.output_tokens or 0
@@ -142,7 +176,7 @@ def run_agent(question,tools:MeetingTools,*,history=(),client=None,model=None,sy
                                      'output':json.dumps(data,ensure_ascii=False,default=str)})
                 continue
             if not tools.trace:raise AgentInvalid('No evidence read')
-            parsed=AgentAnswer.model_validate_json(result.output_text)
+            parsed=_model_validate_json(AgentAnswer,_response_text(result))
             claims=[]
             for claim in parsed.claims:
                 if any(ref not in tools.evidence for ref in claim.sources):raise AgentInvalid('Unknown source citation')
