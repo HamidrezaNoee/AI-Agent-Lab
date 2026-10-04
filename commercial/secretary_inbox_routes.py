@@ -84,7 +84,7 @@ def register(app,authorized,csrf):
  def inbox(source_id:str,pack_id:str|None=Query(None,pattern=r'^[0-9a-f]{24}$'),value=Depends(authorized)):
   def run(con,s,p):
    data=runtime.inbox(con,s,pack_id=pack_id)
-   enabled={x['id'] for x in catalog.packs(s['source_id'],True) if x.get('adapter')=='meeting_v2'}
+   enabled={x['id'] for x in catalog.runtime_meeting_packs(s['source_id']) if x.get('adapter')=='meeting_v2'}
    sessions=[{'id':r['id'],'pack_id':r['pack_id'],'status':r['status'],'title':r['values'].get('MTG_MeetingTitle','جلسه جدید'),'case_uid':r['case_uid']} for r in runtime.sessions(s,p.subject) if (not pack_id or r['pack_id']==pack_id) and r['pack_id'] in enabled]
    return {**data,'oauth_connected':credentials.connected(s,p.subject),'sessions':sessions}
   return access(value,source_id,run)
