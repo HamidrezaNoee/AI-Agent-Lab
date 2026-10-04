@@ -136,3 +136,36 @@ def test_review_version_beats_equal_second_timestamp():
     child['MTGA_ReviewHistoryJson']=json.dumps(review)
     assert run()['is_closed'] and run()['progress_percent']==100
 
+
+
+
+def test_processmaker_directory_normalizes_uid_and_status():
+    row=("ABCDEF0123456789ABCDEF0123456789","user","Ali","Test","mail@example.com","active","IT")
+    with patch.object(store,"query",return_value=[row]):
+        users=store.directory(None)
+    uid="abcdef0123456789abcdef0123456789"
+    assert uid in users
+    assert users[uid]["active"] is True
+
+
+def test_verified_scope_accepts_normalized_bound_processmaker_uid():
+    from commercial import user_bpms_bindings,production_license
+    tid='11111111-1111-1111-1111-111111111111'
+    source='a'*24
+    uid='abcdef0123456789abcdef0123456789'
+    p=Principal(subject='subject',tenant_id=UUID(tid),roles=frozenset({'Expert'}))
+    data={'tenant_id':tid,'company_name':'شرکت','users':[{
+        'subject':'subject','role':'Expert','enabled':True
+    }]}
+    profile={'id':source,'name':'PM','mysql':{'timezone':'Asia/Tehran'}}
+    binding={'subject':{'avan_subject':'subject','source_id':source,
+                        'external_user_id':uid.upper(),'status':'active'}}
+    entitlement={'modules':frozenset({1,2,3,4}),'expires_at':None,'mode':'test'}
+    with patch.object(native_access,'read',return_value=data), \
+         patch.object(user_bpms_bindings,'bindings_by_source',return_value=binding), \
+         patch.object(user_bpms_bindings,'processmaker_profile',return_value=profile), \
+         patch.object(production_license,'entitlement',return_value=entitlement), \
+         patch.object(store,'directory',return_value={uid:{'active':True,'name':'Ali','unit':'IT'}}):
+        scope=store.verified_scope(None,p,source_id=source)
+    assert scope['external_user_id']==uid
+    assert scope['license']['modules']==frozenset({1,2,3,4})
