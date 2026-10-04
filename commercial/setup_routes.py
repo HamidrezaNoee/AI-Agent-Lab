@@ -653,9 +653,23 @@ def create_godadmin_account(body:GodAdminAccount,session=Depends(_ready)):
         raise HTTPException(503,"ساخت حساب در سرویس هویت داخلی انجام نشد.")
     except ValueError:
         raise HTTPException(409,"ساخت حساب ممکن نیست؛ نام کاربری، سازمان یا وضعیت سرویس هویت را بررسی کنید.")
-    setup.audit("GODADMIN_OIDC_ACCOUNT_CREATED_PENDING_BIND")
-    return {"created":True,"subject":subject,
-            "next":"حساب آماده ورود است. با رمز ثبت‌شده وارد شوید؛ Authenticator فقط در صورت فعال‌بودن روی همان حساب درخواست می‌شود، سپس اتصال GodAdmin را در این پنل نهایی کنید."}
+    try:
+        setup.bind_godadmin_identity(company["tenant_id"],subject)
+    except setup.SetupError:
+        raise HTTPException(409,"حساب سازمانی ساخته شد اما اتصال GodAdmin کامل نشد؛ وضعیت هویت را بررسی کنید.")
+    _sessions.clear()
+    _pending_mfa.clear()
+    setup.audit("GODADMIN_OIDC_ACCOUNT_CREATED_AND_BOUND")
+    response=JSONResponse({
+        "created":True,
+        "bound":True,
+        "subject":subject,
+        "login_url":"/auth/login",
+        "next":"انتقال GodAdmin به هویت سازمانی کامل شد. از ورود مشترک آوان استفاده کنید."
+    })
+    response.delete_cookie("avan_godadmin",path="/")
+    response.delete_cookie("avan_godadmin",path="/admin")
+    return response
 
 
 class MySQLConfig(BaseModel):
