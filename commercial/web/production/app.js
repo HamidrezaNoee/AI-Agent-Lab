@@ -542,7 +542,9 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
  async function session(id){const r=await request(base+"/sessions/"+encodeURIComponent(id));render({...r,draft:r.session,task:{stage:"invitation",title:r.session.values.MTG_MeetingTitle||"جلسه جدید"}},true)}
  function render(r,isSession){
   editor.replaceChildren();
-  const d=r.draft,t=r.task,values=structuredClone(d.values||{}),assistant=r.assistant||{},p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+t.stage);
+  const d=r.draft,t=r.task,values=structuredClone(d.values||{}),assistant=r.assistant||{};
+  const stageLabels={invitation:"دعوت‌نامه",invitation_approval:"تأیید دعوت‌نامه",minutes:"صورت‌جلسه",minutes_approval:"تأیید صورت‌جلسه",action_execution:"گزارش اجرای اقدام",action_review:"بررسی اقدام",monitoring:"پایش و اختتام"};
+  const p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+(stageLabels[t.stage]||t.stage));
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
   const query=isSession?"":"?pack_id="+encodeURIComponent(t.pack_id);
   const status=el("div"),controls=[],locked=d.status!=="draft";let dirty=false;
