@@ -487,9 +487,23 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         return response
 
     # AVAN account authorization is independent from every BPMS binding.
-    # Platform GodAdmin must remain able to repair AVAN even if Agent storage is down.
+    # Project the bound organizational GodAdmin into the same authorization
+    # store used by all operational users. This lets GodAdmin receive explicit
+    # BPMS bindings and inherit every module allowed by the organization license
+    # without changing the platform GodAdmin role itself.
     from . import native_access
     from .agent_storage import AgentStorageUnavailable
+    if platform_admin:
+        try:
+            native_access.ensure_godadmin_user(
+                subject=principal.subject,
+                tenant_id=str(principal.tenant_id),
+                company_name=configured_company.get("company_name") or "آوان",
+                username=claims.get("preferred_username") if isinstance(claims.get("preferred_username"),str) else None,
+                name=claims.get("name") if isinstance(claims.get("name"),str) else "GodAdmin",
+            )
+        except AgentStorageUnavailable:
+            pass
     try:
         organization=native_access.read()
     except AgentStorageUnavailable:
@@ -814,6 +828,18 @@ def current_user(request:Request):
 
     from . import native_access
     from .agent_storage import AgentStorageUnavailable
+    if godadmin:
+        company=get_setting("company") or {}
+        try:
+            native_access.ensure_godadmin_user(
+                subject=principal.subject,
+                tenant_id=str(principal.tenant_id),
+                company_name=company.get("company_name") or "آوان",
+                username=None,
+                name="GodAdmin",
+            )
+        except AgentStorageUnavailable:
+            pass
     try:
         data=native_access.read()
     except AgentStorageUnavailable:
