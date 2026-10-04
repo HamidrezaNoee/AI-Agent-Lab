@@ -1,6 +1,6 @@
 """Typed tools for role-scoped native tasks, draft proposals, inbox and reminders."""
 from __future__ import annotations
-import copy,hashlib,json,logging,re,secrets
+import copy,hashlib,json,logging,re,secrets,traceback
 from datetime import datetime,timedelta,timezone
 from . import agent_storage,secretary_catalog as catalog,secretary_workflow as legacy
 from .agent_workspace import source_user_key,scope_stamp,RevisionConflict
@@ -376,7 +376,17 @@ def _evidence_in_notes(quote,notes):
 def _model_failure(exc):
  name=exc.__class__.__name__
  status=getattr(exc,'status_code',None)
- logger.warning('Secretary extraction provider failure type=%s status=%s',name,status)
+ tb=traceback.extract_tb(exc.__traceback__) if exc.__traceback__ else []
+ frame=tb[-1] if tb else None
+ raw=str(exc or '')
+ attr=''
+ match=re.search(r"(?:has no attribute|attribute) ['\"]([^'\"]+)['\"]",raw)
+ if match:attr=match.group(1)
+ location=(frame.name+':'+str(frame.lineno)) if frame else 'unknown'
+ logger.warning(
+  'Secretary extraction provider failure type=%s status=%s location=%s attr=%s',
+  name,status,location,attr or '-'
+ )
  if name in ('APITimeoutError','TimeoutException','ReadTimeout','ConnectTimeout'):
   return 'سرویس هوش مصنوعی در زمان مقرر پاسخ نداد؛ دوباره تلاش کنید.'
  if name in ('APIConnectionError','ConnectError','ConnectionError','NameResolutionError'):
@@ -404,12 +414,26 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
   for attempt in range(2):
    try:
     instruction=system if attempt==0 else system+' Previous extraction failed server validation. Be more conservative: assign a field only when the supporting quote is copied verbatim from NEW notes. If uncertain, leave it blank and ask one short clarification question.'
-    result=client.responses.create(model=model,store=False,timeout=60,max_output_tokens=7000,input=[
-     {'role':'system','content':instruction},
-     {'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
-     text={'format':{'type':'json_schema','name':'secretary_task_fields','strict':True,'schema':legacy.model_schema(legacy.Extraction)}})
-    if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
-    parsed=legacy.validate_model_json(legacy.Extraction,legacy.response_text(result));values=copy.deepcopy(current)
+    responses=getattr(client,'responses',None)
+    if responses is None:raise AttributeError("OpenAI client has no attribute 'responses'")
+    parse_method=getattr(responses,'parse',None)
+    if callable(parse_method):
+     result=parse_method(model=model,store=False,timeout=60,max_output_tokens=7000,input=[
+      {'role':'system','content':instruction},
+      {'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
+      text_format=legacy.Extraction)
+     if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
+     parsed=getattr(result,'output_parsed',None)
+     if parsed is None:
+      parsed=legacy.validate_model_json(legacy.Extraction,legacy.response_text(result))
+    else:
+     result=responses.create(model=model,store=False,timeout=60,max_output_tokens=7000,input=[
+      {'role':'system','content':instruction},
+      {'role':'user','content':json.dumps(payload,ensure_ascii=False)}],
+      text={'format':{'type':'json_schema','name':'secretary_task_fields','strict':True,'schema':legacy.model_schema(legacy.Extraction)}})
+     if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
+     parsed=legacy.validate_model_json(legacy.Extraction,legacy.response_text(result))
+    values=copy.deepcopy(current)
     for a in parsed.assignments:
      if a.field not in form(task) or not _evidence_in_notes(a.quote,notes):raise AgentInvalid('Invalid assignment evidence')
      val=normalize(json.loads(a.value_json))
