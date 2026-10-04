@@ -22,10 +22,13 @@ def test_keycloak_scene_assets_match_canonical_admin_scene():
     ).read_text(encoding="utf-8")
 
 
-def test_existing_realm_is_rebound_to_avan_browser_flow():
+def test_existing_realm_repairs_and_binds_protected_browser_flow():
     compose = COMPOSE.read_text(encoding="utf-8")
-    assert "af.alias='avan-browser'" in compose
-    assert "UPDATE realm r SET browser_flow=af.id FROM authentication_flow af" in compose
-    assert "avan_browser_flow_bound" in compose
-    assert "$FLOW_ID" not in compose
+    sql = (ROOT / "infra" / "keycloak" / "ensure-avan-browser-flow.sql").read_text(encoding="utf-8")
+    assert "ensure-avan-browser-flow.sql" in compose
     assert "condition: service_healthy" in compose
+    assert "alias='avan-browser'" in sql
+    assert "authenticator='avan-captcha-password'" in sql
+    assert "conditional-user-configured" in sql
+    assert "auth-otp-form" in sql
+    assert "browser_flow=v_flow" in sql
