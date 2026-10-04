@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="fa" dir="rtl">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>آوان | تأیید هویت</title>
-<link rel="stylesheet" href="${url.resourcesPath?html}/css/avan.css">
-<link rel="stylesheet" href="${url.resourcesPath?html}/css/login-scene.css">
+<link rel="stylesheet" href="${url.resourcesPath}/css/avan.css">
+<link rel="stylesheet" href="${url.resourcesPath}/css/login-scene.css">
 <#if turnstileSiteKey??><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script></#if>
-<script defer src="${url.resourcesPath?html}/js/login-scene.js" data-appearance-url="${url.resourcesPath?html}/generated/appearance.json" data-scene-root="${url.resourcesPath?html}/scene-data/"></script>
-<script defer src="${url.resourcesPath?html}/js/otp-motion.js"></script></head>
+<script defer src="${url.resourcesPath}/js/login-scene.js" data-appearance-url="${url.resourcesPath}/generated/appearance.json" data-scene-root="${url.resourcesPath}/scene-data/"></script>
+<script defer src="${url.resourcesPath}/js/otp-motion.js"></script></head>
 <body class="avan-signin">
  <main class="signin-layout">
   <section class="signin-panel signin-otp" aria-labelledby="otp-heading">
@@ -28,10 +28,10 @@
    </div>
    <div class="signin-brand"><span class="signin-mark" aria-hidden="true"><svg viewBox="0 0 64 64" focusable="false"><defs><linearGradient id="signinMarkGradient" x1="8" y1="7" x2="55" y2="57" gradientUnits="userSpaceOnUse"><stop stop-color="#24f0e0"/><stop offset=".48" stop-color="#10cbe8"/><stop offset="1" stop-color="#1689ff"/></linearGradient></defs><path d="M30.9 7.7c1.7-3 6-3 7.7 0l18 31.2c1.8 3.1-.4 7-4 7H39.1L32 33.6l-7.1 12.3H11.4c-3.6 0-5.8-3.9-4-7l18-31.2c1.2-2 4.2-2 5.5 0Z" fill="url(#signinMarkGradient)"/><path d="M32 33.6 39.1 46H24.9L32 33.6Z" fill="#08263b"/></svg></span><span class="signin-brand-copy"><strong>آوان</strong><small>AI AGENT</small></span></div>
    <div class="signin-heading"><span class="signin-label">SECURE ACCESS</span><h1 id="otp-heading">تأیید هویت</h1></div>
-   <#if message?has_content && message.type == 'error'><div class="signin-error" role="alert">${message.summary?html}</div></#if>
-   <form id="kc-otp-login-form" action="${url.loginAction?html}" method="post">
+   <#if message?has_content && message.type == 'error'><div class="signin-error" role="alert">${message.summary}</div></#if>
+   <form id="kc-otp-login-form" action="${url.loginAction}" method="post">
     <#if otpLogin?? && otpLogin.userOtpCredentials?? && (otpLogin.userOtpCredentials?size > 1)>
-      <label for="credentialId">دستگاه احراز هویت</label><select id="credentialId" name="credentialId"><#list otpLogin.userOtpCredentials as device><option value="${device.id?html}">${(device.userLabel!'Authenticator')?html}</option></#list></select>
+      <label for="credentialId">دستگاه احراز هویت</label><select id="credentialId" name="credentialId"><#list otpLogin.userOtpCredentials as device><option value="${device.id}">${(device.userLabel!'Authenticator')}</option></#list></select>
     </#if>
     <label for="otp">کد شش‌رقمی Authenticator</label>
     <div class="otp-motion" data-otp-motion>
