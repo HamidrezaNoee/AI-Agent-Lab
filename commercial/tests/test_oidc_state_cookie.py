@@ -9,21 +9,22 @@ from commercial import setup_console
 from commercial.security import ConfigurationFailed
 
 
-def _request(path="/auth/login", *, cookie=""):
-    headers=[]
+def _request(path="/auth/login", *, cookie="", host="127.0.0.1:8188", scheme="http"):
+    headers=[(b"host",host.encode("ascii"))]
     if cookie:
         headers.append((b"cookie", cookie.encode("latin-1")))
+    hostname,_,port=host.partition(":")
     return Request({
         "type":"http",
         "http_version":"1.1",
         "method":"GET",
-        "scheme":"http",
+        "scheme":scheme,
         "path":path,
         "raw_path":path.encode(),
         "query_string":b"",
         "headers":headers,
         "client":("127.0.0.1",50000),
-        "server":("127.0.0.1",8188),
+        "server":(hostname,int(port or (443 if scheme=="https" else 80))),
     })
 
 
@@ -160,7 +161,7 @@ def test_callback_rejects_wrong_browser_with_valid_signed_transaction(monkeypatc
     assert exc.value.detail=="درخواست ورود معتبر نیست."
 
 
-def test_callback_rejects_tampered_transaction_cookie(monkeypatch):
+def test_callback_recovers_from_tampered_or_stale_transaction_cookie(monkeypatch):
     production_app.pending.clear()
     _,state,set_cookies=_login(monkeypatch)
     cookie_name=production_app._oidc_state_cookie_name(state)
@@ -176,10 +177,21 @@ def test_callback_rejects_tampered_transaction_cookie(monkeypatch):
             f"{cookie_name}={bad}"
         ),
     )
-    with pytest.raises(HTTPException) as exc:
-        production_app.callback(request,code="dummy-code",state=state)
-    assert exc.value.status_code==401
-    assert exc.value.detail=="مهلت ورود به پایان رسیده است."
+    response=production_app.callback(request,code="dummy-code",state=state)
+    assert response.status_code==303
+    assert response.headers["location"].endswith("/auth/login?reauth=expired")
+    assert response.headers["cache-control"]=="no-store"
+
+
+def test_login_canonicalizes_any_non_public_host_before_setting_oidc_cookies(monkeypatch):
+    _configure_login(monkeypatch)
+    response=production_app.login(_request(host="workstation.local:8188"))
+    assert response.status_code==303
+    assert response.headers["location"]=="http://127.0.0.1:8188/auth/login"
+    assert not [
+        value for name,value in response.raw_headers
+        if name.lower()==b"set-cookie"
+    ]
 
 
 def test_parallel_logins_reuse_browser_token_without_state_collision(monkeypatch):
