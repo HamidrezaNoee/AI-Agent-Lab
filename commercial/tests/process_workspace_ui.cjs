@@ -22,6 +22,8 @@ w.eval(code+'\nwindow.testAVAN={app,setupUser,select,cleanMedia,request};');
 const tick=()=>new Promise(resolve=>setTimeout(resolve,25));
 (async()=>{
  w.testAVAN.setupUser({name:'رئیس',role:'Expert',company:'شرکت',subject:'actor',modules:[1,2],csrf:'csrf',workspace_access:true,workspace_navigation:true,bpms_sources:[{source_id:sid,source_name:'PM',engine:'processmaker',capabilities:['overview','secretary']}]});await tick();
+ assert(w.document.querySelector('[data-page="source-secretary"][data-source-id="'+sid+'"]'));
+ assert(w.document.querySelector('[data-page="source-secretary"][data-source-id="'+sid+'"]').textContent.includes('اجرای هوشمند جلسات'));
  assert(w.document.getElementById('pm-nav').hidden);
  assert(w.document.querySelector('[data-section="approvals"]'));
  hold=true;w.document.querySelector('[data-section="approvals"]').click();await tick();assert(release);
