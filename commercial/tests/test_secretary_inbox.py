@@ -256,3 +256,26 @@ def test_conversational_uploads_extract_text_without_executing_embedded_content(
         z.writestr('word/vbaProject.bin',b'not-executed')
     doc,meta=uploads.extract(buf.getvalue(),'agenda.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
     assert 'جلسه هیئت واردات' in doc and meta['type']=='docx'
+
+
+
+def test_new_meeting_uses_native_generated_number_before_routing_to_chair(pack,store):
+    draft=r.session_create(S,'actor',pack['id'])
+    values=copy.deepcopy(V)
+    values.pop('MTG_MeetingNo')
+    values['MTG_Agenda']['1'].update(
+        MTG_AgendaPresenterUID='c'*32,
+        MTG_AgendaPlannedMinutes='20',
+    )
+    draft=r.session_update(S,'actor',draft['id'],draft['revision'],values)
+    submitted=[]
+    class PM:
+        def create_for(self,*args):return 'a'*32
+        def assigned(self,*args):return 1
+        def call(self,*args):return {}
+        def variables(self,*args):return {'MTG_MeetingNo':'MTG-1405-001','MTG_FRMTG001_FormDate':'1405/07/12'}
+        def submit_stage(self,case,stage,person,payload,index):submitted.append(payload)
+    result=r.session_send(S,'actor',draft['id'],draft['revision'],pm=PM())
+    assert result['status']=='awaiting_invitation_approval'
+    assert result['case_uid']=='a'*32
+    assert submitted[0]['MTG_MeetingNo']=='MTG-1405-001'
