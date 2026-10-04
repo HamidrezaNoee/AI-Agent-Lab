@@ -877,6 +877,9 @@ def _source_store_response(source_id, action, principal):
             "Valid license required":"لایسنس AVAN برای دسترسی به این BPMS معتبر نیست.",
             "Hierarchy depth exceeded":"ساختار مدیر/کارمند بیش از حد مجاز عمق دارد و باید اصلاح شود.",
             "ProcessMaker source is not available":"اتصال ProcessMaker انتخاب‌شده فعال یا قابل استفاده نیست.",
+            "آداپتور تحلیلی این فرایند نصب نشده است.":"فرایند انتخاب‌شده فقط کارتابل عمومی دارد و Context تخصصی دستیار برای آن نصب نشده است؛ دستیار در سطح BPMS اجرا می‌شود.",
+            "آداپتور یا مجوز این فرایند فعال نیست.":"آداپتور یا مجوز فرایند انتخاب‌شده فعال نیست؛ انتخاب فرایند را تازه‌سازی کنید.",
+            "قرارداد بسته فرایندی معتبر نیست.":"تعریف فرایند انتخاب‌شده ناقص است و باید در مدیریت سامانه بازبینی شود.",
         }
         raise HTTPException(status_code=403,detail=details.get(reason,"مجوز مشاهده اطلاعات این BPMS وجود ندارد."))
     except ProductionUnavailable:
