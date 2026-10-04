@@ -778,8 +778,25 @@ def _source_store_response(source_id, action, principal):
             return action(con,scope)
     except BindingError:
         raise HTTPException(status_code=404,detail="اتصال ProcessMaker پیدا نشد.")
-    except ProductionAccessDenied:
-        raise HTTPException(status_code=403,detail="مجوز مشاهده اطلاعات این BPMS وجود ندارد.")
+    except EmployeeMappingRequired as exc:
+        reason=str(exc)
+        details={
+            "Organization is not mapped":"حساب AVAN به سازمان این اتصال BPMS تعلق ندارد.",
+            "Active AVAN account required":"حساب AVAN شما فعال نیست؛ مدیر سامانه باید وضعیت کاربر را بررسی کند.",
+            "Select an explicitly bound ProcessMaker source; unscoped access is unavailable":"این حساب به ProcessMaker انتخاب‌شده Binding فعال ندارد.",
+            "Active ProcessMaker binding required":"Binding ثبت شده است اما کاربر متناظر در ProcessMaker فعال/قابل تطبیق نیست؛ از «دسترسی‌ها» اتصال کاربر را Refresh یا دوباره Bind کنید.",
+        }
+        raise HTTPException(status_code=403,detail=details.get(reason,"اتصال هویت AVAN به کاربر ProcessMaker برای این BPMS کامل نیست."))
+    except ProductionAccessDenied as exc:
+        reason=str(exc)
+        details={
+            "Role not authorized":"نقش فعلی AVAN برای این عملیات BPMS معتبر نیست؛ نقش کاربر و نشست ورود را بررسی کنید.",
+            "GodAdmin identity is not bound":"هویت GodAdmin سازمانی کامل متصل نشده است.",
+            "Valid license required":"لایسنس AVAN برای دسترسی به این BPMS معتبر نیست.",
+            "Hierarchy depth exceeded":"ساختار مدیر/کارمند بیش از حد مجاز عمق دارد و باید اصلاح شود.",
+            "ProcessMaker source is not available":"اتصال ProcessMaker انتخاب‌شده فعال یا قابل استفاده نیست.",
+        }
+        raise HTTPException(status_code=403,detail=details.get(reason,"مجوز مشاهده اطلاعات این BPMS وجود ندارد."))
     except ProductionUnavailable:
         raise HTTPException(status_code=503,detail="ارتباط با ProcessMaker انتخاب‌شده برقرار نیست.")
     except HTTPException:
