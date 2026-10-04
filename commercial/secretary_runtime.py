@@ -1,6 +1,6 @@
 """Typed tools for role-scoped native tasks, draft proposals, inbox and reminders."""
 from __future__ import annotations
-import copy,hashlib,json,secrets
+import copy,hashlib,json,re,secrets
 from datetime import datetime,timedelta,timezone
 from . import agent_storage,secretary_catalog as catalog,secretary_workflow as legacy
 from .agent_workspace import source_user_key,scope_stamp,RevisionConflict
@@ -118,7 +118,9 @@ def draft(scope,actor,task):
  with agent_storage.transaction() as tx:
   key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
   if not row or row.get('scope')!=scope_stamp(scope) or row['actor']!=actor or ((row.get('native_stamp')!=native_stamp(task) or row.get('pack_revision')!=task['pack']['revision']) and row.get('status')=='draft'):
-   row={'actor':actor,'scope':scope_stamp(scope),'pack_revision':task['pack']['revision'],'native_stamp':native_stamp(task),'values':initial(task),'revision':(row or {}).get('revision',0)+1,'status':'draft','questions':[]}
+   initial_values=initial(task);assistant=assistant_state(initial_values,task,scope)
+   row={'actor':actor,'scope':scope_stamp(scope),'pack_revision':task['pack']['revision'],'native_stamp':native_stamp(task),'values':initial_values,'revision':(row or {}).get('revision',0)+1,'status':'draft','questions':[],
+        'history':[{'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()}]}
    tx.put(key,row)
  return row
 
@@ -133,6 +135,11 @@ def gaps(values,task):
  stage=task['stage'];required=[]
  if stage in ('invitation','minutes'):
   result=legacy.missing(values,stage)
+  # FR-MTG-001 generates the meeting number in its native BEFORE trigger.
+  # A conversational session does not have a Case UID yet, so asking the user
+  # for MTG_MeetingNo would duplicate a system-owned field.
+  if stage=='invitation' and not task.get('case_uid'):
+   result=[x for x in result if x.get('field')!='MTG_MeetingNo']
   if stage=='invitation':
    for i,r in enumerate(legacy.rows(values.get('MTG_Agenda')),1):
     for k,title in [('MTG_AgendaPresenterUID','ارائه‌دهنده'),('MTG_AgendaPlannedMinutes','زمان صحبت به دقیقه')]:
@@ -157,6 +164,81 @@ def gaps(values,task):
  if stage in ('invitation_approval','minutes_approval') and values.get(decision)=='NeedsRevision':required+=[comment]
  specs=form(task)
  return [{'field':k,'question':'لطفاً '+str(specs.get(k,{}).get('label') or k)+' را مشخص کنید.'} for k in required if values.get(k) in (None,'',{})]
+
+def _rows(value):
+ if value in (None,''):return []
+ if isinstance(value,list):return [x for x in value if isinstance(x,dict)]
+ if isinstance(value,dict):return [value[k] for k in sorted(value,key=lambda x:int(x) if str(x).isdigit() else 10**9) if isinstance(value[k],dict)]
+ return []
+
+def _person(uid,scope):
+ if not uid:return 'نامشخص'
+ row=scope.get('directory',{}).get(str(uid)) or {}
+ return str(row.get('name') or uid)
+
+def _compact(value,limit=320):
+ text=' '.join(str(value or '').split())
+ return text if len(text)<=limit else text[:limit-1]+'…'
+
+def assistant_state(values,task,scope,questions=()):
+ """Deterministic, reviewable secretary response built from PMX-bound fields."""
+ stage=task['stage'];v={**task.get('native',{}),**values}
+ title=_compact(v.get('MTG_MeetingTitle') or v.get('MTGA_ContextMeetingTitle') or task.get('title') or 'جلسه')
+ lines=[]
+ if stage in ('invitation','invitation_approval','minutes','minutes_approval','monitoring'):
+  no=_compact(v.get('MTG_MeetingNo'))
+  when=' '.join(x for x in [_compact(v.get('MTG_MeetingStartDateTime')),_compact(v.get('MTG_MeetingStartTime'))] if x)
+  place=_compact(v.get('MTG_Location'))
+  chair=_person(v.get('MTG_ChairUserUID'),scope)
+  secretary=_person(v.get('MTG_SecretaryUserUID'),scope)
+  lines.append(('جلسه '+no+' · ' if no else '')+title)
+  if when:lines.append('زمان: '+when)
+  if place:lines.append('مکان/لینک: '+place)
+  if chair!='نامشخص':lines.append('رئیس: '+chair)
+  if secretary!='نامشخص':lines.append('دبیر: '+secretary)
+  participants=[_person(r.get('MTG_ParticipantUserUID'),scope) for r in _rows(v.get('MTG_Participants')) if r.get('MTG_ParticipantUserUID')]
+  if participants:lines.append('شرکت‌کنندگان: '+ '، '.join(participants[:12]))
+  agenda=[_compact(r.get('MTG_AgendaTitle'),180) for r in _rows(v.get('MTG_Agenda')) if r.get('MTG_AgendaTitle')]
+  if agenda:lines.append('دستور جلسه: '+ '؛ '.join(agenda[:8]))
+  objective=_compact(v.get('MTG_Objective'),500)
+  if objective:lines.append('هدف: '+objective)
+  if stage in ('minutes','minutes_approval'):
+   discussion=_compact(v.get('MTG_MeetingDiscussionSummary'),700)
+   if discussion:lines.append('جمع‌بندی مذاکرات: '+discussion)
+   decisions=[_compact(r.get('MTG_DecisionText'),220) for r in _rows(v.get('MTG_Decisions')) if r.get('MTG_DecisionText')]
+   if decisions:lines.append('مصوبات: '+ '؛ '.join(decisions[:8]))
+   actions=[_compact(r.get('MTG_ActionDescription'),220) for r in _rows(v.get('MTG_Actions')) if r.get('MTG_ActionDescription')]
+   if actions:lines.append('اقدامات: '+ '؛ '.join(actions[:8]))
+ elif stage in ('action_execution','action_review'):
+  lines.append('اقدام '+_compact(v.get('MTGA_ActionNo'))+' · '+_compact(v.get('MTGA_ActionDescription') or task.get('title')))
+  if v.get('MTGA_DueDateTime'):lines.append('مهلت: '+_compact(v.get('MTGA_DueDateTime'))+' '+_compact(v.get('MTGA_DueTime')))
+  if v.get('MTGA_ProgressPercent') not in (None,''):lines.append('پیشرفت اعلامی: '+str(v.get('MTGA_ProgressPercent'))+'٪')
+ summary='\n'.join(x for x in lines if x)
+ missing_now=gaps(values,task)
+ pending=[str(x.get('question') or x) for x in missing_now]+[str(x) for x in questions if str(x).strip()]
+ # Preserve order while removing duplicates.
+ pending=list(dict.fromkeys(pending))[:12]
+ if pending:
+  message='اطلاعاتی که گرفتم ثبت شد. برای ادامه این موارد را مشخص کنید:\n- '+'\n- '.join(pending)
+ elif stage=='invitation':
+  message='اطلاعات دعوت‌نامه کامل است؛ آوان می‌تواند گام اول را ایجاد و برای رئیس جلسه ارسال کند.'
+ elif stage=='invitation_approval':
+  message='دعوت‌نامه آماده تصمیم شماست. می‌توانید بگویید «دعوت‌نامه را تأیید می‌کنم» یا اصلاحات موردنظر را بیان کنید.'
+ elif stage=='minutes_approval':
+  message='صورت‌جلسه آماده تصمیم شماست. می‌توانید تأیید یا نیاز به اصلاح را به‌صورت متن یا صوت اعلام کنید.'
+ else:
+  message='اطلاعات این مرحله کامل است و برای ارسال به مرحله بعد آماده است.'
+ return {'summary':summary,'message':message,'missing':missing_now,'can_submit':not missing_now,'stage':stage}
+
+def explicit_decision(text,stage,values):
+ """Allow automatic routing only for direct human approval/revision commands."""
+ if stage not in ('invitation_approval','minutes_approval'):return False
+ raw=str(text or '').strip().lower().replace('\u200c',' ').replace('ي','ی').replace('ك','ک')
+ raw=re.sub(r'\s+',' ',raw)
+ decision=values.get('MTG_InvitationApproval' if stage=='invitation_approval' else 'MTG_MinutesApproval')
+ approve=any(x in raw for x in ('تأیید می کنم','تایید می کنم','تأیید میکنم','تایید میکنم','موافقم','تصویب می کنم','تصویب میکنم'))
+ revise=any(x in raw for x in ('نیاز به اصلاح','اصلاح شود','برگردان','ارجاع برای اصلاح','تأیید نمی کنم','تایید نمی کنم','تأیید نمیکنم','تایید نمیکنم'))
+ return (decision=='Approved' and approve) or (decision=='NeedsRevision' and revise)
 
 def validate(values,task,scope):
  stage=task['stage'];specs=form(task)
@@ -208,13 +290,20 @@ def validate(values,task,scope):
  if stage=='action_review' and values.get('MTGA_ReviewStatus2') not in ('','Closed','Rework'):raise ValueError('نتیجه بررسی باید Closed یا Rework باشد.')
 
 
-def update(scope,actor,task,revision,values,questions=()):
+def update(scope,actor,task,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None):
  validate(values,task,scope)
  with agent_storage.transaction() as tx:
   key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
   if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError('پیش‌نویس در دسترس نیست.')
   if row['revision']!=revision or row['status']!='draft' or row['pack_revision']!=task['pack']['revision'] or row.get('native_stamp')!=native_stamp(task):raise RevisionConflict('پیش‌نویس یا تنظیم فرایند تغییر کرده است.')
-  row.update(values=values,revision=revision+1,questions=list(questions));tx.put(key,row)
+  assistant=assistant_state(values,task,scope,questions)
+  history=list(row.get('history') or [])
+  if turn_text:
+   history.append({'role':'user','source':turn_source,'text':str(turn_text)[:18000],'created_at':datetime.now(timezone.utc).isoformat()})
+   history.append({'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()})
+  attachments=list(row.get('attachments') or [])
+  if attachment:attachments=(attachments+[attachment])[-20:]
+  row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments);tx.put(key,row)
  return row
 
 def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
@@ -299,7 +388,9 @@ def session_create(scope,actor,pack_id,values=None):
  values=values or {'MTG_SecretaryUserUID':scope['external_user_id']}
  item={'pack':pack,'stage':'invitation','native':{}}
  validate(values,item,scope)
- row={'id':secrets.token_urlsafe(24),'pack_id':pack_id,'pack_revision':pack['revision'],'scope':scope_stamp(scope),'actor':actor,'values':values,'status':'draft','revision':1,'case_uid':None,'questions':[]}
+ assistant=assistant_state(values,item,scope)
+ row={'id':secrets.token_urlsafe(24),'pack_id':pack_id,'pack_revision':pack['revision'],'scope':scope_stamp(scope),'actor':actor,'values':values,'status':'draft','revision':1,'case_uid':None,'questions':[],
+      'history':[{'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()}],'attachments':[]}
  with agent_storage.transaction() as tx:
   key=source_user_key('secretary_sessions',scope,actor);items=tx.get(key,[],lock=True)
   if len(items)>=200:raise ValueError('ظرفیت جلسات پیش‌نویس تکمیل است.')
@@ -313,13 +404,20 @@ def session_load(scope,actor,identifier):
  if row['pack_revision']!=pack['revision']:raise RevisionConflict('تنظیم بسته فرایند تغییر کرده است.')
  return row,{'pack':pack,'stage':'invitation','native':{},'case_uid':None}
 
-def session_update(scope,actor,identifier,revision,values,questions=()):
+def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None):
  _,task=session_load(scope,actor,identifier);validate(values,task,scope)
  with agent_storage.transaction() as tx:
   key=source_user_key('secretary_sessions',scope,actor);items=tx.get(key,[],lock=True);row=next((r for r in items if r['id']==identifier and r['scope']==scope_stamp(scope)),None)
   if not row:raise PermissionError()
   if row['revision']!=revision or row['status']!='draft':raise RevisionConflict()
-  row.update(values=values,revision=revision+1,questions=list(questions));tx.put(key,items)
+  assistant=assistant_state(values,task,scope,questions)
+  history=list(row.get('history') or [])
+  if turn_text:
+   history.append({'role':'user','source':turn_source,'text':str(turn_text)[:18000],'created_at':datetime.now(timezone.utc).isoformat()})
+   history.append({'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()})
+  attachments=list(row.get('attachments') or [])
+  if attachment:attachments=(attachments+[attachment])[-20:]
+  row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments);tx.put(key,items)
  return row
 
 def session_send(scope,actor,identifier,revision,*,pm=None):
@@ -342,6 +440,12 @@ def session_send(scope,actor,identifier,revision,*,pm=None):
    stage=task['pack']['stages']['invitation'];row['case_uid']=pm.create_for(stage['task_uid'],{});save_row(row)
    index=pm.assigned(row['case_uid'],stage['task_uid'],scope['external_user_id'])
    for trigger in stage['before']:pm.call('PUT',f"/cases/{row['case_uid']}/execute-trigger/{trigger}")
+   # The native BEFORE trigger owns the meeting number and form date. Pull
+   # those generated values back before submitting the conversational draft.
+   generated=normalize(pm.variables(row['case_uid']))
+   for key in ('MTG_MeetingNo','MTG_FRMTG001_FormDate'):
+    if generated.get(key) and not row['values'].get(key):row['values'][key]=generated[key]
+   save_row(row)
    pm.submit_stage(row['case_uid'],stage,scope['external_user_id'],labelled(row['values'],task,scope),index)
    row['status']='awaiting_invitation_approval'
   except Exception:
