@@ -73,7 +73,7 @@ def test_oidc_state_cookie_name_is_transaction_scoped():
     assert first == production_app._oidc_state_cookie_name("state-one")
 
 
-def test_login_binds_state_to_stable_browser_token(monkeypatch):
+def test_login_binds_state_to_signed_transaction_cookie(monkeypatch):
     production_app.pending.clear()
     _,state,set_cookies=_login(monkeypatch)
     cookie_name=production_app._oidc_state_cookie_name(state)
@@ -81,54 +81,105 @@ def test_login_binds_state_to_stable_browser_token(monkeypatch):
         set_cookies,
         production_app.OIDC_BROWSER_COOKIE,
     )
+    transaction=_cookie_value(set_cookies,cookie_name)
 
     browser_cookie=next(
         value for value in set_cookies
         if value.startswith(production_app.OIDC_BROWSER_COOKIE+"=")
     )
-    assert "Path=/" in browser_cookie
-    assert "HttpOnly" in browser_cookie
-    assert any(
-        value.startswith(cookie_name+"=") and "Path=/" in value
-        for value in set_cookies
+    tx_cookie=next(
+        value for value in set_cookies
+        if value.startswith(cookie_name+"=")
     )
-    assert production_app.pending[state]["browser_hash"] == (
-        production_app._oidc_browser_hash(browser_token)
+    assert "Path=/" in browser_cookie and "HttpOnly" in browser_cookie
+    assert "Path=/" in tx_cookie and "HttpOnly" in tx_cookie
+
+    decoded=production_app._oidc_tx_decode(
+        transaction,
+        state=state,
+        secret="x"*32,
     )
+    assert decoded is not None
+    assert decoded["browser_hash"]==production_app._oidc_browser_hash(browser_token)
+    assert decoded["verifier"]==production_app.pending[state]["verifier"]
 
-    def broken_config():
-        raise ConfigurationFailed("stop after browser/state validation")
 
-    monkeypatch.setattr(production_app,"_oidc_config",broken_config)
+def test_callback_survives_restart_using_signed_pkce_cookie(monkeypatch):
+    production_app.pending.clear()
+    _,state,set_cookies=_login(monkeypatch)
+    cookie_name=production_app._oidc_state_cookie_name(state)
+    browser_token=_cookie_value(
+        set_cookies,
+        production_app.OIDC_BROWSER_COOKIE,
+    )
+    transaction=_cookie_value(set_cookies,cookie_name)
+
+    # Simulate AVAN container restart / another worker.
+    production_app.pending.clear()
+
+    class Client:
+        def __init__(self,*args,**kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def post(self,*args,**kwargs):
+            raise production_app.httpx.ConnectError("stop after transaction recovery")
+
+    monkeypatch.setattr(production_app.httpx,"Client",Client)
     request=_request(
         "/auth/callback",
         cookie=(
             f"{production_app.OIDC_BROWSER_COOKIE}={browser_token}; "
-            f"{cookie_name}={state}"
+            f"{cookie_name}={transaction}"
         ),
     )
     with pytest.raises(HTTPException) as exc:
         production_app.callback(request,code="dummy-code",state=state)
-    # 503 proves browser/state binding passed and callback reached OIDC config.
+    # 503 means the signed transaction was recovered after RAM loss and the
+    # callback reached the token endpoint instead of expiring locally.
     assert exc.value.status_code==503
 
 
-def test_callback_rejects_wrong_browser_even_with_matching_state_cookie(monkeypatch):
+def test_callback_rejects_wrong_browser_with_valid_signed_transaction(monkeypatch):
     production_app.pending.clear()
     _,state,set_cookies=_login(monkeypatch)
     cookie_name=production_app._oidc_state_cookie_name(state)
+    transaction=_cookie_value(set_cookies,cookie_name)
+    production_app.pending.clear()
+
     request=_request(
         "/auth/callback",
         cookie=(
             f"{production_app.OIDC_BROWSER_COOKIE}="
             f"{production_app._new_oidc_browser_token()}; "
-            f"{cookie_name}={state}"
+            f"{cookie_name}={transaction}"
         ),
     )
     with pytest.raises(HTTPException) as exc:
         production_app.callback(request,code="dummy-code",state=state)
     assert exc.value.status_code==401
     assert exc.value.detail=="درخواست ورود معتبر نیست."
+
+
+def test_callback_rejects_tampered_transaction_cookie(monkeypatch):
+    production_app.pending.clear()
+    _,state,set_cookies=_login(monkeypatch)
+    cookie_name=production_app._oidc_state_cookie_name(state)
+    browser_token=_cookie_value(set_cookies,production_app.OIDC_BROWSER_COOKIE)
+    transaction=_cookie_value(set_cookies,cookie_name)
+    production_app.pending.clear()
+
+    bad=transaction[:-1]+("A" if transaction[-1]!="A" else "B")
+    request=_request(
+        "/auth/callback",
+        cookie=(
+            f"{production_app.OIDC_BROWSER_COOKIE}={browser_token}; "
+            f"{cookie_name}={bad}"
+        ),
+    )
+    with pytest.raises(HTTPException) as exc:
+        production_app.callback(request,code="dummy-code",state=state)
+    assert exc.value.status_code==401
+    assert exc.value.detail=="مهلت ورود به پایان رسیده است."
 
 
 def test_parallel_logins_reuse_browser_token_without_state_collision(monkeypatch):
