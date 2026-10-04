@@ -32,3 +32,19 @@ def test_existing_realm_repairs_and_binds_protected_browser_flow():
     assert "conditional-user-configured" in sql
     assert "auth-otp-form" in sql
     assert "browser_flow=v_flow" in sql
+
+
+def test_keycloak_uses_avan_security_bridge_not_a_second_captcha_stack():
+    provider = (
+        ROOT / "infra" / "keycloak" / "captcha" / "src" / "main" / "java" /
+        "com" / "avan" / "identity" / "AvanCaptchaForm.java"
+    ).read_text(encoding="utf-8")
+    app = (ROOT / "commercial" / "production_app.py").read_text(encoding="utf-8")
+    compose = COMPOSE.read_text(encoding="utf-8")
+    assert "AVAN_SECURITY_BRIDGE_URL" in provider
+    assert "/internal/security/challenge" in app
+    assert "/internal/security/verify" in app
+    assert "from .turnstile import public_config" in app
+    assert "from .turnstile import verify" in app
+    assert "AVAN_SECURITY_BRIDGE_URL: http://avan:8188/internal/security" in compose
+    assert "AVAN_ALLOWED_HOSTS: 127.0.0.1,localhost,avan" in compose
