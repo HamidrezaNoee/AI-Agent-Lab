@@ -521,7 +521,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   out.replaceChildren();const top=card(info.packs[0]?.title||"فرایندهای فعال","کارتابل فقط برای فرایند و بخش انتخاب‌شده است.");
   if(!info.packs.length)add(top,note("بسته فرایند فعال نشده است."));
   const currentPack=packId||info.packs[0]?.id;
-  if(sectionId==="drafts"||!packId){const create=link("جلسه جدید",checked(async()=>{const r=await post("/sessions",{pack_id:currentPack});await session(r.id)}));create.disabled=!currentPack||!info.oauth_connected;add(top,create)}
+  if(sectionId==="drafts"||!packId){const create=link("شروع جلسه با دبیر هوشمند",checked(async()=>{const r=await post("/sessions",{pack_id:currentPack});await session(r.id)}),"button primary");create.disabled=!currentPack;add(top,create);if(currentPack&&!info.oauth_connected)add(top,el("small","muted","می‌توانید پیش‌نویس را با متن، صوت و فایل کامل کنید؛ برای ایجاد واقعی پرونده و ارسال به رئیس، اتصال شخصی ProcessMaker لازم است."))}
   add(top,link("تازه‌سازی کارتابل",checked(load)),link("فعال‌سازی اعلان‌های پس‌زمینه",checked(async()=>{await post("/subscribe");toast("پایش کارتابل فعال شد؛ نیازمند اعتبار نشست سازمانی است.")})));
   add(out,top);
   const connection=card("مجوز عملیات حساب BPMS",info.oauth_connected?"مجوز شخصی حساب متصل فعال است.":"برای ثبت و انتقال مراحل، مجوز حساب خودتان در ProcessMaker لازم است.");
