@@ -389,7 +389,9 @@ def _model_failure(exc):
   return 'مدل انتخاب‌شده پاسخ ساختاری موردنیاز دبیر هوشمند را نپذیرفت؛ مدل AI یا تنظیم Structured Output در مدیریت سامانه بررسی شود.'
  if isinstance(status,int) and status>=500:
   return 'سرویس هوش مصنوعی موقتاً در دسترس نیست؛ چند لحظه بعد دوباره تلاش کنید.'
- return 'استخراج اطلاعات توسط مدل انجام نشد؛ دوباره تلاش کنید. اگر تکرار شد، تنظیم مدل AI بررسی شود.'
+ safe=re.sub(r'[^A-Za-z0-9_.-]','',name)[:60] or 'UnknownError'
+ suffix=(' · HTTP '+str(status)) if isinstance(status,int) else ''
+ return 'استخراج اطلاعات توسط مدل انجام نشد؛ دوباره تلاش کنید. کد فنی: AI-EXTRACT · '+safe+suffix
 
 
 def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
