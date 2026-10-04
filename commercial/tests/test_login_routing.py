@@ -87,3 +87,51 @@ def test_organizational_user_in_stale_admin_form_never_uses_local_password(monke
         assert 'set-cookie' not in result.headers
         assert body.password not in result.body.decode()
     assert set(setup_routes._sessions)==before
+
+
+
+def test_create_godadmin_identity_binds_immediately(monkeypatch,tmp_path):
+    from commercial import identity_operator
+
+    secret=tmp_path/"provisioner-secret"
+    secret.write_text("x"*32,encoding="utf-8")
+    monkeypatch.setenv("AVAN_PROVISIONER_CLIENT_SECRET_PATH",str(secret))
+    monkeypatch.setattr(setup_console,"godadmin_identity",lambda:None)
+    monkeypatch.setattr(setup_console,"totp_ok",lambda otp:otp=="123456")
+    monkeypatch.setattr(
+        setup_console,
+        "get_setting",
+        lambda key:
+            {"tenant_id":"11111111-1111-1111-1111-111111111111"} if key=="company"
+            else {
+                "managed_by_product":True,
+                "issuer":"http://auth.localhost:8181/realms/avan",
+            } if key=="oidc"
+            else None,
+    )
+    monkeypatch.setattr(identity_operator,"create",lambda *args:"22222222-2222-2222-2222-222222222222")
+    bound=[]
+    monkeypatch.setattr(setup_console,"bind_godadmin_identity",lambda tenant,subject:bound.append((tenant,subject)))
+    monkeypatch.setattr(setup_console,"audit",lambda *args:None)
+    setup_routes._sessions["old"]={"csrf":"x","expires":9999999999,"mfa":True}
+    setup_routes._pending_mfa["old"]={"expires":9999999999}
+
+    body=setup_routes.GodAdminAccount(
+        username="godadmin",
+        email="godadmin@example.com",
+        name="God Admin",
+        password="A-Strong-GodAdmin-Password-123",
+        otp="123456",
+    )
+    response=setup_routes.create_godadmin_account(body,session=("local",{}))
+    payload=json.loads(response.body)
+
+    assert payload["created"] is True
+    assert payload["bound"] is True
+    assert payload["login_url"]=="/auth/login"
+    assert bound==[(
+        "11111111-1111-1111-1111-111111111111",
+        "22222222-2222-2222-2222-222222222222",
+    )]
+    assert not setup_routes._sessions
+    assert not setup_routes._pending_mfa
