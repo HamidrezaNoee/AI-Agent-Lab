@@ -541,11 +541,13 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
  async function open(t,prepare=true){const r=await post(prepare?"/tasks/open":"/tasks/load",{case_uid:t.case_uid,index:t.index,pack_id:t.pack_id});render(r,false)}
  async function session(id){const r=await request(base+"/sessions/"+encodeURIComponent(id));render({...r,draft:r.session,task:{stage:"invitation",title:r.session.values.MTG_MeetingTitle||"جلسه جدید"}},true)}
  function render(r,isSession){
-  editor.replaceChildren();const d=r.draft,t=r.task,values=structuredClone(d.values),p=card(t.title||"بازبینی مرحله",isSession?"دعوت‌نامه جدید":"مرحله: "+t.stage);
+  editor.replaceChildren();
+  const d=r.draft,t=r.task,values=structuredClone(d.values||{}),assistant=r.assistant||{},p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+t.stage);
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
   const query=isSession?"":"?pack_id="+encodeURIComponent(t.pack_id);
   const status=el("div"),controls=[],locked=d.status!=="draft";let dirty=false;
-  function changed(){dirty=true;send.disabled=true;status.replaceChildren(note("تغییرات را ذخیره کنید، سپس ارسال کنید."))}
+  let send;
+  function changed(){dirty=true;if(send)send.disabled=true;status.replaceChildren(note("تغییرات فرم ذخیره نشده‌اند؛ ابتدا ذخیره کنید."))}
   function control(key,spec,value,change){
    const label=spec.label||key,wrap=el("label","field");add(wrap,el("span","",label));let input;
    let options=spec.options||[];
@@ -555,27 +557,128 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    else{input=el(spec.type==="textarea"?"textarea":"input");input.value=value??"";input.maxLength=14000}
    input.setAttribute("aria-label",label);input.disabled=locked||key==="MTG_MonActionNo";input.addEventListener("input",()=>{change(input.value);changed()});add(wrap,input);controls.push(input);return wrap;
   }
-  for(const [key,spec] of Object.entries(r.form)){
+
+  const conversation=card("گفت‌وگو با دبیر هوشمند","متن، صوت یا فایل بدهید؛ دبیر اطلاعات PMX را استخراج می‌کند و فقط موارد ناقص را می‌پرسد.");
+  conversation.classList.add("secretary-conversation");
+  const chat=el("div","secretary-chat");
+  const history=d.history||[];
+  if(history.length){
+   for(const turn of history){
+    const bubble=el("div","chat-bubble "+(turn.role==="user"?"user":"assistant"));
+    add(bubble,el("small","",turn.role==="user"?(turn.source==="file"?"فایل شما":"شما"):"دبیر هوشمند"),el("div","",turn.text||""));
+    if(turn.summary)add(bubble,el("pre","chat-summary",turn.summary));
+    add(chat,bubble);
+   }
+  }else if(assistant.message){
+   const bubble=el("div","chat-bubble assistant");add(bubble,el("small","","دبیر هوشمند"),el("div","",assistant.message));add(chat,bubble);
+  }
+  if(assistant.summary){
+   const summary=el("div","secretary-invitation-summary");
+   add(summary,el("strong","",["invitation_approval","minutes_approval"].includes(t.stage)?"خلاصه برای تصمیم شما":"خلاصه اطلاعات فعلی"),el("pre","",assistant.summary));
+   add(conversation,summary);
+  }
+  add(conversation,chat);
+
+  const missing=assistant.missing||r.missing||[];
+  if(missing.length){
+   const gaps=el("div","secretary-missing");add(gaps,el("strong","","اطلاعاتی که هنوز لازم است"));
+   for(const item of missing)add(gaps,el("p","",item.question||item));
+   add(conversation,gaps);
+  }
+
+  const composer=el("div","secretary-composer"),notes=inputField("پیام به دبیر هوشمند","","textarea");
+  notes.input.maxLength=18000;notes.input.rows=4;
+  notes.input.placeholder=isSession?"مثلاً: فردا ساعت ۱۰ جلسه بررسی واردات در ساختمان جردن با ریاست ... برگزار شود.":"تصمیم، اصلاحات یا اطلاعات این مرحله را بنویسید...";
+  add(composer,notes.wrap);
+  const voiceAuto=el("input");voiceAuto.type="checkbox";
+  const voiceAutoLabel=el("label","voice-auto");add(voiceAutoLabel,voiceAuto,el("span","","حالت دستیار صوتی؛ بعد از تبدیل صوت، پیام ارسال شود"));
+  add(composer,voiceAutoLabel);
+
+  async function applyResult(result,fromVoice=false){
+   if(result.advanced){
+    editor.replaceChildren(note(result.assistant?.message||"پرونده به مرحله بعد منتقل شد."));
+    await load();return
+   }
+   if(isSession)render({...result,draft:result.session,task:result.task||{stage:"invitation",title:result.session?.values?.MTG_MeetingTitle||"جلسه جدید"}},true);
+   else render(result,false);
+   if(fromVoice)toast("پاسخ دبیر آماده است؛ برای شنیدن، «پخش پاسخ دبیر» را بزنید.");
+  }
+  async function sendTurn(textValue=null,fromVoice=false){
+   if(locked)return;
+   if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
+   const text=(textValue??notes.input.value).trim();if(!text)throw Error("متن یا صوتی برای ارسال وارد کنید.");
+   const result=await post(path+"/turn"+query,{revision:d.revision,text,auto_advance:true});
+   await applyResult(result,fromVoice);
+  }
+  const sendMessage=link("ارسال به دبیر",checked(()=>sendTurn()),"button primary");add(composer,sendMessage);
+  attachVoiceInput(composer,notes.input,false,sourceId,async text=>{if(voiceAuto.checked)await sendTurn(text,true)});
+
+  const fileWrap=el("div","secretary-file-bar"),file=el("input");
+  file.type="file";file.accept=".pdf,.docx,.txt,.md,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json";
+  file.setAttribute("aria-label","افزودن فایل به گفت‌وگوی دبیر");
+  const fileStatus=el("small","muted","PDF متنی، DOCX، TXT، MD، CSV یا JSON تا ۸ مگابایت");
+  file.addEventListener("change",async()=>{
+   const selected=file.files?.[0];if(!selected)return;
+   if(dirty){fileStatus.textContent="ابتدا اصلاحات دستی فرم را ذخیره کنید.";file.value="";return}
+   file.disabled=true;fileStatus.textContent="در حال خواندن و استخراج اطلاعات فایل...";
+   try{
+    const sep=query?"&":"?";
+    const result=await request(base+path+"/attachment"+query+sep+"revision="+encodeURIComponent(d.revision),{
+     method:"POST",
+     headers:{"Content-Type":selected.type||"application/octet-stream","X-AVAN-Filename":encodeURIComponent(selected.name)},
+     body:selected
+    });
+    await applyResult(result,false);
+   }catch(e){fileStatus.textContent=e.message}finally{file.disabled=false}
+  });
+  add(fileWrap,file,fileStatus);add(composer,fileWrap);
+
+  if(["invitation_approval","minutes_approval"].includes(t.stage)){
+   const quick=el("div","secretary-quick-actions");
+   const approveText=t.stage==="invitation_approval"?"دعوت‌نامه را تأیید می‌کنم":"صورت‌جلسه را تأیید می‌کنم";
+   add(quick,link("✓ تأیید و ارسال",checked(()=>sendTurn(approveText)),"button primary"),
+    link("↩ نیاز به اصلاح",()=>{notes.input.value="نیاز به اصلاح: ";notes.input.focus()},"button secondary"));
+   add(composer,quick);
+  }
+  if(isSession&&!missing.length){
+   add(composer,link("ایجاد گام اول و ارسال به رئیس",checked(()=>sendTurn("بله، ایجاد و ارسال کن")),"button primary"));
+  }
+
+  const audio=el("audio");audio.controls=true;let audioPart=0,audioUrl=null;
+  const audioStatus=el("small","muted","خلاصه و پاسخ دبیر به صورت صوتی");
+  const speech=link("پخش پاسخ دبیر",checked(async()=>{
+   if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
+   const speechQuery=isSession?("?part="+audioPart):(query+"&part="+audioPart);
+   const response=await request(base+path+"/speech"+speechQuery,{method:"POST",binary:true});
+   if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(await response.blob());audio.src=audioUrl;
+   const count=Number(response.headers.get("X-AVAN-Audio-Parts"))||1;audioStatus.textContent="پاسخ صوتی · بخش "+(audioPart+1)+" از "+count;audioPart=(audioPart+1)%count;await audio.play();
+  }));
+  add(composer,speech,audio,audioStatus);app.cleanup.push(()=>{audio.pause();if(audioUrl)URL.revokeObjectURL(audioUrl)});
+  if((d.attachments||[]).length){
+   const attachments=el("div","secretary-attachments");add(attachments,el("strong","","فایل‌های استفاده‌شده"));
+   for(const a of d.attachments)add(attachments,el("span","badge",(a.name||"فایل")+" · "+(a.type||"")));
+   add(composer,attachments);
+  }
+  add(conversation,composer);add(p,conversation);
+
+  const formDetails=el("details","secretary-form-details"),formSummary=el("summary","","مشاهده / اصلاح فرم استخراج‌شده"),formBody=el("div","secretary-form-body");
+  add(formDetails,formSummary,formBody);
+  for(const [key,spec] of Object.entries(r.form||{})){
    if(spec.type==="grid"){
     const box=card(spec.label||key),rows=el("div");let data=values[key]&&typeof values[key]==="object"?values[key]:{};values[key]=data;
     function draw(){rows.replaceChildren();for(const [no,row] of Object.entries(data)){
-     const item=card("ردیف "+no);for(const c of spec.columns||[])add(item,control(c.id,c,row[c.id]||"",v=>row[c.id]=v));
+     const item=card("ردیف "+no);for(const col of spec.columns||[])add(item,control(col.id,col,row[col.id]||"",v=>row[col.id]=v));
      if(key!=="MTG_ActionSummary")add(item,link("حذف ردیف",()=>{delete data[no];changed();draw()}));add(rows,item);
     }}draw();add(box,rows);
-    if(key!=="MTG_ActionSummary"&&!locked)add(box,link("افزودن ردیف",()=>{const n=String(Math.max(0,...Object.keys(data).map(Number))+1);data[n]={};draw();changed()}));add(p,box);
-   }else add(p,control(key,spec,values[key],v=>values[key]=v));
+    if(key!=="MTG_ActionSummary"&&!locked)add(box,link("افزودن ردیف",()=>{const n=String(Math.max(0,...Object.keys(data).map(Number))+1);data[n]={};draw();changed()}));add(formBody,box);
+   }else add(formBody,control(key,spec,values[key],v=>values[key]=v));
   }
   const context=el("details");add(context,el("summary","","شرح ثبت‌شده در فرایند"));
-  for(const [k,v] of Object.entries(r.context||{})){const label=r.form[k]?.label||k;add(context,el("p","",label+": "+(typeof v==="object"?JSON.stringify(v):v)))}add(p,context);
-  const questions=card("اطلاعات ناقص و پیشنهادهای دبیر");for(const q of [...(r.missing||[]),...(d.questions||[])])add(questions,el("p","",q.question||q));add(p,questions);
-  const notes=inputField("متن یا صوت شما","","textarea");notes.input.maxLength=18000;notes.input.rows=5;add(p,notes.wrap);attachVoiceInput(p,notes.input,false,sourceId);
-  const save=link("ذخیره اصلاحات",checked(async()=>{await post(path+"/edit"+query,{revision:d.revision,values});if(isSession)await session(d.id);else await open(t,false)}));save.disabled=locked;
-  const extract=link("تکمیل از متن / صوت",checked(async()=>{if(dirty)throw Error("ابتدا اصلاحات فرم را ذخیره کنید.");await post(path+"/turn"+query,{revision:d.revision,text:notes.input.value});if(isSession)await session(d.id);else await open(t,false)}));extract.disabled=locked;
-  const send=link("تأیید بازبینی و ارسال به مرحله بعد",checked(async()=>{send.disabled=true;try{await post(path+"/submit"+query,{revision:d.revision,confirmed:true});editor.replaceChildren(note("اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));await load()}finally{send.disabled=locked||dirty}}),"button primary");send.disabled=locked||(r.missing||[]).length>0;
-  add(p,save,extract,send,status);
-  if(!isSession){const audio=el("audio");audio.controls=true;let part=0,url=null;const feedback=el("small","muted","صدای تولیدشده توسط هوش مصنوعی");
-   add(p,link("شنیدن شرح و پیش‌نویس",checked(async()=>{if(dirty)throw Error("ابتدا اصلاحات را ذخیره کنید.");const response=await request(base+path+"/speech"+query+"&part="+part,{method:"POST",binary:true});if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(await response.blob());audio.src=url;const count=Number(response.headers.get("X-AVAN-Audio-Parts"))||1;feedback.textContent="صدای هوش مصنوعی · بخش "+(part+1)+" از "+count;part=(part+1)%count;await audio.play()})),audio,feedback);app.cleanup.push(()=>{audio.pause();if(url)URL.revokeObjectURL(url)});
-  }
+  for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+(typeof v==="object"?JSON.stringify(v):v)))}add(formBody,context);
+  const save=link("ذخیره اصلاحات دستی",checked(async()=>{await post(path+"/edit"+query,{revision:d.revision,values});if(isSession)await session(d.id);else await open(t,false)}));save.disabled=locked;
+  send=link("ارسال دستی به مرحله بعد",checked(async()=>{send.disabled=true;try{await post(path+"/submit"+query,{revision:d.revision,confirmed:true});editor.replaceChildren(note("اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));await load()}finally{send.disabled=locked||dirty}}),"button primary");
+  send.disabled=locked||missing.length>0;
+  add(formBody,save,send,status);add(p,formDetails);
 
   if(!isSession&&t.stage==="monitoring")add(p,link("پیشنهاد جلسه پیگیری اقدامات باز",checked(async()=>{const row=await post(path+"/followup"+query);await session(row.id);await load()})));
   if(!isSession&&["action_review","monitoring"].includes(t.stage)){
