@@ -160,3 +160,21 @@ def test_two_installed_native_processes_auto_promote_to_meeting_pack(pack,store,
  result=w.processes(S)
  assert result['processes'][0]['renderer']=='meeting'
  assert result['processes'][0]['title']==pack['meeting']['title']
+
+
+
+def test_process_list_stays_selectable_when_meeting_auto_promotion_is_unavailable(store,monkeypatch):
+ scope={**S,'license':{'modules':{1,2}}}
+ generic=c.save('source',{'adapter':'native_tasks_v1','process':{
+  'process_uid':'f'*32,'title':'فرایند عمومی نصب‌شده'}},'admin')
+ from commercial.processmaker_store import ProductionUnavailable
+ monkeypatch.setattr(
+  c,'ensure_installed_meeting_pack',
+  lambda source_id:(_ for _ in ()).throw(ProductionUnavailable('schema probe failed'))
+ )
+ diagnostics={}
+ rows=w.configured(scope,diagnostics)
+ assert [x['id'] for x in rows]==[generic['id']]
+ assert diagnostics['promotion_state']=='unavailable'
+ assert diagnostics['promotion_warning']
+ assert w.processes(scope)['processes'][0]['title']=='فرایند عمومی نصب‌شده'
