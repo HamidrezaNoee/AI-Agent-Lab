@@ -57,6 +57,8 @@ def resolve(pack, scope):
     return adapter
 
 def configured(scope):
+    if 2 in set(scope['license']['modules']):
+        catalog.ensure_installed_meeting_pack(scope['source_id'])
     results=[]
     for pack in catalog.packs(scope['source_id'],True):
         try:resolve(pack,scope)
