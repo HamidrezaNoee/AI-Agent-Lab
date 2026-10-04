@@ -90,7 +90,7 @@ def directory(con):
         str(r[0]).strip().lower(): {
             "name": str(r[1] or "") + " " + str(r[2] or ""),
             "email": str(r[3] or ""),
-            "active": str(r[4]) == "ACTIVE",
+            "active": str(r[4] or "").strip().upper() == "ACTIVE",
             "unit": str(r[5] or "") if len(r) > 5 else "",
         }
         for r in rows
