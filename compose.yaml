@@ -141,6 +141,8 @@ services:
       KC_METRICS_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
       AVAN_ANTIBOT_URL: http://antibot:8090
+      AVAN_SECURITY_BRIDGE_URL: http://avan:8188/internal/security
+      AVAN_SECURITY_BRIDGE_TOKEN_PATH: /run/secrets/avan_bff_client_secret
     secrets:
       - keycloak_db_password
       - avan_bff_client_secret
@@ -192,7 +194,8 @@ services:
     environment:
       AVAN_STATE_DIR: /var/lib/avan
       AVAN_PUBLIC_ORIGIN: http://127.0.0.1:8188
-      AVAN_ALLOWED_HOSTS: 127.0.0.1,localhost
+      AVAN_ALLOWED_HOSTS: 127.0.0.1,localhost,avan
+      AVAN_SECURITY_BRIDGE_TOKEN_PATH: /run/secrets/avan_bff_client_secret
       AVAN_BUNDLED_IDP: "1"
       AVAN_OIDC_ISSUER: http://auth.localhost:8181/realms/avan
       AVAN_OIDC_JWKS_URL: http://auth.localhost:8181/realms/avan/protocol/openid-connect/certs
