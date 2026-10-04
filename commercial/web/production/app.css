@@ -54,8 +54,11 @@
 /* Dynamic navigation for per-user BPMS bindings. */
 #bound-source-nav,#bound-source-buttons{display:grid;gap:7px}
 #bound-source-nav[hidden]{display:none!important}
-.bound-source-group{display:grid;gap:5px;padding:8px;border:1px solid var(--line,var(--border));border-radius:12px;background:var(--surface-soft,#f4f8fc)}
-.bound-source-name{display:block;padding:2px 5px 5px;color:var(--ink,#203649);font-size:11px;font-weight:800;overflow-wrap:anywhere}
+.bound-source-group{display:grid;gap:5px;padding:8px;border:1px solid var(--line,var(--border));border-radius:12px;background:var(--surface-soft,#f4f8fc);width:100%;min-width:0;max-width:100%;overflow:hidden}
+.bound-source-name{display:block;min-width:0;padding:2px 5px 5px;color:var(--ink,#203649);font-size:11px;font-weight:800;overflow-wrap:anywhere}
+.bound-source-group select{display:block;width:100%;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bound-source-group [data-process-menu]{display:grid;gap:5px;width:100%;min-width:0;max-width:100%;overflow:hidden}
+.bound-source-group button{display:block;width:100%;min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:right}
 #bound-source-buttons button{width:100%;padding:9px 11px}
 @media(max-width:900px){
  #bound-source-nav,#bound-source-buttons{display:flex;flex-wrap:wrap}
