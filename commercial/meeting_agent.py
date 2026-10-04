@@ -151,12 +151,21 @@ def run_agent(question,tools:MeetingTools,*,history=(),client=None,model=None,sy
         for turn in range(7):
             remaining=100-(time.monotonic()-started)
             if remaining<=0:raise AgentUnavailable('مهلت تحلیل پایان یافت؛ پرسش را محدودتر کنید.')
-            result=client.responses.create(model=model,input=messages,tools=definitions,
-                tool_choice='required' if turn==0 else ('none' if turn==6 or calls>=10 else 'auto'),
-                parallel_tool_calls=False,store=False,max_output_tokens=2600,
-                timeout=min(35,remaining),
-                text={'format':{'type':'json_schema','name':'meeting_analysis',
-                     'schema':_model_schema(AgentAnswer),'strict':True}})
+            responses=getattr(client,'responses',None)
+            if responses is None:raise AgentUnavailable('نسخه SDK هوش مصنوعی از Responses API پشتیبانی نمی‌کند.')
+            parse_method=getattr(responses,'parse',None)
+            if callable(parse_method):
+                result=parse_method(model=model,input=messages,tools=definitions,
+                    tool_choice='required' if turn==0 else ('none' if turn==6 or calls>=10 else 'auto'),
+                    parallel_tool_calls=False,store=False,max_output_tokens=2600,
+                    timeout=min(35,remaining),text_format=AgentAnswer)
+            else:
+                result=responses.create(model=model,input=messages,tools=definitions,
+                    tool_choice='required' if turn==0 else ('none' if turn==6 or calls>=10 else 'auto'),
+                    parallel_tool_calls=False,store=False,max_output_tokens=2600,
+                    timeout=min(35,remaining),
+                    text={'format':{'type':'json_schema','name':'meeting_analysis',
+                         'schema':_model_schema(AgentAnswer),'strict':True}})
             if getattr(result,'usage',None):
                 usage['input_tokens']+=result.usage.input_tokens or 0
                 usage['output_tokens']+=result.usage.output_tokens or 0
@@ -176,7 +185,8 @@ def run_agent(question,tools:MeetingTools,*,history=(),client=None,model=None,sy
                                      'output':json.dumps(data,ensure_ascii=False,default=str)})
                 continue
             if not tools.trace:raise AgentInvalid('No evidence read')
-            parsed=_model_validate_json(AgentAnswer,_response_text(result))
+            parsed=getattr(result,'output_parsed',None)
+            if parsed is None:parsed=_model_validate_json(AgentAnswer,_response_text(result))
             claims=[]
             for claim in parsed.claims:
                 if any(ref not in tools.evidence for ref in claim.sources):raise AgentInvalid('Unknown source citation')
