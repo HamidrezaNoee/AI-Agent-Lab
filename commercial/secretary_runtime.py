@@ -221,7 +221,7 @@ def assistant_state(values,task,scope,questions=()):
  if pending:
   message='اطلاعاتی که گرفتم ثبت شد. برای ادامه این موارد را مشخص کنید:\n- '+'\n- '.join(pending)
  elif stage=='invitation':
-  message='اطلاعات دعوت‌نامه کامل است؛ آوان می‌تواند گام اول را ایجاد و برای رئیس جلسه ارسال کند.'
+  message='اطلاعات دعوت‌نامه کامل است. آیا گام اول ایجاد و برای رئیس جلسه ارسال شود؟ می‌توانید بگویید «بله، ایجاد و ارسال کن».'
  elif stage=='invitation_approval':
   message='دعوت‌نامه آماده تصمیم شماست. می‌توانید بگویید «دعوت‌نامه را تأیید می‌کنم» یا اصلاحات موردنظر را بیان کنید.'
  elif stage=='minutes_approval':
@@ -230,15 +230,38 @@ def assistant_state(values,task,scope,questions=()):
   message='اطلاعات این مرحله کامل است و برای ارسال به مرحله بعد آماده است.'
  return {'summary':summary,'message':message,'missing':missing_now,'can_submit':not missing_now,'stage':stage}
 
-def explicit_decision(text,stage,values):
- """Allow automatic routing only for direct human approval/revision commands."""
- if stage not in ('invitation_approval','minutes_approval'):return False
+def _intent_text(text):
  raw=str(text or '').strip().lower().replace('\u200c',' ').replace('ي','ی').replace('ك','ک')
- raw=re.sub(r'\s+',' ',raw)
- decision=values.get('MTG_InvitationApproval' if stage=='invitation_approval' else 'MTG_MinutesApproval')
- approve=any(x in raw for x in ('تأیید می کنم','تایید می کنم','تأیید میکنم','تایید میکنم','موافقم','تصویب می کنم','تصویب میکنم'))
- revise=any(x in raw for x in ('نیاز به اصلاح','اصلاح شود','برگردان','ارجاع برای اصلاح','تأیید نمی کنم','تایید نمی کنم','تأیید نمیکنم','تایید نمیکنم'))
- return (decision=='Approved' and approve) or (decision=='NeedsRevision' and revise)
+ return re.sub(r'\s+',' ',raw)
+
+def explicit_decision_value(text,stage):
+ """Return a native approval only for an unambiguous human command."""
+ if stage not in ('invitation_approval','minutes_approval'):return None
+ raw=_intent_text(text)
+ revise=any(x in raw for x in (
+  'نیاز به اصلاح','اصلاح شود','اصلاح کن','برگردان','ارجاع برای اصلاح',
+  'تأیید نمی کنم','تایید نمی کنم','تأیید نمیکنم','تایید نمیکنم','رد می کنم','رد میکنم'))
+ if revise:return 'NeedsRevision'
+ approve=any(x in raw for x in (
+  'تأیید می کنم','تایید می کنم','تأیید میکنم','تایید میکنم',
+  'موافقم','تصویب می کنم','تصویب میکنم','تأیید و ارسال','تایید و ارسال'))
+ return 'Approved' if approve else None
+
+def apply_explicit_decision(text,stage,values):
+ decision=explicit_decision_value(text,stage)
+ if not decision:return None
+ key='MTG_InvitationApproval' if stage=='invitation_approval' else 'MTG_MinutesApproval'
+ values[key]=decision
+ return decision
+
+def explicit_start_intent(text):
+ """A new PM case is a side effect and needs a direct user instruction."""
+ raw=_intent_text(text)
+ if raw in ('بله','آره','اره','تأیید','تایید','اوکی','باشه'):return True
+ return any(x in raw for x in (
+  'ایجاد و ارسال','ایجاد کن','شروع کن','ثبت کن','ارسال کن',
+  'بفرست برای رئیس','بفرست برای رییس','به رئیس ارسال','به رییس ارسال',
+  'گام اول را ایجاد','فرایند را شروع','فرآیند را شروع'))
 
 def validate(values,task,scope):
  stage=task['stage'];specs=form(task)
