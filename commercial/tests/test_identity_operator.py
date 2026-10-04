@@ -133,3 +133,52 @@ def test_existing_identity_with_ambiguous_avan_roles_is_rejected():
         )
         with pytest.raises(ValueError,match='دقیقاً یک نقش'):
             service.avan_role(subject)
+
+
+
+def test_role_change_replaces_only_avan_realm_role():
+    tenant=str(UUID(int=1))
+    subject=str(UUID(int=2))
+    calls=[]
+
+    def respond(request):
+        calls.append(request)
+        if request.url.path.endswith('/token'):
+            return httpx.Response(200,json={'access_token':'test'})
+        if request.url.path.endswith('/users/'+subject) and request.method=='GET':
+            return httpx.Response(200,json={
+                'id':subject,
+                'username':'person',
+                'attributes':{'tenant_id':[tenant]},
+            })
+        if request.url.path.endswith('/users/'+subject+'/role-mappings/realm') and request.method=='GET':
+            return httpx.Response(200,json=[
+                {'id':'offline','name':'offline_access'},
+                {'id':'expert','name':'Expert'},
+            ])
+        if request.url.path.endswith('/roles/Manager'):
+            return httpx.Response(200,json={'id':'manager','name':'Manager'})
+        if request.url.path.endswith('/users/'+subject+'/role-mappings/realm'):
+            return httpx.Response(204)
+        return httpx.Response(404)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        service=ManagedIdentityService(
+            client,'https://auth.test/realms/avan',
+            '0123456789abcdef',tenant
+        )
+        assert service.set_avan_role(subject,'Manager')=='Manager'
+
+    import json
+    deletes=[
+        json.loads(req.content)
+        for req in calls
+        if req.method=='DELETE' and req.url.path.endswith('/role-mappings/realm')
+    ]
+    posts=[
+        json.loads(req.content)
+        for req in calls
+        if req.method=='POST' and req.url.path.endswith('/role-mappings/realm')
+    ]
+    assert deletes==[[{'id':'expert','name':'Expert'}]]
+    assert posts==[[{'id':'manager','name':'Manager'}]]
