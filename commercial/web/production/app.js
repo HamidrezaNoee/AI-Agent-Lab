@@ -670,11 +670,12 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(isSession)render({...result,draft:result.session,task:result.task||{stage:"invitation",title:result.session?.values?.MTG_MeetingTitle||"جلسه جدید"}},true);
    else render(result,false);
   }
-  async function sendTurn(textValue=null,fromVoice=false,retry=false){
+  async function sendTurn(textValue=null,fromVoice=false,retry=false,errorBubble=null){
    if(locked||sending)return;
    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
    const text=(textValue??notes.value).trim();if(!text)throw Error("پیامی برای ارسال وارد کنید.");
    if(!retry){notes.value="";autosize();addChatBubble("user",text)}
+   if(errorBubble)errorBubble.remove();
    thinkingBubble(retry?"دبیر دوباره در حال بررسی همین پیام است":"دبیر در حال بررسی پیام شماست");
    setSending(true,retry?"در حال تلاش مجدد...":"در حال پردازش پیام...");
    try{
@@ -684,7 +685,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     const wait=chat.querySelector(".chat-bubble.thinking");if(wait)wait.remove();
     const bubble=addChatBubble("assistant","پردازش پیام انجام نشد. "+e.message,"error");
     const actions=el("div","chat-error-actions");
-    const retryButton=link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true),"button secondary");
+    const retryButton=link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true,bubble),"button secondary");
     const editButton=link("✎ ویرایش پیام",()=>{notes.value=text;autosize();notes.focus()},"button secondary");
     add(actions,retryButton,editButton);add(bubble,actions);
     return false;
