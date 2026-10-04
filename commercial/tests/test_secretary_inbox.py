@@ -279,3 +279,29 @@ def test_new_meeting_uses_native_generated_number_before_routing_to_chair(pack,s
     assert result['status']=='awaiting_invitation_approval'
     assert result['case_uid']=='a'*32
     assert submitted[0]['MTG_MeetingNo']=='MTG-1405-001'
+
+
+
+def test_virtual_meeting_pack_drives_real_owned_task_inbox(store,monkeypatch):
+ trusted=c._trusted_meeting_pack()
+ store[c.STORE]=[
+  {'id':'a'*24,'source_id':'source','enabled':True,'revision':1,'adapter':'native_tasks_v1',
+   'process':{'process_uid':trusted['meeting']['process_uid'],'title':'فرایند مدیریت جلسات'},
+   'monitor_lead_minutes':1440,'action_lead_minutes':60,'tools':['read_own_tasks']},
+  {'id':'b'*24,'source_id':'source','enabled':True,'revision':1,'adapter':'native_tasks_v1',
+   'process':{'process_uid':trusted['action']['process_uid'],'title':'فرایند اقدام مصوب جلسه'},
+   'monitor_lead_minutes':1440,'action_lead_minutes':60,'tools':['read_own_tasks']},
+ ]
+ virtual=c.runtime_meeting_pack('source')
+ assert virtual and virtual['runtime_virtual']
+ stage='invitation_approval'
+ monkeypatch.setattr(r,'query',lambda *a:[(
+   'a'*32,100,trusted['meeting']['process_uid'],phpserialize.dumps(V),1,
+   trusted['stages'][stage]['task_uid']
+ )])
+ result=r.inbox(None,S,pack_id=virtual['id'])
+ assert result['packs'][0]['id']==virtual['id']
+ assert result['tasks'][0]['stage']==stage
+ loaded=r.task(None,S,'a'*32,1,virtual['id'])
+ assert loaded['pack']['adapter']=='meeting_v2'
+ assert loaded['stage']==stage
