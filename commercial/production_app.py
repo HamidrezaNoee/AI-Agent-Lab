@@ -146,6 +146,13 @@ def _cookie_options():
             "samesite":"lax","path":"/"}
 
 
+def _oidc_state_cookie_name(state:str)->str:
+    # One cookie per authorization transaction prevents stale tabs, parallel
+    # logins and cookies left by older AVAN builds from overwriting OIDC state.
+    digest=hashlib.sha256(state.encode("utf-8")).hexdigest()[:24]
+    return "avan_oidc_state_"+digest
+
+
 def _principal_for_request(request:Request):
     _purge()
     session_id=request.cookies.get("avan_session","")
@@ -350,14 +357,33 @@ def login(request:Request):
         "code_challenge":challenge,"code_challenge_method":"S256",
     })
     response=RedirectResponse(redirect_url,status_code=302)
-    response.set_cookie("avan_login_state",state,max_age=300,**_cookie_options())
+    # Remove the legacy fixed-name state cookie.  It could collide with a
+    # previous tab/login.  The current transaction gets its own short-lived,
+    # callback-scoped cookie.
+    response.delete_cookie("avan_login_state",path="/")
+    response.set_cookie(
+        _oidc_state_cookie_name(state),
+        state,
+        max_age=300,
+        httponly=True,
+        secure=_public_origin().startswith("https://"),
+        samesite="lax",
+        path="/auth/callback",
+    )
     return response
 
 
 @app.get("/auth/callback")
 def callback(request:Request,code:str|None=None,state:str|None=None):
-    if not code or not state or not hmac.compare_digest(
-        request.cookies.get("avan_login_state",""),state):
+    if not code or not state or len(state)>512:
+        raise HTTPException(status_code=401,detail="درخواست ورود معتبر نیست.")
+    cookie_name=_oidc_state_cookie_name(state)
+    cookie_state=request.cookies.get(cookie_name,"")
+    # Temporary migration fallback for an authorization request that started
+    # immediately before this deployment. New logins never use the old name.
+    if not cookie_state:
+        cookie_state=request.cookies.get("avan_login_state","")
+    if not cookie_state or not hmac.compare_digest(cookie_state,state):
         raise HTTPException(status_code=401,detail="درخواست ورود معتبر نیست.")
     item=pending.pop(state,None)
     if item is None or item["expires"]<time.time():
@@ -419,6 +445,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
         # admin console. Until then no OIDC user obtains an application session.
         _stage_verified_identity(principal,claims,access)
         response=RedirectResponse("/auth/pending",status_code=303)
+        response.delete_cookie(cookie_name,path="/auth/callback")
         response.delete_cookie("avan_login_state",path="/")
         return response
 
@@ -487,6 +514,7 @@ def callback(request:Request,code:str|None=None,state:str|None=None):
                           "refresh_token":data.get("refresh_token")}
     response=RedirectResponse("/",status_code=303)
     response.set_cookie("avan_session",session_id,max_age=SESSION_MAX_SECONDS,**_cookie_options())
+    response.delete_cookie(cookie_name,path="/auth/callback")
     response.delete_cookie("avan_login_state",path="/")
     return response
 
