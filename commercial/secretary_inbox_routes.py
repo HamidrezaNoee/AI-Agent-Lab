@@ -70,6 +70,16 @@ def register(app,authorized,csrf):
           'task':{'stage':'invitation','title':row['values'].get('MTG_MeetingTitle') or 'جلسه جدید'},
           'form':runtime.form(t),'missing':assistant['missing'],'assistant':assistant,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
+
+ async def read_upload(request):
+  from . import secretary_uploads
+  data=bytearray()
+  async for chunk in request.stream():
+   data.extend(chunk)
+   if len(data)>secretary_uploads.MAX_BYTES:raise HTTPException(413,'حداکثر حجم فایل ۸ مگابایت است.')
+  filename=unquote(request.headers.get('x-avan-filename','document'))
+  try:return secretary_uploads.extract(bytes(data),filename,request.headers.get('content-type',''))
+  except ValueError as exc:raise HTTPException(422,str(exc))
  @app.get(base+'/inbox')
  def inbox(source_id:str,pack_id:str|None=Query(None,pattern=r'^[0-9a-f]{24}$'),value=Depends(authorized)):
   def run(con,s,p):
@@ -117,10 +127,39 @@ def register(app,authorized,csrf):
     row=runtime.draft(s,p.subject,t)
     if row['revision']!=body.revision:raise RevisionConflict()
     vals,questions=runtime.extract(body.text,t,row['values'],s,questions=row.get('questions',[]))
-    return access(value,source_id,lambda con,s,p:response(s,p,(fresh:=runtime.task(con,s,case_uid,index,pack_id)),runtime.update(s,p.subject,fresh,body.revision,vals,questions)))
+    decision=runtime.apply_explicit_decision(body.text,t['stage'],vals)
+   def commit(con,s,p):
+    fresh=runtime.task(con,s,case_uid,index,pack_id)
+    updated=runtime.update(s,p.subject,fresh,body.revision,vals,questions,turn_text=body.text)
+    assistant=runtime.assistant_state(updated['values'],fresh,s,updated.get('questions',[]))
+    if body.auto_advance and decision and not assistant['missing']:
+     sent=runtime.submit(s,p.subject,fresh,updated['revision'])
+     return {'advanced':True,'status':sent['status'],'assistant':{
+      'stage':fresh['stage'],'summary':assistant['summary'],'missing':[],
+      'can_submit':False,'message':'تصمیم شما ثبت شد و پرونده به مرحله بعد فرایند منتقل شد.'
+     }}
+    return response(s,p,fresh,updated)
+   return access(value,source_id,commit)
   try:return guard_model(model_run)
   except RevisionConflict:raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
   except ValueError as exc:raise HTTPException(422,str(exc))
+ @app.post(base+'/tasks/{case_uid}/{index}/attachment')
+ async def task_attachment(source_id:str,case_uid:str,index:int,pack_id:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
+  text,meta=await read_upload(request)
+  s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
+  prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط را استخراج کن.\n\n'+text
+  def model_run():
+   with run_slot((str(p.tenant_id),p.subject)):
+    row=runtime.draft(s,p.subject,t)
+    if row['revision']!=revision:raise RevisionConflict()
+    vals,questions=runtime.extract(prompt,t,row['values'],s,questions=row.get('questions',[]))
+   return access(value,source_id,lambda con,s,p:response(
+    s,p,(fresh:=runtime.task(con,s,case_uid,index,pack_id)),
+    runtime.update(s,p.subject,fresh,revision,vals,questions,turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)))
+  try:return guard_model(model_run)
+  except RevisionConflict:raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
+  except ValueError as exc:raise HTTPException(422,str(exc))
+
  @app.post(base+'/tasks/{case_uid}/{index}/submit')
  def send_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
   if not body.confirmed:raise HTTPException(422,'ارسال را بعد از بازبینی تأیید کنید.')
@@ -152,10 +191,9 @@ def register(app,authorized,csrf):
   Ref(case_uid=case_uid,index=index,pack_id=pack_id)
   def run(con,s,p):
    from .agent_voice import speak
-   import json
    t=runtime.task(con,s,case_uid,index,pack_id);row=runtime.draft(s,p.subject,t)
-   allowed=t['pack']['stages'][t['stage']]['fields']
-   text='\n'.join(str(allowed.get(k,{}).get('label') or k)+': '+(json.dumps(v,ensure_ascii=False) if isinstance(v,dict) else str(v)) for k,v in {**t['native'],**row['values']}.items() if k in allowed and not any(x in k for x in ('File','Evidence','History','Json')))
+   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
+   text=(assistant.get('summary','')+'\n'+assistant.get('message','')).strip()
    with run_slot((str(p.tenant_id),p.subject)):data,count=speak({'clarification':text},part)
    return Response(data,media_type='audio/mpeg',headers={'Cache-Control':'no-store','X-AVAN-Audio-Parts':str(count)})
   return access(value,source_id,run)
@@ -170,20 +208,60 @@ def register(app,authorized,csrf):
  def load_session(source_id:str,identifier:str,value=Depends(authorized)):
   def run(con,s,p):
    row,t=runtime.session_load(s,p.subject,identifier)
-   return {'session':{k:v for k,v in row.items() if k not in ('actor','scope')},'form':runtime.form(t),'missing':runtime.gaps(row['values'],t),'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
+   return session_response(s,p,row,t)
   return access(value,source_id,run)
  @app.post(base+'/sessions/{identifier}/edit')
  def edit_session(source_id:str,identifier:str,body:Edit,value=Depends(csrf)):
   return access(value,source_id,lambda con,s,p:runtime.session_update(s,p.subject,identifier,body.revision,body.values))
  @app.post(base+'/sessions/{identifier}/turn')
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
+  principal=value[2]
   def run(con,s,p):
    row,t=runtime.session_load(s,p.subject,identifier)
    if row['revision']!=body.revision:raise RevisionConflict()
-   with run_slot((str(p.tenant_id),p.subject)):vals,questions=runtime.extract(body.text,t,row['values'],s,questions=row.get('questions',[]))
-   # Separate source scope revalidation after the external model call.
-   return access(value,source_id,lambda con,s,p:runtime.session_update(s,p.subject,identifier,body.revision,vals,questions))
+   with run_slot((str(principal.tenant_id),p.subject)):
+    vals,questions=runtime.extract(body.text,t,row['values'],s,questions=row.get('questions',[]))
+   def commit(con,s,p):
+    current,t=runtime.session_load(s,p.subject,identifier)
+    if current['revision']!=body.revision:raise RevisionConflict()
+    updated=runtime.session_update(s,p.subject,identifier,body.revision,vals,questions,turn_text=body.text)
+    assistant=runtime.assistant_state(updated['values'],t,s,updated.get('questions',[]))
+    if body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
+     sent=runtime.session_send(s,p.subject,identifier,updated['revision'])
+     return {'advanced':True,'status':sent['status'],'case_uid':sent.get('case_uid'),'assistant':{
+      'stage':'invitation','summary':runtime.assistant_state(sent['values'],t,s,[])['summary'],
+      'missing':[],'can_submit':False,
+      'message':'گام اول فرایند ایجاد شد و دعوت‌نامه برای بررسی رئیس جلسه ارسال شد.'
+     }}
+    return session_response(s,p,updated,t)
+   # Revalidate source binding and revision after the external model call.
+   return access(value,source_id,commit)
   return access(value,source_id,run)
+ @app.post(base+'/sessions/{identifier}/attachment')
+ async def session_attachment(source_id:str,identifier:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
+  text,meta=await read_upload(request);principal=value[2]
+  prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط با دعوت‌نامه را استخراج کن.\n\n'+text
+  def run(con,s,p):
+   row,t=runtime.session_load(s,p.subject,identifier)
+   if row['revision']!=revision:raise RevisionConflict()
+   with run_slot((str(principal.tenant_id),p.subject)):
+    vals,questions=runtime.extract(prompt,t,row['values'],s,questions=row.get('questions',[]))
+   return access(value,source_id,lambda con,s,p:session_response(
+    s,p,(runtime.session_update(s,p.subject,identifier,revision,vals,questions,
+      turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)),runtime.session_load(s,p.subject,identifier)[1]))
+  return access(value,source_id,run)
+
+ @app.post(base+'/sessions/{identifier}/speech')
+ def session_speech(source_id:str,identifier:str,part:int=0,value=Depends(csrf)):
+  def run(con,s,p):
+   from .agent_voice import speak
+   row,t=runtime.session_load(s,p.subject,identifier)
+   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
+   text=(assistant.get('summary','')+'\n'+assistant.get('message','')).strip()
+   with run_slot((str(p.tenant_id),p.subject)):data,count=speak({'clarification':text},part)
+   return Response(data,media_type='audio/mpeg',headers={'Cache-Control':'no-store','X-AVAN-Audio-Parts':str(count)})
+  return access(value,source_id,run)
+
  @app.post(base+'/sessions/{identifier}/submit')
  def send_session(source_id:str,identifier:str,body:Submit,value=Depends(csrf)):
   if not body.confirmed:raise HTTPException(422,'دعوت‌نامه را بازبینی و ارسال را تأیید کنید.')
