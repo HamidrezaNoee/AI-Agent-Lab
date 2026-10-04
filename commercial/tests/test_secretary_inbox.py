@@ -305,3 +305,26 @@ def test_virtual_meeting_pack_drives_real_owned_task_inbox(store,monkeypatch):
  loaded=r.task(None,S,'a'*32,1,virtual['id'])
  assert loaded['pack']['adapter']=='meeting_v2'
  assert loaded['stage']==stage
+
+
+
+def test_explicit_action_and_review_voice_intents_are_deterministic():
+ values={}
+ assert r.apply_explicit_workflow_intent('اقدام تکمیل شد','action_execution',values)=='completion'
+ assert values['MTGA_SubmissionType']=='CompletionClaim'
+ assert values['MTGA_ProgressPercent']=='100'
+ assert r.explicit_advance_intent('اقدام تکمیل شد','action_execution','completion')
+
+ values={}
+ assert r.apply_explicit_workflow_intent('تأیید و ببند','action_review',values)=='closed'
+ assert values['MTGA_ReviewStatus2']=='Closed'
+ assert r.explicit_advance_intent('تأیید و ببند','action_review','closed')
+
+ values={}
+ assert r.apply_explicit_workflow_intent('برای اصلاح برگردان','action_review',values)=='rework'
+ assert values['MTGA_ReviewStatus2']=='Rework'
+ assert r.explicit_advance_intent('برای اصلاح برگردان','action_review','rework')
+
+ assert r.explicit_advance_intent('صورتجلسه را ثبت و ارسال کن','minutes')
+ assert r.explicit_advance_intent('جلسه را خاتمه بده','monitoring')
+ assert not r.explicit_advance_intent('به نظرم خوب است','action_execution')
