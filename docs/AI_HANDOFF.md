@@ -1,5 +1,26 @@
 # AVAN handoff — 2026-10-01
 
+## Update 2026-10-04: fix fresh realm import crash (follow-up to e06be0b)
+
+The next owner log identifies the actual persistent startup failure: Keycloak
+26.7.3 cannot deserialize user-profile unmanagedAttributePolicy="DISABLED".
+It repeatedly rolls back realm import and restarts; this is not mere slow bootstrap.
+Verified against upstream 26.7.3 UPConfig.java: only ENABLED, ADMIN_VIEW and
+ADMIN_EDIT are enum values. Omit the property for the default disabled policy.
+
+Fix both local and HTTPS realm import templates. Preserve all declared attributes,
+admin-only tenant_id editing, CAPTCHA, conditional OTP, clients and secrets.
+Seven focused tests passed: nested profile JSON/default policy/tenant protections
+for both templates and Bash realm readiness HTTP response tests. No live Keycloak
+import or Windows PowerShell execution was available here.
+
+For the current failed fresh import: git pull, restart keycloak with the same
+Compose files, then run scripts/start-avan-verified.ps1 -SkipBuild.
+The JSON is bind-mounted, so no image rebuild is required. Do not delete volumes
+or force-overwrite an existing realm; IGNORE_EXISTING remains unchanged.
+If discovery still fails, inspect the new startup error before further mutations.
+
+
 ## Update 2026-10-04: realm readiness and existing-process role activation
 
 Baseline 721bc48. The owner's transcript confirms `down -v` removed four persistent
