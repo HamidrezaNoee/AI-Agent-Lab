@@ -87,7 +87,7 @@ def directory(con):
     if len(rows) > 5000:
         raise ProductionUnavailable("Directory exceeds configured bounds")
     return {
-        str(r[0]): {
+        str(r[0]).strip().lower(): {
             "name": str(r[1] or "") + " " + str(r[2] or ""),
             "email": str(r[3] or ""),
             "active": str(r[4]) == "ACTIVE",
@@ -133,7 +133,7 @@ def verified_scope(con, principal, source_id=None):
         # accepted as access evidence; they exist solely for one-time migration.
         binding = bound.get(user.get("subject"))
         if binding and binding.get("status") == "active":
-            return str(binding.get("external_user_id") or "")
+            return str(binding.get("external_user_id") or "").strip().lower()
         return ""
 
     current_uid = external_uid(current)
