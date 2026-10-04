@@ -328,3 +328,21 @@ def test_explicit_action_and_review_voice_intents_are_deterministic():
  assert r.explicit_advance_intent('صورتجلسه را ثبت و ارسال کن','minutes')
  assert r.explicit_advance_intent('جلسه را خاتمه بده','monitoring')
  assert not r.explicit_advance_intent('به نظرم خوب است','action_execution')
+
+
+
+def test_secretary_asks_missing_information_one_question_at_a_time(pack):
+ t=task(pack,'invitation',{})
+ missing=r.gaps({},t)
+ assert len(missing)>1
+ state=r.assistant_state({},t,S)
+ assert missing[0]['question'] in state['message']
+ assert missing[1]['question'] not in state['message']
+ assert 'مرحله‌به‌مرحله' in state['message']
+
+
+def test_assignment_evidence_allows_persian_unicode_and_spacing_normalization():
+ notes='رئیس جلسه administrator و دبیر جلسه admini است.'
+ assert r._evidence_in_notes('رئیس جلسه  administrator',notes)
+ assert r._evidence_in_notes('دبير جلسه admini',notes)
+ assert not r._evidence_in_notes('جلسه ساعت ۱۰ است',notes)
