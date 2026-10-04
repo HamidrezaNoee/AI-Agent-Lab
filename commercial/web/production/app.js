@@ -16,7 +16,16 @@ function sourceApi(sourceId,path){
 async function request(url,options={}){
  const headers={"Accept":"application/json",...(options.headers||{})};
  const scoped=url.match(/^\/api\/sources\/([^/]+)\/(ask|questions|meetings(?:\/[^/]+)?|agent\/(status|history)|reports\/actions(?:\/ask)?|monitor(?:\/[^/]+)?|voice\/(speech|transcribe))(?:\?|$)/);
- if(scoped&&app.processChoices[scoped[1]]?.packId)headers["X-AVAN-Process-Pack"]=app.processChoices[scoped[1]].packId;
+ if(scoped){
+  const sourceId=scoped[1],choice=app.processChoices[sourceId],manifest=app.processManifests[sourceId];
+  // Only a typed meeting_v2 workspace may narrow analytical endpoints.
+  // Generic native_tasks_v1 selections are inbox navigation, not analytical
+  // context; sending them caused the BPMS assistant to fail with a misleading 403.
+  if(choice?.packId && manifest?.process?.id===choice.packId &&
+     manifest?.process?.adapter==="meeting_v2" && manifest?.process?.renderer==="meeting"){
+    headers["X-AVAN-Process-Pack"]=choice.packId;
+  }
+ }
  if(options.background)headers["X-AVAN-BACKGROUND"]="1";
  if(options.method==="POST" && app.csrf)headers["X-AVAN-CSRF"]=app.csrf;
  const {background,...fetchOptions}=options;
