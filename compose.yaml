@@ -109,8 +109,12 @@ services:
     command:
       - |
         export PGPASSWORD="$$(cat /run/secrets/keycloak_db_password)"
-        if [ "$$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT to_regclass('public.realm')")" = "realm" ]; then
+        if [ "$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT to_regclass('public.realm')")" = "realm" ]; then
           psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "UPDATE realm SET login_theme='avan' WHERE name='avan' AND COALESCE(login_theme,'') <> 'avan';"
+          FLOW_ID="$(psql -h keycloak-db -U keycloak -d avan_keycloak -Atqc "SELECT af.id FROM authentication_flow af JOIN realm r ON r.id=af.realm_id WHERE r.name='avan' AND af.alias='avan-browser' ORDER BY af.id LIMIT 1")"
+          if [ -n "$FLOW_ID" ]; then
+            psql -h keycloak-db -U keycloak -d avan_keycloak -v ON_ERROR_STOP=1 -c "UPDATE realm SET browser_flow='$FLOW_ID' WHERE name='avan' AND COALESCE(browser_flow,'') <> '$FLOW_ID';"
+          fi
         fi
     secrets:
       - keycloak_db_password
@@ -170,7 +174,7 @@ services:
       ui-config-init:
         condition: service_completed_successfully
       antibot:
-        condition: service_started
+        condition: service_healthy
       keycloak-db:
         condition: service_healthy
       keycloak-realm-theme-init:
