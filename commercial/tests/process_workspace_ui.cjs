@@ -5,8 +5,8 @@ const dom=new JSDOM(html,{url:'https://avan.example',runScripts:'outside-only'})
 w.structuredClone=structuredClone;w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLMediaElement.prototype.pause=()=>{};
 const sid='1'.repeat(24),meeting='2'.repeat(24),purchase='3'.repeat(24),calls=[],requestHeaders=[];
 const manifests={
- [meeting]:{process:{id:meeting,title:'جلسات',renderer:'meeting',processes:[]},section:'inbox',navigation:[{id:'inbox',label:'کارتابل من',count:1},{id:'drafts',label:'جلسه جدید',view:'drafts',count:0},{id:'approvals',label:'تأییدهای من',count:1}],tasks:[{case_uid:'a'.repeat(32),index:1,pack_id:meeting,stage:'invitation_approval',stage_label:'تأیید دعوت‌نامه',title:'محرمانه جلسه',number:'100',available:true}],notifications:[],sessions:[]},
- [purchase]:{process:{id:purchase,title:'خرید خارجی',renderer:'generic',processes:[{process_uid:'c'.repeat(32),title:'خرید خارجی'}]},section:'inbox',navigation:[{id:'inbox',label:'درخواست‌های خرید',view:'tasks',count:1},{id:'overview',label:'نمای خرید',view:'overview',count:1}],tasks:[{case_uid:'b'.repeat(32),index:2,pack_id:purchase,stage:'review',stage_label:'بررسی خرید',title:'خرید کالا',number:'200',available:true,read_only:true}],notifications:[],sessions:[]}
+ [meeting]:{process:{id:meeting,title:'جلسات',adapter:'meeting_v2',renderer:'meeting',processes:[]},section:'inbox',navigation:[{id:'inbox',label:'کارتابل من',count:1},{id:'drafts',label:'جلسه جدید',view:'drafts',count:0},{id:'approvals',label:'تأییدهای من',count:1}],tasks:[{case_uid:'a'.repeat(32),index:1,pack_id:meeting,stage:'invitation_approval',stage_label:'تأیید دعوت‌نامه',title:'محرمانه جلسه',number:'100',available:true}],notifications:[],sessions:[]},
+ [purchase]:{process:{id:purchase,title:'خرید خارجی',adapter:'native_tasks_v1',renderer:'generic',processes:[{process_uid:'c'.repeat(32),title:'خرید خارجی'}]},section:'inbox',navigation:[{id:'inbox',label:'درخواست‌های خرید',view:'tasks',count:1},{id:'overview',label:'نمای خرید',view:'overview',count:1}],tasks:[{case_uid:'b'.repeat(32),index:2,pack_id:purchase,stage:'review',stage_label:'بررسی خرید',title:'خرید کالا',number:'200',available:true,read_only:true}],notifications:[],sessions:[]}
 };
 let hold=false,release;
 w.fetch=async(url,options={})=>{calls.push(url);requestHeaders.push({url,headers:{...(options.headers||{})}});let value;
@@ -33,6 +33,12 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,25));
  assert(w.document.querySelector('[data-section="overview"]'));
  const main=w.document.getElementById('main').textContent;assert(main.includes('خرید خارجی'));assert(main.includes('بررسی خرید'));assert(!main.includes('محرمانه جلسه'));
  assert(!calls.some(url=>url.includes('/secretary')&&url.includes(purchase)));
+
+ // The dedicated intelligent-meeting entry must ignore a currently selected
+ // generic process and reopen the typed meeting_v2 workflow.
+ w.document.querySelector('[data-page="source-secretary"][data-source-id="'+sid+'"]').click();await tick();await tick();
+ assert.equal(w.testAVAN.app.processChoices[sid].packId,meeting);
+ assert(w.document.getElementById('main').textContent.includes('اجرای هوشمند فرایند جلسات'));
 
  // Generic inbox packs must never narrow analytical assistant endpoints.
  requestHeaders.length=0;
