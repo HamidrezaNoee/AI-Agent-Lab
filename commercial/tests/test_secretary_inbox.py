@@ -346,3 +346,24 @@ def test_assignment_evidence_allows_persian_unicode_and_spacing_normalization():
  assert r._evidence_in_notes('رئیس جلسه  administrator',notes)
  assert r._evidence_in_notes('دبير جلسه admini',notes)
  assert not r._evidence_in_notes('جلسه ساعت ۱۰ است',notes)
+
+
+
+def test_secretary_provider_failures_are_classified_safely():
+ class Timeout:
+  status_code=None
+  __class__=type('APITimeoutError',(object,),{})
+ # Build representative exception classes by name without importing OpenAI internals.
+ APITimeoutError=type('APITimeoutError',(Exception,),{})
+ APIConnectionError=type('APIConnectionError',(Exception,),{})
+ AuthenticationError=type('AuthenticationError',(Exception,),{})
+ RateLimitError=type('RateLimitError',(Exception,),{})
+ BadRequestError=type('BadRequestError',(Exception,),{})
+ assert 'زمان مقرر' in r._model_failure(APITimeoutError())
+ assert 'ارتباط AVAN' in r._model_failure(APIConnectionError())
+ auth=AuthenticationError();auth.status_code=401
+ assert 'API Key' in r._model_failure(auth)
+ rate=RateLimitError();rate.status_code=429
+ assert 'سهمیه' in r._model_failure(rate)
+ bad=BadRequestError();bad.status_code=400
+ assert 'Structured Output' in r._model_failure(bad)
