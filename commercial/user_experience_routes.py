@@ -65,6 +65,12 @@ def register(app,authorized,csrf):
 
  @app.post("/api/support/client-event")
  def client_event(body:ClientEvent,value=Depends(csrf)):
+  allowed={
+   "API_ERROR","API_ACTION","NAVIGATE",
+   "CLIENT_NETWORK_ERROR","CLIENT_REQUEST_ABORTED","CLIENT_UI_ERROR",
+  }
+  if body.event not in allowed:
+   raise HTTPException(422,"نوع رویداد سمت کاربر مجاز نیست.")
   principal,_=_identity(value)
   ux.audit(str(principal.tenant_id),principal.subject,body.event,body.detail)
   return {"saved":True}
