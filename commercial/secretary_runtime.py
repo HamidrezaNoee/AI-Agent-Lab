@@ -630,12 +630,37 @@ def submit(scope,actor,task,revision,*,pm=None):
   try:
    pm.submit_stage(task['case_uid'],task['pack']['stages'][task['stage']],scope['external_user_id'],labelled(row['values'],task,scope),task['index'])
    row['status']='sent'
-  except Exception:
-   row['status']='reconciliation_required'
+  except Exception as exc:
+   detail=_session_failure_text(exc)
+   row.update(status='reconciliation_required',last_error=detail,
+              recovery=('route_only' if 'ارسال پرونده به مرحله بعد' in detail else 'manual'))
    with agent_storage.transaction() as tx:tx.put(key,row)
    raise
   with agent_storage.transaction() as tx:
    tx.put(key,row);tx.audit(scope['tenant_id'],actor,'SECRETARY_NATIVE_TASK_SENT',{'case_uid':task['case_uid'],'stage':task['stage']})
+  return {'status':'sent','revision':row['revision']}
+ finally:
+  if owned:pm.close()
+
+
+def reconcile_task_route(scope,actor,task,revision,*,pm=None):
+ owned=pm is None
+ if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
+ try:
+  index=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
+  if index!=task['index']:raise RevisionConflict('Native task changed')
+  key=task_key(scope,task['case_uid'],task['index'])
+  with agent_storage.transaction() as tx:
+   row=tx.get(key,lock=True)
+   if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
+   if row['revision']!=revision or row['status']!='reconciliation_required':raise RevisionConflict()
+  native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
+  if not _submitted_subset(native,row['values']):
+   raise ValueError('اطلاعات ثبت‌شده ProcessMaker با پیش‌نویس تأییدشده AVAN یکسان نیست؛ Route خودکار متوقف شد.')
+  pm.route(task['case_uid'],index)
+  row.update(status='sent',revision=revision+1,last_error='',recovery='')
+  with agent_storage.transaction() as tx:
+   tx.put(key,row);tx.audit(scope['tenant_id'],actor,'SECRETARY_NATIVE_TASK_ROUTE_RECOVERED',{'case_uid':task['case_uid'],'stage':task['stage'],'index':index})
   return {'status':'sent','revision':row['revision']}
  finally:
   if owned:pm.close()
@@ -692,6 +717,14 @@ def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_te
   if attachment:attachments=(attachments+[attachment])[-20:]
   row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments,reply=reply or '');tx.put(key,items)
  return row
+
+def _submitted_subset(current,submitted):
+ current=normalize(current);submitted=normalize(submitted)
+ if isinstance(submitted,dict):
+  if not isinstance(current,dict):return False
+  return all(k in current and _submitted_subset(current[k],v) for k,v in submitted.items())
+ return str(current)==str(submitted)
+
 
 def _session_failure_text(exc):
  detail=getattr(exc,'detail',None)
