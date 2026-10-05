@@ -169,6 +169,11 @@ def register(app,authorized,csrf):
   if not body.confirmed:raise HTTPException(422,'ارسال را بعد از بازبینی تأیید کنید.')
   Ref(case_uid=case_uid,index=index,pack_id=pack_id)
   return access(value,source_id,lambda con,s,p:runtime.submit(s,p.subject,runtime.task(con,s,case_uid,index,pack_id),body.revision))
+ @app.post(base+'/tasks/{case_uid}/{index}/reconcile-route')
+ def reconcile_task_route(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
+  if not body.confirmed:raise HTTPException(422,'ادامه Route همین پرونده را صریحاً تأیید کنید.')
+  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
+  return access(value,source_id,lambda con,s,p:runtime.reconcile_task_route(s,p.subject,runtime.task(con,s,case_uid,index,pack_id),body.revision))
  @app.post(base+'/tasks/{case_uid}/{index}/documents')
  def documents(source_id:str,case_uid:str,index:int,pack_id:str,value=Depends(csrf)):
   from .secretary_evidence import native_documents
