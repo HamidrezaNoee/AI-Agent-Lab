@@ -62,3 +62,13 @@ identity, preserving existing rows even when the model reuses row 1; explicit ed
 retain existing row semantics. No fuzzy identity assignment or live model change.
 Validate with test_secretary_ai_context.py; production-model linguistic accuracy
 and live PM acceptance still require organization-specific examples.
+
+## Username and relative-date extraction repair — 2026-10-05
+
+Read USR_USERNAME from the same source's USERS directory and expose it in bounded
+AI candidates; exact username matching preserves dots and token boundaries.
+The runtime supplies Tehran time plus today/tomorrow Jalali dates. Explicit
+participant/agenda headings omitted by the model trigger the existing one retry,
+then a visible clarification instead of silent success. Summary includes agenda
+presenters and minutes. Tests verify data plumbing and simulated model omissions,
+not paid-model extraction accuracy; live deployment remains unverified.

@@ -82,7 +82,7 @@ def query(con, sql, args=()):
 def directory(con):
     rows = query(
         con,
-        "SELECT u.USR_UID,u.USR_FIRSTNAME,u.USR_LASTNAME,u.USR_EMAIL,u.USR_STATUS,d.DEP_TITLE FROM USERS u LEFT JOIN DEPARTMENT d ON d.DEP_UID=u.DEP_UID",
+        "SELECT u.USR_UID,u.USR_FIRSTNAME,u.USR_LASTNAME,u.USR_EMAIL,u.USR_STATUS,d.DEP_TITLE,u.USR_USERNAME FROM USERS u LEFT JOIN DEPARTMENT d ON d.DEP_UID=u.DEP_UID",
     )
     if len(rows) > 5000:
         raise ProductionUnavailable("Directory exceeds configured bounds")
@@ -92,6 +92,7 @@ def directory(con):
             "email": str(r[3] or ""),
             "active": str(r[4] or "").strip().upper() == "ACTIVE",
             "unit": str(r[5] or "") if len(r) > 5 else "",
+            "username": str(r[6] or "").strip() if len(r) > 6 else "",
         }
         for r in rows
     }
@@ -569,4 +570,5 @@ def authorized_meeting_snapshot(con, scope, *, maximum=MAX_MEETINGS, meeting_id=
                 }
             )
     return [r[0] for r in parents], not more
+
 

@@ -2,6 +2,8 @@
 import json
 import re
 import unicodedata
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 MAX_CONTEXT_CHARS = 48000
 MAX_PEOPLE = 80
@@ -28,6 +30,17 @@ def name_matches(name, text):
     return any(len(t) > 2 and t in words and re.search(r'[؀-ۿ]', t) for t in tokens)
 
 
+def username_matches(username, text):
+    username = str(username or '').strip()
+    return bool(username and re.search(r'(?<![\w.@-])'+re.escape(username)+r'(?![\w.@-])', text, re.IGNORECASE))
+
+def calendar_context():
+    import jdatetime
+    now = datetime.now(ZoneInfo('Asia/Tehran'))
+    return {'timezone':'Asia/Tehran','now':now.isoformat(),
+            'jalali_today':jdatetime.date.fromgregorian(date=now.date()).strftime('%Y/%m/%d'),
+            'jalali_tomorrow':jdatetime.date.fromgregorian(date=now.date()+timedelta(days=1)).strftime('%Y/%m/%d')}
+
 def build_context(notes, task, current, scope, fields, questions=()):
     if not isinstance(notes,str) or not notes.strip() or len(notes)>18000:
         raise ValueError('متن را در بخش‌های حداکثر ۱۸ هزار نویسه ارسال کنید.')
@@ -45,18 +58,19 @@ def build_context(notes, task, current, scope, fields, questions=()):
         name=normalize(person.get('name',''))
         if uid in referenced:
             people[uid]={'name':person.get('name','')}
-        elif name and ((' '+name+' ') in (' '+text+' ') or name_matches(name, notes)):
+        elif username_matches(person.get('username'), notes) or (name and ((' '+name+' ') in (' '+text+' ') or name_matches(name, notes))):
             candidates.append((uid,person.get('name','')))
     if len(people)+len(candidates)>MAX_PEOPLE:
         raise ValueError('افراد این درخواست زیاد هستند؛ اطلاعات را در چند بخش وارد کنید.')
     people.update({uid:{'name':name} for uid,name in candidates})
     for uid in people:
         people[uid]['unit']=scope['directory'][uid].get('unit','')
+        people[uid]['username']=scope['directory'][uid].get('username','')
     # Include every matching candidate; never resolve ambiguous names by directory order.
-    active={k:{'name':v.get('name',''),'unit':v.get('unit','')} for k,v in scope['directory'].items() if v.get('active')}
+    active={k:{'name':v.get('name',''),'unit':v.get('unit',''),'username':v.get('username','')} for k,v in scope['directory'].items() if v.get('active')}
     if len(active)<=MAX_PEOPLE:
         people=active
-    payload={'notes':notes,'stage':task['stage'],'current':current,
+    payload={'calendar':calendar_context(),'notes':notes,'stage':task['stage'],'current':current,
              'previous_questions':list(questions)[-12:],'context':native,
              'fields':compact(fields),'directory':people,
              'directory_incomplete':len(people)<len(active)}

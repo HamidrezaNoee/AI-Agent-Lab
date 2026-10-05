@@ -140,12 +140,13 @@ def test_review_version_beats_equal_second_timestamp():
 
 
 def test_processmaker_directory_normalizes_uid_and_status():
-    row=("ABCDEF0123456789ABCDEF0123456789","Ali","Test","mail@example.com","active","IT")
+    row=("ABCDEF0123456789ABCDEF0123456789","Ali","Test","mail@example.com","active","IT","mgr.strategy")
     with patch.object(store,"query",return_value=[row]):
         users=store.directory(None)
     uid="abcdef0123456789abcdef0123456789"
     assert uid in users
     assert users[uid]["active"] is True
+    assert users[uid]["username"] == "mgr.strategy"
 
 
 def test_verified_scope_accepts_normalized_bound_processmaker_uid():

@@ -86,3 +86,36 @@ def test_explicit_addition_does_not_overwrite_existing_rows(field,identity):
  assert result=={'1':{identity:'existing','detail':'keep'},'2':{identity:'new'}}
  assert old=={'1':{identity:'existing','detail':'keep'}}
  assert r._merge_assignment(field,result,{'1':{identity:'new'}},'اضافه کن')==result
+
+def test_usernames_reach_model_even_when_display_names_are_persian(pack):
+ scope=copy.deepcopy(S)
+ scope['directory']={f'{i:032x}':{'active':True,'name':f'Employee {i}'} for i in range(200)}
+ names=['administrator','ceo','mgr.strategy','mgr.commercial','mgr.foreign','mgr.finance','mgr.legal','mgr.sales']
+ for i,name in enumerate(names,300):
+  scope['directory'][f'{i:032x}']={'active':True,'name':'کاربر سازمان','username':name}
+ notes='رئیس جلسه ceo و دبیر administrator\nشرکت‌کنندگان:\n'+'\n'.join(names)+'\nدستور جلسه:\n1- mgr.strategy برنامه توسعه را 15 دقیقه بررسی کند.'
+ data=ctx.build_context(notes,task(pack,'invitation'),{},scope,{})
+ assert {v['username'] for v in data['directory'].values()}==set(names)
+ assert data['calendar']['timezone']=='Asia/Tehran'
+ from commercial.secretary_workflow import jalali_instant
+ assert (jalali_instant(data['calendar']['jalali_tomorrow'],'00:00')-jalali_instant(data['calendar']['jalali_today'],'00:00')).days==1
+
+@pytest.mark.parametrize('text,expected',[
+ ('mgr.strategy برنامه را ارائه کند',True),
+ ('MGR.STRATEGY',True),
+ ('mgr.strategy2',False),
+ ('xmgr.strategy',False),
+ ('mgr.strategy@example.com',False),
+])
+def test_username_boundaries(text,expected):
+ assert ctx.username_matches('mgr.strategy',text)==expected
+
+def test_omitted_explicit_sections_retry_then_report_instead_of_silent_success(pack):
+ calls=[]
+ def create(**kw):
+  calls.append(kw)
+  return SimpleNamespace(status='completed',output_text='{"assignments":[],"questions":[]}')
+ _,questions=r.extract('شرکت‌کنندگان:\nceo\nدستور جلسه:\n1- بررسی AVAN',task(pack,'invitation'),{},S,
+  client=SimpleNamespace(responses=SimpleNamespace(create=create)),model='test')
+ assert len(calls)==2
+ assert len(questions)==2 and all('استخراج نشد' in q for q in questions)
