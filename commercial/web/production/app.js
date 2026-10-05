@@ -1223,7 +1223,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
  const m=root();m.classList.add("secretary-workspace");heading(m,"دبیر هوشمند","از دعوت تا پیگیری مصوبات؛ هر کار در زمان و کارتابل خودش.");
  if(!sourceId){add(m,note("اتصال BPMS را از منوی کنار انتخاب کنید."));return}
  const base=sourceApi(sourceId,"/secretary"),out=el("div"),editor=el("div");add(m,out,editor);
- const post=(path,body={})=>request(base+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+ const post=(path,body={},options={})=>request(base+path,{...options,method:"POST",headers:{"Content-Type":"application/json",...(options.headers||{})},body:JSON.stringify(body)});
  const checked=fn=>async()=>{try{await fn()}catch(e){toast(e.message)}};
  const stages=[
   ["invitation","دعوت جلسه","دبیر"],
@@ -1393,13 +1393,44 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   notes.maxLength=18000;notes.rows=1;notes.setAttribute("aria-label","پیام به دبیر هوشمند");
   notes.placeholder=isSession?"پیامتان را بنویسید؛ مثلاً زمان، مکان، رئیس، شرکت‌کنندگان و دستور جلسه...":"تصمیم، اصلاحات یا اطلاعات این مرحله را بنویسید...";
   const tools=el("div","secretary-composer-tools"),statusLine=el("div","secretary-send-status muted");
-  let sending=false,sendMessage;
+  let sending=false,sendMessage,stopButton=null,currentController=null,currentOperationId=null;
   function autosize(){notes.style.height="auto";notes.style.height=Math.min(notes.scrollHeight,180)+"px"}
   notes.addEventListener("input",autosize);
+  function beginOperation(kind){
+   const id=makeRequestId(),controller=new AbortController();
+   currentOperationId=id;currentController=controller;app.activeOperation={id,kind,controller};
+   return {id,controller};
+  }
+  function clearOperation(id){
+   if(currentOperationId===id){currentOperationId=null;currentController=null}
+   if(app.activeOperation?.id===id)app.activeOperation=null;
+  }
   function setSending(value,label=""){
    sending=value;composer.classList.toggle("is-sending",value);notes.disabled=value;
    if(sendMessage)sendMessage.disabled=value||locked;
+   if(stopButton)stopButton.hidden=!value;
    statusLine.textContent=label;
+  }
+  async function cancelCurrent(){
+   if(!sending||!currentOperationId)return;
+   const id=currentOperationId;
+   statusLine.textContent="در حال توقف پردازش...";
+   try{
+    void request("/api/operations/"+encodeURIComponent(id)+"/cancel",{method:"POST",audit:false});
+   }finally{
+    currentController?.abort();
+   }
+  }
+  function renderMessageError(error,text,fromVoice,errorBubble=null){
+   if(errorBubble)errorBubble.remove();
+   const stopped=error?.code==="ABORTED";
+   const bubble=addChatBubble("assistant",stopped?"پردازش به درخواست شما متوقف شد.":"خطا در پردازش پیام: "+errorDescription(error),stopped?"cancelled":"error");
+   const actions=el("div","chat-error-actions");
+   const retryButton=link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true,bubble),"button secondary");
+   const editButton=link("✎ ویرایش پیام",()=>{notes.value=text;autosize();notes.focus()},"button secondary");
+   const logsButton=link("☷ مشاهده لاگ",()=>select("support-logs"),"button secondary");
+   add(actions,retryButton,editButton,logsButton);add(bubble,actions);
+   return bubble;
   }
   function thinkingBubble(label="دبیر در حال بررسی پیام شماست"){
    const bubble=el("div","chat-bubble assistant thinking"),row=el("div","typing-row"),dots=el("span","typing-dots");
@@ -1423,33 +1454,31 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     editor.replaceChildren(note(result.assistant?.message||"پرونده به مرحله بعد منتقل شد."));
     await load();return
    }
-   if(fromVoice)await detachedSpeech();
+   if(app.preferences.secretary_auto_play_voice)await detachedSpeech();
    if(isSession)render({...result,draft:result.session,task:result.task||{stage:"invitation",title:result.session?.values?.MTG_MeetingTitle||"جلسه جدید"}},true);
    else render(result,false);
   }
   async function sendTurn(textValue=null,fromVoice=false,retry=false,errorBubble=null){
-   if(locked||sending)return;
+   if(locked||sending)return false;
    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
    const text=(textValue??notes.value).trim();if(!text)throw Error("پیامی برای ارسال وارد کنید.");
    if(!retry){notes.value="";autosize();addChatBubble("user",text)}
    if(errorBubble)errorBubble.remove();
    thinkingBubble(retry?"دبیر دوباره در حال بررسی همین پیام است":"دبیر در حال بررسی پیام شماست");
-   setSending(true,retry?"در حال تلاش مجدد...":"در حال پردازش پیام...");
+   const operation=beginOperation("secretary_turn");
+   setSending(true,retry?"در حال تلاش مجدد...":"در حال پردازش پیام... برای توقف از دکمه «توقف» استفاده کنید.");
    try{
-    const result=await post(path+"/turn"+query,{revision:d.revision,text,auto_advance:!!info.oauth_connected});
-    await applyResult(result,fromVoice);
+    const result=await post(path+"/turn"+query,{
+     revision:d.revision,text,auto_advance:!!info.oauth_connected,request_id:operation.id
+    },{signal:operation.controller.signal,requestId:operation.id});
+    await applyResult(result,fromVoice);return true;
    }catch(e){
     const wait=chat.querySelector(".chat-bubble.thinking");if(wait)wait.remove();
-    const bubble=addChatBubble("assistant","پردازش پیام انجام نشد. "+e.message,"error");
-    const actions=el("div","chat-error-actions");
-    const retryButton=link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true,bubble),"button secondary");
-    const editButton=link("✎ ویرایش پیام",()=>{notes.value=text;autosize();notes.focus()},"button secondary");
-    add(actions,retryButton,editButton);add(bubble,actions);
-    return false;
+    renderMessageError(e,text,fromVoice,errorBubble);return false;
    }finally{
+    clearOperation(operation.id);
     if(composer.isConnected)setSending(false,"");
    }
-   return true;
   }
 
   const file=el("input","secretary-hidden-input");file.type="file";
@@ -1458,32 +1487,31 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const attachButton=link("فایل",()=>file.click(),"button icon-button");attachButton.title="افزودن فایل";
   add(tools,attachButton,file);
 
-  const voiceAuto=el("input");voiceAuto.type="checkbox";voiceAuto.id="secretary-voice-auto-"+Math.random().toString(36).slice(2);
-  const voiceAutoLabel=el("label","voice-auto");voiceAutoLabel.htmlFor=voiceAuto.id;add(voiceAutoLabel,voiceAuto,el("span","","ارسال خودکار صوت"));
-  attachVoiceInput(tools,notes,false,sourceId,async text=>{if(voiceAuto.checked)await sendTurn(text,true)},true);
-  add(tools,voiceAutoLabel);
-
-  sendMessage=link("↑",()=>sendTurn().catch(e=>toast(e.message)),"button primary secretary-send");sendMessage.title="ارسال پیام";add(tools,sendMessage);
+  attachVoiceInput(tools,notes,false,sourceId,async text=>{if(app.preferences.voice_auto_send)await sendTurn(text,true)},true);
+  stopButton=link("■ توقف",cancelCurrent,"button danger secretary-stop");stopButton.hidden=true;stopButton.title="توقف پردازش جاری";
+  sendMessage=link("↑",()=>sendTurn().catch(e=>toast(errorDescription(e))),"button primary secretary-send");sendMessage.title="ارسال پیام";add(tools,stopButton,sendMessage);
   notes.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendTurn().catch(err=>toast(err.message))}});
 
   async function uploadConversationFile(selected){
    if(!selected||sending)return;
    if(dirty){statusLine.textContent="ابتدا اصلاحات دستی فرم را ذخیره کنید.";file.value="";return}
    addChatBubble("user","📎 "+selected.name);thinkingBubble("دبیر در حال خواندن فایل است");
-   setSending(true,"در حال خواندن و استخراج اطلاعات فایل...");
+   const operation=beginOperation("secretary_attachment");
+   setSending(true,"در حال خواندن و استخراج اطلاعات فایل... برای توقف از دکمه «توقف» استفاده کنید.");
    try{
     const sep=query?"&":"?";
     const result=await request(base+path+"/attachment"+query+sep+"revision="+encodeURIComponent(d.revision),{
-     method:"POST",
+     method:"POST",requestId:operation.id,signal:operation.controller.signal,
      headers:{"Content-Type":selected.type||"application/octet-stream","X-AVAN-Filename":encodeURIComponent(selected.name)},
      body:selected
     });
     await applyResult(result,false);
    }catch(e){
     const wait=chat.querySelector(".chat-bubble.thinking");if(wait)wait.remove();
-    addChatBubble("assistant","خواندن فایل انجام نشد. "+e.message,"error");throw e;
+    const bubble=addChatBubble("assistant",e.code==="ABORTED"?"پردازش فایل به درخواست شما متوقف شد.":"خطا در پردازش فایل: "+errorDescription(e),e.code==="ABORTED"?"cancelled":"error");
+    add(bubble,add(el("div","chat-error-actions"),link("☷ مشاهده لاگ",()=>select("support-logs"),"button secondary")));
    }finally{
-    file.value="";if(composer.isConnected)setSending(false,"");
+    clearOperation(operation.id);file.value="";if(composer.isConnected)setSending(false,"");
    }
   }
   file.addEventListener("change",()=>uploadConversationFile(file.files?.[0]).catch(e=>toast(e.message)));
