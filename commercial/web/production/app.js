@@ -231,7 +231,10 @@ async function request(url,options={}){
    try{
     const e=await response.json();
     if(typeof e.detail==="string")message=e.detail;
-    else if(e.detail?.message)message=e.detail.message;
+    else if(Array.isArray(e.detail)){
+     const validation=e.detail.map(x=>x?.msg).filter(Boolean);
+     if(validation.length)message=validation.join("؛ ");
+    }else if(e.detail?.message)message=e.detail.message;
     if(typeof e.code==="string")code=e.code;
     if(typeof e.request_id==="string")serverRequestId=e.request_id;
    }catch{}
