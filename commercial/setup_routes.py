@@ -435,6 +435,18 @@ def settings(session=Depends(_ready)):
     return setup.masked_settings()
 
 
+class UIConfig(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    calendar:Literal["jalali","gregorian"]="jalali"
+
+
+@router.post("/api/ui/save")
+def ui_save(body:UIConfig,session=Depends(_ready)):
+    config=body.model_dump()
+    setup.put_setting("ui",config)
+    return {"saved":True,**config}
+
+
 class AppearanceElement(BaseModel):
     model_config=ConfigDict(extra="forbid")
     id:str=Field(min_length=1,max_length=40)
