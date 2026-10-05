@@ -48,7 +48,9 @@ class FlowGraphQuery(BaseModel):
  role:Literal["all","secretary","chair","participant","presenter","action_owner","assignee"]="all"
  owner_uid:str|None=Field(None,pattern=r"^[a-fA-F0-9]{32}$")
  unit:str|None=Field(None,max_length=160)
- period:Literal["all","30d","90d","365d"]="90d"
+ action_scope:Literal["all","with_actions","without_actions"]="all"
+ sort:Literal["newest","oldest","progress_desc","progress_asc","stage","waiting"]="newest"
+ period:Literal["all","30d","90d","365d","custom"]="90d"
  start:date|None=None
  end:date|None=None
  offset:int=Field(0,ge=0,le=5000)
@@ -85,7 +87,7 @@ def _authorized_person(scope,requested):
 def _date_bounds(args):
  if args.start:
   return datetime.combine(args.start,datetime.min.time()),datetime.combine(args.end+timedelta(days=1),datetime.min.time())
- if args.period=="all":return None,None
+ if args.period in ("all","custom"):return None,None
  days={"30d":30,"90d":90,"365d":365}[args.period]
  return datetime.now()-timedelta(days=days),None
 
@@ -138,7 +140,7 @@ def _batch_delegations(con,ids):
   chunk=ids[start:start+150]
   if not chunk:continue
   part=query(con,
-   "SELECT d.APP_UID,d.DEL_INDEX,d.TAS_UID,d.USR_UID,d.DEL_THREAD_STATUS,d.DEL_FINISH_DATE,t.TAS_TITLE "
+   "SELECT d.APP_UID,d.DEL_INDEX,d.TAS_UID,d.USR_UID,d.DEL_THREAD_STATUS,d.DEL_FINISH_DATE,d.DEL_DELEGATE_DATE,t.TAS_TITLE "
    "FROM APP_DELEGATION d LEFT JOIN TASK t ON t.TAS_UID=d.TAS_UID WHERE d.APP_UID IN ("
    +",".join("%s" for _ in chunk)+") ORDER BY d.APP_UID,d.DEL_INDEX",
    chunk)
@@ -147,16 +149,20 @@ def _batch_delegations(con,ids):
  return rows
 
 
-def _child_ids(data):
+def _child_map(data):
  try:mapping=json.loads(data.get("MTG_ActionCaseMapJson") or "{}")
- except (ValueError,TypeError):return []
- if not isinstance(mapping,dict):return []
- result=[]
- for value in mapping.values():
+ except (ValueError,TypeError):return {}
+ if not isinstance(mapping,dict):return {}
+ result={}
+ for number,value in mapping.items():
   uid=value.get("caseUid") if isinstance(value,dict) else None
   if isinstance(uid,str) and len(uid)==32 and all(c in "0123456789abcdefABCDEF" for c in uid):
-   result.append(uid)
- return list(dict.fromkeys(result))
+   result[str(number)]=uid
+ return result
+
+
+def _child_ids(data):
+ return list(dict.fromkeys(_child_map(data).values()))
 
 
 def _nodes(current_indices,completed):
@@ -202,6 +208,77 @@ def _load_candidates(con,scope,args,person_uid,pack):
   params)
  truncated=len(rows)>MAX_SCAN
  return rows[:MAX_SCAN],truncated
+
+
+def _action_definition_rows(data):
+ result={}
+ for index,row in enumerate(_rows(data.get("MTG_Actions")),1):
+  number=text(cell(row,"MTG_ActionNo",1)) or str(index)
+  result[number]={
+   "number":number,
+   "title":text(cell(row,"MTG_ActionDescription",2)) or "اقدام جلسه",
+   "owner_uid":text(cell(row,"MTG_ActionOwnerUID",3)),
+  }
+ return result
+
+
+def _action_branch(scope,number,definition,child_uid,child_row,child_data,delegations,by_task):
+ owner_uid=text(child_data.get("MTGA_OwnerUserUID")) or definition.get("owner_uid","")
+ owner=_person(scope,owner_uid) if owner_uid else None
+ current_stage=None
+ current_owner=None
+ for d in delegations:
+  stage=by_task.get(str(d[2]))
+  if stage in ("action_execution","action_review") and str(d[4])=="OPEN":
+   current_stage=stage
+   current_owner=_person(scope,d[3]) if d[3] else owner
+   break
+ closed=bool(child_row and (_status(child_row[2])=="completed" or text(child_data.get("MTGA_ReviewStatus"))=="Closed" or text(child_data.get("MTGA_ReviewStatus2"))=="Closed"))
+ if closed:
+  state="closed";stage_label="بسته‌شده";progress=100
+ elif current_stage=="action_review":
+  state="review";stage_label="بررسی اقدام";progress=75
+ elif current_stage=="action_execution":
+  state="execution";stage_label="اجرای اقدام"
+  raw=child_data.get("MTGA_ProgressPercent")
+  try:progress=max(0,min(99,int(raw))) if raw not in (None,"") else 35
+  except (ValueError,TypeError):progress=35
+ elif child_uid:
+  state="created";stage_label="ایجادشده";progress=10
+ else:
+  state="pending";stage_label="در انتظار ایجاد";progress=0
+ return {
+  "action_no":number,
+  "title":text(child_data.get("MTGA_ActionDescription")) or definition.get("title") or "اقدام جلسه",
+  "case_uid":child_uid,
+  "case_number":(int(child_row[1]) if child_row and str(child_row[1]).isdigit() else (str(child_row[1]) if child_row else None)),
+  "owner":owner,
+  "current_owner":current_owner or owner,
+  "stage":current_stage,
+  "stage_label":stage_label,
+  "state":state,
+  "progress_percent":progress,
+ }
+
+
+def _history(scope,case_uid,child_ids,by_case,by_task):
+ events=[]
+ for uid in [case_uid,*child_ids]:
+  for d in by_case.get(uid,[]):
+   stage=by_task.get(str(d[2]))
+   if not stage:continue
+   person=_person(scope,d[3]) if d[3] else None
+   events.append({
+    "case_uid":uid,
+    "index":d[1],
+    "stage":stage,
+    "stage_title":next((title for key,title,_ in STAGES if key==stage),stage),
+    "owner":person,
+    "state":"current" if str(d[4])=="OPEN" else "done",
+    "delegated_at":str(d[6] or ""),
+    "finished_at":str(d[5] or ""),
+   })
+ return sorted(events,key=lambda x:(x["delegated_at"],x["index"]))[-40:]
 
 
 def load(con,scope,args:FlowGraphQuery):
@@ -270,19 +347,23 @@ def load(con,scope,args:FlowGraphQuery):
    if stage and str(d[4])=="OPEN":
     current.append(STAGE_INDEX[stage])
     if d[3]:owners.append(str(d[3]))
-  for cid in _child_ids(data):
-   crow=child_by_uid.get(cid);cd=child_data.get(cid,{})
-   if not crow:continue
+
+  definitions=_action_definition_rows(data)
+  mapping=_child_map(data)
+  numbers=list(dict.fromkeys([*definitions.keys(),*mapping.keys()]))
+  action_branches=[]
+  for number in numbers:
+   cid=mapping.get(number)
+   crow=child_by_uid.get(cid) if cid else None
+   cd=child_data.get(cid,{}) if cid else {}
+   branch=_action_branch(scope,number,definitions.get(number,{"number":number}),cid,crow,cd,by_case.get(cid,[]) if cid else [],by_task)
+   action_branches.append(branch)
    action_counts["total"]+=1
-   closed=_status(crow[2])=="completed" or text(cd.get("MTGA_ReviewStatus"))=="Closed" or text(cd.get("MTGA_ReviewStatus2"))=="Closed"
-   if closed:action_counts["closed"]+=1
-   for d in by_case.get(cid,[]):
-    stage=by_task.get(str(d[2]))
-    if stage and str(d[4])=="OPEN":
-     idx=STAGE_INDEX[stage];current.append(idx)
-     if stage=="action_review":action_counts["review"]+=1
-     else:action_counts["open"]+=1
-     if d[3]:owners.append(str(d[3]))
+   if branch["state"]=="closed":action_counts["closed"]+=1
+   elif branch["state"]=="review":action_counts["review"]+=1
+   else:action_counts["open"]+=1
+   if branch["stage"]:current.append(STAGE_INDEX[branch["stage"]])
+   if branch["current_owner"] and branch["current_owner"].get("uid"):owners.append(branch["current_owner"]["uid"])
   raw_status=_status(parent[2])
   completed=raw_status=="completed"
   current=list(dict.fromkeys(current))
@@ -307,6 +388,8 @@ def load(con,scope,args:FlowGraphQuery):
    "progress_percent":_progress(current,completed),
    "nodes":_nodes(current,completed),
    "actions":action_counts,
+   "action_branches":action_branches,
+   "history":_history(scope,case_uid,[x for x in mapping.values()],by_case,by_task),
    "created_at":str(parent[4] or ""),
    "finished_at":str(parent[5] or ""),
    "meeting_date":text(data.get("MTG_persiandate_MeetingStartDateTime") or data.get("MTG_MeetingStartDateTime")),
@@ -322,8 +405,16 @@ def load(con,scope,args:FlowGraphQuery):
   if args.role!="all" and args.role not in item["my_roles"]:return False
   if args.owner_uid and args.owner_uid not in {o["uid"] for o in item["current_owners"]}:return False
   if args.unit and args.unit not in {o["unit"] for o in item["current_owners"]}:return False
+  if args.action_scope=="with_actions" and not item["actions"]["total"]:return False
+  if args.action_scope=="without_actions" and item["actions"]["total"]:return False
   return True
  filtered=[x for x in rows if keep(x)]
+ if args.sort=="oldest":filtered.sort(key=lambda x:(x["created_at"],str(x["case_number"])))
+ elif args.sort=="progress_desc":filtered.sort(key=lambda x:(-x["progress_percent"],str(x["case_number"])))
+ elif args.sort=="progress_asc":filtered.sort(key=lambda x:(x["progress_percent"],str(x["case_number"])))
+ elif args.sort=="stage":filtered.sort(key=lambda x:(STAGE_INDEX.get(x["current_stage"],99),str(x["case_number"])))
+ elif args.sort=="waiting":filtered.sort(key=lambda x:(person_uid not in {o["uid"] for o in x["current_owners"]},-x["progress_percent"],str(x["case_number"])))
+ else:filtered.sort(key=lambda x:(x["created_at"],str(x["case_number"])),reverse=True)
  total=len(filtered)
  page=filtered[args.offset:args.offset+args.limit]
  summary={
