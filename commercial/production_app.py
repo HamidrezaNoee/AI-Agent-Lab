@@ -886,9 +886,6 @@ def _source_store_response(source_id, action, principal):
         raise HTTPException(status_code=503,detail="ارتباط با ProcessMaker انتخاب‌شده برقرار نیست.")
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(status_code=503,
-                            detail="داده‌های BPMS انتخاب‌شده قابل بازیابی نیستند.")
 
 
 def _source_capabilities(source:dict,modules)->list[str]:
