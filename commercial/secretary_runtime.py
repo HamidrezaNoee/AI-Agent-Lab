@@ -665,6 +665,31 @@ def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_te
   row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments,reply=reply or '');tx.put(key,items)
  return row
 
+def _session_failure_text(exc):
+ detail=getattr(exc,'detail',None)
+ text=str(detail if detail is not None else exc or exc.__class__.__name__)
+ return re.sub(r'[\r\n\t]+',' ',text).strip()[:500]
+
+
+def _continue_session_case(scope,row,task,pm,save_row):
+ stage=task['pack']['stages']['invitation']
+ index=pm.assigned(row['case_uid'],stage['task_uid'],scope['external_user_id'])
+ # The conversational draft is already human-reviewed. Persist it before any
+ # trigger so a later REST/trigger failure never leaves an empty PM Draft.
+ initial=labelled(row['values'],task,scope)
+ pm.set_variables(row['case_uid'],index,initial,operation='ثبت اطلاعات اولیه دعوت‌نامه')
+ for trigger in stage['before']:
+  pm.execute_trigger(row['case_uid'],trigger,operation='اجرای Trigger قبل از فرم')
+ # Native BEFORE triggers own system-generated meeting number/form date.
+ generated=normalize(pm.variables(row['case_uid']))
+ for key in ('MTG_MeetingNo','MTG_FRMTG001_FormDate'):
+  if generated.get(key) and not row['values'].get(key):row['values'][key]=generated[key]
+ save_row(row)
+ pm.submit_stage(row['case_uid'],stage,scope['external_user_id'],labelled(row['values'],task,scope),index)
+ row.update(status='awaiting_invitation_approval',last_error='')
+ return row
+
+
 def session_send(scope,actor,identifier,revision,*,pm=None):
  row,task=session_load(scope,actor,identifier)
  validate(row['values'],task,scope)
@@ -680,21 +705,41 @@ def session_send(scope,actor,identifier,revision,*,pm=None):
   with agent_storage.transaction() as tx:
    items=tx.get(key,[],lock=True);current=next((r for r in items if r['id']==identifier and r['scope']==scope_stamp(scope)),None)
    if not current or current['revision']!=revision or current['status']!='draft':raise RevisionConflict()
-   row=copy.deepcopy(current);row.update(status='executing',revision=revision+1);tx.put(key,[row if r['id']==identifier else r for r in items])
+   row=copy.deepcopy(current);row.update(status='executing',revision=revision+1,last_error='');tx.put(key,[row if r['id']==identifier else r for r in items])
   try:
-   stage=task['pack']['stages']['invitation'];row['case_uid']=pm.create_for(stage['task_uid'],{});save_row(row)
-   index=pm.assigned(row['case_uid'],stage['task_uid'],scope['external_user_id'])
-   for trigger in stage['before']:pm.call('PUT',f"/cases/{row['case_uid']}/execute-trigger/{trigger}")
-   # The native BEFORE trigger owns the meeting number and form date. Pull
-   # those generated values back before submitting the conversational draft.
-   generated=normalize(pm.variables(row['case_uid']))
-   for key in ('MTG_MeetingNo','MTG_FRMTG001_FormDate'):
-    if generated.get(key) and not row['values'].get(key):row['values'][key]=generated[key]
+   stage=task['pack']['stages']['invitation']
+   initial=labelled(row['values'],task,scope)
+   row['case_uid']=pm.create_for(stage['task_uid'],initial)
    save_row(row)
-   pm.submit_stage(row['case_uid'],stage,scope['external_user_id'],labelled(row['values'],task,scope),index)
-   row['status']='awaiting_invitation_approval'
-  except Exception:
-   row['status']='reconciliation_required';save_row(row);raise
+   _continue_session_case(scope,row,task,pm,save_row)
+  except Exception as exc:
+   row.update(status='reconciliation_required',last_error=_session_failure_text(exc));save_row(row);raise
+  save_row(row);return row
+ finally:
+  if owned:pm.close()
+
+
+def session_reconcile(scope,actor,identifier,revision,*,pm=None):
+ row,task=session_load(scope,actor,identifier)
+ validate(row['values'],task,scope)
+ if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
+ if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
+ if not row.get('case_uid'):raise ValueError('پرونده ProcessMaker برای تطبیق ثبت نشده است.')
+ owned=pm is None
+ if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],'invitation'),bearer=token(scope,actor))
+ key=source_user_key('secretary_sessions',scope,actor)
+ def save_row(row):
+  with agent_storage.transaction() as tx:
+   items=tx.get(key,[],lock=True);tx.put(key,[row if r['id']==identifier else r for r in items])
+ try:
+  with agent_storage.transaction() as tx:
+   items=tx.get(key,[],lock=True);current=next((r for r in items if r['id']==identifier and r['scope']==scope_stamp(scope)),None)
+   if not current or current['revision']!=revision or current['status']!='reconciliation_required':raise RevisionConflict()
+   row=copy.deepcopy(current);row.update(status='executing',revision=revision+1,last_error='');tx.put(key,[row if r['id']==identifier else r for r in items])
+  try:
+   _continue_session_case(scope,row,task,pm,save_row)
+  except Exception as exc:
+   row.update(status='reconciliation_required',last_error=_session_failure_text(exc));save_row(row);raise
   save_row(row);return row
  finally:
   if owned:pm.close()
