@@ -1424,12 +1424,16 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
   async function cancelCurrent(){
    if(!sending||!currentOperationId)return;
-   const id=currentOperationId;
-   statusLine.textContent="در حال توقف پردازش...";
+   const id=currentOperationId,controller=currentController;
+   statusLine.textContent="در حال توقف پردازش در سرور...";
+   if(stopButton)stopButton.disabled=true;
    try{
-    void request("/api/operations/"+encodeURIComponent(id)+"/cancel",{method:"POST",audit:false});
-   }finally{
-    currentController?.abort();
+    await request("/api/operations/"+encodeURIComponent(id)+"/cancel",{method:"POST",audit:false});
+    statusLine.textContent="پردازش متوقف شد.";
+    controller?.abort();
+   }catch(e){
+    statusLine.textContent="توقف پردازش تأیید نشد: "+errorDescription(e);
+    if(stopButton)stopButton.disabled=false;
    }
   }
   function renderMessageError(error,text,fromVoice,errorBubble=null){
