@@ -162,9 +162,12 @@ def summarize(cases, delegations, scope, args, now, tz, complete=True):
             bucket[key] += 1
         c, f = native_time(created, tz), native_time(finished, tz)
         if c:
-            import jdatetime
-
-            monthly[jdatetime.date.fromgregorian(date=c.date()).strftime("%Y/%m")] += 1
+            calendar=str((get_setting("ui") or {}).get("calendar","jalali")).lower()
+            if calendar=="gregorian":
+                monthly[c.date().strftime("%Y/%m")] += 1
+            else:
+                import jdatetime
+                monthly[jdatetime.date.fromgregorian(date=c.date()).strftime("%Y/%m")] += 1
         if status == "COMPLETED":
             if c and f and f >= c:
                 hours = (f - c).total_seconds() / 3600
@@ -302,7 +305,7 @@ class ProcessBITools:
                 "type": "function",
                 "name": "analyze_processes",
                 "strict": False,
-                "description": "Read native ProcessMaker workflow BI across authorized processes: case counts, statuses, task delays, monthly trends, unit/person workload and cycle times. Filter by process UID and case creation dates. No business-form fields are inferred. Dates: custom start/end YYYY-MM-DD (end exclusive), named months are Jalali.",
+                "description": "Read native ProcessMaker workflow BI across authorized processes: case counts, statuses, task delays, monthly trends, unit/person workload and cycle times. Filter by process UID and case creation dates. No business-form fields are inferred. Dates: custom start/end YYYY-MM-DD (end exclusive); named months follow the AVAN global calendar setting.",
                 "parameters": BIQuery.model_json_schema(),
             }
         ]
