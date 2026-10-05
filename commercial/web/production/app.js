@@ -551,7 +551,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
  for(const [control,label] of [[person,"شخص"],[period,"بازه زمانی"],[role,"نقش"],[status,"وضعیت"],[stage,"مرحله فعلی"],[owner,"مسئول فعلی"],[unit,"واحد سازمانی"]])control.setAttribute("aria-label",label);
  for(const [v,t] of [["90d","۹۰ روز گذشته"],["30d","۳۰ روز گذشته"],["365d","یک سال گذشته"],["all","همه زمان‌ها"]]){const o=el("option","",t);o.value=v;add(period,o)}
  const field=(label,control)=>add(el("label","meeting-flow-filter"),el("span","",label),control);
- add(filters,field("جستجو",search),field("شخص",person),field("بازه زمانی",period),field("نقش من",role),field("وضعیت",status),field("مرحله فعلی",stage),field("مسئول فعلی",owner),field("واحد سازمانی",unit));
+ add(filters,field("جستجو",search),field("شخص",person),field("بازه زمانی",period),field("نقش در پرونده",role),field("وضعیت",status),field("مرحله فعلی",stage),field("مسئول فعلی",owner),field("واحد سازمانی",unit));
  const actions=el("div","meeting-flow-actions"),refresh=link("↻ به‌روزرسانی",()=>loadGraph(true),"button secondary");
  add(actions,refresh);add(shell,head,filters,actions);
  const body=el("div","meeting-flow-body");add(shell,body);add(target,shell);
@@ -605,7 +605,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
    refill(owner,r.filters?.owners,"uid","name");refill(unit,r.filters?.units);
    body.replaceChildren();
    const stats=el("div","meeting-flow-kpis");
-   for(const [value,label] of [[r.summary.total_cases,"کل پرونده‌ها"],[r.summary.active_cases,"فعال"],[r.summary.completed_cases,"تکمیل‌شده"],[r.summary.waiting_my_action,"منتظر اقدام من"],[r.summary.average_progress+"٪","میانگین پیشرفت"]]){
+   for(const [value,label] of [[r.summary.total_cases,"کل پرونده‌ها"],[r.summary.active_cases,"فعال"],[r.summary.completed_cases,"تکمیل‌شده"],[r.summary.waiting_my_action,"منتظر اقدام شخص"],[r.summary.average_progress+"٪","میانگین پیشرفت"]]){
     add(stats,add(el("div","meeting-flow-kpi"),el("span","",label),el("strong","",typeof value==="number"?fmt(value):value)));
    }add(body,stats);
    const who=el("div","meeting-flow-scope","نمایش برای "+(r.person?.name||r.person?.username||"کاربر انتخاب‌شده"));add(body,who);
