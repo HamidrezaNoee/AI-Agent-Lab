@@ -42,6 +42,9 @@ class PM:
     safe=re.sub(r'[\r\n\t]+',' ',message).strip()[:240]
     logger.warning('ProcessMaker rejected operation=%s method=%s path=%s status=%s message=%s',
                    label,method,path,r.status_code,safe or '-')
+    low=safe.casefold()
+    if 'mtg_meeting_sequence' in low and ("doesn't exist" in low or 'does not exist' in low):
+     raise HTTPException(409,'زیرساخت شماره‌گذاری جلسات ProcessMaker آماده نیست: جدول MTG_MEETING_SEQUENCE در دیتابیس Workspace وجود ندارد.')
     raise HTTPException(502,f'ProcessMaker عملیات «{label}» را نپذیرفت (HTTP {r.status_code}).')
    result=r.json() if r.content else {}
    if isinstance(result,dict) and result.get('error'):
