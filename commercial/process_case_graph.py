@@ -66,6 +66,12 @@ class FlowGraphQuery(BaseModel):
   return self
 
 
+class FlowSnapshotQuery(BaseModel):
+ model_config=ConfigDict(extra="forbid")
+ pack_id:str=Field(pattern=r"^[0-9a-f]{24}$")
+ person_uid:str|None=Field(None,pattern=r"^[a-fA-F0-9]{32}$")
+
+
 def _pack(scope,pack_id):
  packs=catalog.runtime_meeting_packs(scope["source_id"])
  pack=next((p for p in packs if p.get("id")==pack_id),None)
@@ -248,6 +254,36 @@ def _action_branch(scope,number,definition,child_uid,child_row,child_data,delega
   state="created";stage_label="ایجادشده";progress=10
  else:
   state="pending";stage_label="در انتظار ایجاد";progress=0
+ history=[]
+ for d in delegations:
+  stage=by_task.get(str(d[2]))
+  if stage not in ("action_execution","action_review"):continue
+  history.append({
+   "case_uid":str(d[0]),"index":d[1],"stage":stage,
+   "stage_title":next((title for key,title,_ in STAGES if key==stage),stage),
+   "owner":_person(scope,d[3]) if d[3] else owner,
+   "state":"current" if str(d[4])=="OPEN" else "done",
+   "delegated_at":str(d[6] or ""),"finished_at":str(d[5] or ""),
+  })
+ nodes=[]
+ for stage_key,title,role in (x for x in STAGES if x[0] in ("action_execution","action_review")):
+  events=[x for x in history if x["stage"]==stage_key]
+  people=[]
+  for event in events:
+   person=event.get("owner")
+   if person and person.get("uid") and person["uid"] not in {p["uid"] for p in people}:people.append(person)
+  if owner and owner.get("uid") and owner["uid"] not in {p["uid"] for p in people}:people.append(owner)
+  entered=min((x["delegated_at"] for x in events if x["delegated_at"]),default="")
+  finished=max((x["finished_at"] for x in events if x["finished_at"]),default="")
+  open_now=any(x["state"]=="current" for x in events)
+  if closed or (stage_key=="action_execution" and current_stage=="action_review") or (events and not open_now and finished):
+   node_state="done"
+  elif open_now:
+   node_state="current"
+  else:
+   node_state="future"
+  nodes.append({"key":stage_key,"title":title,"role":role,"state":node_state,
+                "entered_at":entered,"finished_at":finished,"people":people})
  return {
   "action_no":number,
   "title":text(child_data.get("MTGA_ActionDescription")) or definition.get("title") or "اقدام جلسه",
@@ -259,6 +295,8 @@ def _action_branch(scope,number,definition,child_uid,child_row,child_data,delega
   "stage_label":stage_label,
   "state":state,
   "progress_percent":progress,
+  "history":history,
+  "nodes":nodes,
  }
 
 
@@ -280,6 +318,193 @@ def _history(scope,case_uid,child_ids,by_case,by_task):
     "finished_at":str(d[5] or ""),
    })
  return sorted(events,key=lambda x:(x["delegated_at"],x["index"]))[-40:]
+
+
+def _unique_people(items):
+ result=[]
+ seen=set()
+ for person in items:
+  if not person or not person.get("uid") or person["uid"] in seen:continue
+  seen.add(person["uid"]);result.append(person)
+ return result
+
+
+def _stage_nodes(scope,data,history,current_indices,completed):
+ secretary_uid=text(data.get("MTG_SecretaryUserUID"))
+ chair_uid=text(data.get("MTG_ChairUserUID"))
+ secretary=_person(scope,secretary_uid) if secretary_uid else None
+ chair=_person(scope,chair_uid) if chair_uid else None
+ result=[]
+ for node in _nodes(current_indices,completed):
+  events=[event for event in history if event["stage"]==node["key"]]
+  people=[event.get("owner") for event in events if event.get("owner")]
+  if node["key"] in ("invitation","minutes","monitoring") and secretary:people.append(secretary)
+  if node["key"] in ("invitation_approval","minutes_approval") and chair:people.append(chair)
+  entered=min((event["delegated_at"] for event in events if event["delegated_at"]),default="")
+  finished=max((event["finished_at"] for event in events if event["finished_at"]),default="")
+  result.append({**node,
+   "entered_at":entered,"finished_at":finished,"people":_unique_people(people),
+   "secretary":secretary,"chair":chair,
+  })
+ return result
+
+
+def _scalar(value,limit=5000):
+ if value in (None,""):return ""
+ if isinstance(value,dict):
+  value=value.get("label",value.get("value",value.get("uid","")))
+ if isinstance(value,(str,int,float,bool)):
+  raw=str(value).strip()
+  return raw[:limit]
+ return ""
+
+
+def _collected_fields(pack,data,stage):
+ fields=(pack.get("stages",{}).get(stage,{}) or {}).get("fields",{}) or {}
+ result=[]
+ for key,spec in fields.items():
+  if key not in data:continue
+  if any(part in key.casefold() for part in ("password","secret","token","file","evidence","json","history")):continue
+  value=data.get(key)
+  if isinstance(value,(dict,list)) or value in (None,""):continue
+  rendered=_scalar(value)
+  if not rendered:continue
+  result.append({"key":key,"label":str(spec.get("label") or key),"value":rendered})
+ return result[:120]
+
+
+def _grid_details(row,exclude=()):
+ result=[]
+ for key,value in row.items():
+  if str(key) in exclude or str(key).endswith("_label"):continue
+  rendered=_scalar(value,1200)
+  if rendered:result.append({"key":str(key),"value":rendered})
+ return result[:40]
+
+
+def _authorized_case(scope,person_uid,data,case_uid,child_ids,child_data,history_people):
+ roles=_roles(data,person_uid,person_uid in history_people.get(case_uid,set()))
+ if roles:return roles
+ for cid in child_ids:
+  cd=child_data.get(cid,{})
+  if text(cd.get("MTGA_OwnerUserUID"))==person_uid or person_uid in history_people.get(cid,set()):
+   result=[]
+   if text(cd.get("MTGA_OwnerUserUID"))==person_uid:result.append("action_owner")
+   if person_uid in history_people.get(cid,set()):result.append("assignee")
+   return result
+ raise ProductionAccessDenied("این پرونده خارج از دامنه مجاز شماست.")
+
+
+def snapshot(con,scope,case_uid,body:FlowSnapshotQuery):
+ if 2 not in set(scope["license"]["modules"]):
+  raise ProductionAccessDenied("ماژول مدیریت جلسات در لایسنس فعال نیست.")
+ if len(case_uid)!=32 or any(c not in "0123456789abcdefABCDEF" for c in case_uid):
+  raise ValueError("شناسه پرونده معتبر نیست.")
+ pack=_pack(scope,body.pack_id)
+ person_uid=_authorized_person(scope,body.person_uid)
+ parent_rows=query(con,
+  "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE,APP_FINISH_DATE,APP_INIT_USER "
+  "FROM APPLICATION WHERE APP_UID=%s AND PRO_UID=%s LIMIT 1",
+  (case_uid,pack["meeting"]["process_uid"]))
+ if not parent_rows:raise ProductionAccessDenied("پرونده در دامنه این بسته در دسترس نیست.")
+ parent=parent_rows[0];data=decode_case(parent[3])
+ mapping=_child_map(data);child_ids=list(dict.fromkeys(mapping.values()))
+ child_rows=[]
+ if child_ids:
+  child_rows=query(con,
+   "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE,APP_FINISH_DATE,APP_INIT_USER "
+   "FROM APPLICATION WHERE PRO_UID=%s AND APP_UID IN ("+",".join("%s" for _ in child_ids)+")",
+   (pack["action"]["process_uid"],*child_ids))
+ child_by_uid={str(row[0]):row for row in child_rows}
+ child_data={str(row[0]):decode_case(row[3]) for row in child_rows}
+ delegations=_batch_delegations(con,[case_uid,*child_by_uid.keys()])
+ by_case={};history_people={}
+ for d in delegations:
+  by_case.setdefault(str(d[0]),[]).append(d)
+  history_people.setdefault(str(d[0]),set()).add(str(d[3] or ""))
+ roles=_authorized_case(scope,person_uid,data,case_uid,child_ids,child_data,history_people)
+ by_task=_stage_maps(pack)
+ history=_history(scope,case_uid,child_ids,by_case,by_task)
+ secretary_uid=text(data.get("MTG_SecretaryUserUID"));chair_uid=text(data.get("MTG_ChairUserUID"))
+ secretary=_person(scope,secretary_uid) if secretary_uid else None
+ chair=_person(scope,chair_uid) if chair_uid else None
+
+ participants=[]
+ for row in _rows(data.get("MTG_Participants")):
+  uid=text(cell(row,"MTG_ParticipantUserUID",0))
+  if not uid:continue
+  participants.append({"person":_person(scope,uid),"details":_grid_details(row,{"MTG_ParticipantUserUID"})})
+ agenda=[]
+ for i,row in enumerate(_rows(data.get("MTG_Agenda")),1):
+  presenter_uid=text(cell(row,"MTG_AgendaPresenterUID",3))
+  agenda.append({
+   "index":i,
+   "title":text(cell(row,"MTG_AgendaTitle",0)) or "بدون عنوان",
+   "presenter":_person(scope,presenter_uid) if presenter_uid else None,
+   "minutes":text(cell(row,"MTG_AgendaPlannedMinutes",2)),
+   "details":_grid_details(row,{"MTG_AgendaTitle","MTG_AgendaPresenterUID","MTG_AgendaPlannedMinutes"}),
+  })
+ decisions=[]
+ for i,row in enumerate(_rows(data.get("MTG_Decisions")),1):
+  decisions.append({
+   "index":i,
+   "number":text(cell(row,"MTG_DecisionNo",0)) or str(i),
+   "text":text(cell(row,"MTG_DecisionText",1)) or "بدون شرح",
+   "details":_grid_details(row,{"MTG_DecisionNo","MTG_DecisionText"}),
+  })
+ definitions=_action_definition_rows(data)
+ numbers=list(dict.fromkeys([*definitions.keys(),*mapping.keys()]))
+ actions=[]
+ for number in numbers:
+  cid=mapping.get(number);crow=child_by_uid.get(cid) if cid else None;cd=child_data.get(cid,{}) if cid else {}
+  branch=_action_branch(scope,number,definitions.get(number,{"number":number}),cid,crow,cd,by_case.get(cid,[]) if cid else [],by_task)
+  source_row=next((r for r in _rows(data.get("MTG_Actions")) if (text(cell(r,"MTG_ActionNo",1)) or "")==number),{})
+  actions.append({**branch,
+   "due_date":text(cell(source_row,"MTG_persiandate_ActionDueDateTime",4)) or text(cd.get("MTGA_DueDateTime")),
+   "priority":text(cell(source_row,"MTG_ActionPriority",5)) or text(cd.get("MTGA_Priority")),
+   "decision_no":text(cell(source_row,"MTG_ActionDecisionNo",0)),
+   "latest_fields":[
+    {"key":key,"value":_scalar(value)}
+    for key,value in cd.items()
+    if _scalar(value) and not isinstance(value,(dict,list))
+       and not any(part in str(key).casefold() for part in ("password","secret","token","file","evidence","json","history"))
+   ][:80],
+  })
+
+ stages=[]
+ for key,title,role in STAGES:
+  if key in ("action_execution","action_review"):
+   items=[]
+   for action in actions:
+    values=_collected_fields(pack,child_data.get(action.get("case_uid"),{}),key) if action.get("case_uid") else []
+    if values:items.append({"action_no":action["action_no"],"title":action["title"],"fields":values})
+   stages.append({"key":key,"title":title,"role":role,"actions":items,"fields":[]})
+  else:
+   stages.append({"key":key,"title":title,"role":role,"fields":_collected_fields(pack,data,key),"actions":[]})
+
+ return {
+  "case_uid":case_uid,
+  "case_number":int(parent[1]) if str(parent[1]).isdigit() else str(parent[1]),
+  "status":_status(parent[2]),"status_label":STATUS_LABELS.get(_status(parent[2]),_status(parent[2])),
+  "roles":roles,
+  "meeting":{
+   "meeting_no":text(data.get("MTG_MeetingNo")) or str(parent[1]),
+   "title":text(data.get("MTG_MeetingTitle")) or "جلسه بدون عنوان",
+   "objective":text(data.get("MTG_Objective")),
+   "location":text(data.get("MTG_Location")),
+   "meeting_date":text(data.get("MTG_persiandate_MeetingStartDateTime") or data.get("MTG_MeetingStartDateTime")),
+   "start_time":text(data.get("MTG_MeetingStartTime")),
+   "end_date":text(data.get("MTG_persiandate_MeetingEndDateTime") or data.get("MTG_MeetingEndDateTime")),
+   "end_time":text(data.get("MTG_MeetingEndTime") or data.get("MTG_PlannedActionEndTime")),
+   "discussion":text(data.get("MTG_MeetingDiscussionSummary")),
+   "parking_lot":text(data.get("MTG_ParkingLot")),
+   "closing_note":text(data.get("MTG_ClosingNote")),
+   "created_at":str(parent[4] or ""),"finished_at":str(parent[5] or ""),
+  },
+  "secretary":secretary,"chair":chair,"participants":participants,
+  "agenda":agenda,"decisions":decisions,"actions":actions,
+  "stage_history":history,"stages":stages,
+ }
 
 
 def load(con,scope,args:FlowGraphQuery):
@@ -387,9 +612,16 @@ def load(con,scope,args:FlowGraphQuery):
    "my_roles":roles,
    "my_role_label":"، ".join(ROLE_LABELS[r] for r in roles),
    "progress_percent":_progress(current,completed),
-   "nodes":_nodes(current,completed),
+   "nodes":_stage_nodes(scope,data,_history(scope,case_uid,[x for x in mapping.values()],by_case,by_task),current,completed),
    "actions":action_counts,
    "action_branches":action_branches,
+   "topology":{"split_after":"minutes_approval","merge_before":"monitoring",
+               "branch_count":len(action_branches),
+               "all_branches_closed":bool(action_branches) and all(x["state"]=="closed" for x in action_branches)},
+   "meeting_roles":{
+    "secretary":_person(scope,text(data.get("MTG_SecretaryUserUID"))) if text(data.get("MTG_SecretaryUserUID")) else None,
+    "chair":_person(scope,text(data.get("MTG_ChairUserUID"))) if text(data.get("MTG_ChairUserUID")) else None,
+   },
    "history":_history(scope,case_uid,[x for x in mapping.values()],by_case,by_task),
    "created_at":str(parent[4] or ""),
    "finished_at":str(parent[5] or ""),
