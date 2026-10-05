@@ -74,4 +74,7 @@ def register(app,authorized,csrf):
   if len(request_id)<16 or len(request_id)>80 or not all(c.isalnum() or c in "-_" for c in request_id):
    raise HTTPException(422,"شناسه پردازش معتبر نیست.")
   principal,_=_identity(value)
-  return ux.cancel_operation(str(principal.tenant_id),principal.subject,request_id)
+  result=ux.cancel_operation(str(principal.tenant_id),principal.subject,request_id)
+  from .meeting_agent import cancel_run_slot
+  result["slot_released"]=cancel_run_slot((str(principal.tenant_id),principal.subject))
+  return result
