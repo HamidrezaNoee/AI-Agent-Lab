@@ -75,7 +75,7 @@ class PM:
   # Dynaform AFTER triggers do not fire merely by setting variables via REST.
   # Execute only the exact secretary-stage trigger from the selected PMX.
   self.call('PUT',f'/cases/{uid(case)}/execute-trigger/{AFTER[task]}',operation='اجرای Trigger بعد از فرم')
-  self.call('PUT',f'/cases/{uid(case)}/route-case',{'del_index':index},operation='ارسال پرونده به مرحله بعد')
+  self.call('PUT',f'/cases/{uid(case)}/route-case',{'del_index':str(index)},operation='ارسال پرونده به مرحله بعد')
 
  def create_for(self,task,values):
   result=self.call('POST','/cases',{'pro_uid':self.process_uid,'tas_uid':uid(task),'variables':[values]},operation='ایجاد پرونده')
@@ -85,7 +85,9 @@ class PM:
  def execute_trigger(self,case,trigger,*,operation='اجرای Trigger'):
   return self.call('PUT',f'/cases/{uid(case)}/execute-trigger/{uid(trigger)}',operation=operation)
  def route(self,case,index):
-  return self.call('PUT',f'/cases/{uid(case)}/route-case',{'del_index':int(index)},operation='ارسال پرونده به مرحله بعد')
+  # ProcessMaker 3.3.x validates route-case del_index as an alphanumeric
+  # request value; JSON numeric values are rejected by some builds.
+  return self.call('PUT',f'/cases/{uid(case)}/route-case',{'del_index':str(int(index))},operation='ارسال پرونده به مرحله بعد')
  def submit_stage(self,case,stage,person,values,expected_index):
   index=self.assigned(case,stage['task_uid'],person)
   if index!=expected_index:raise ValueError('نسخه وظیفه در فرایند تغییر کرده است.')
