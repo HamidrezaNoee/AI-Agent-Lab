@@ -139,29 +139,50 @@ def register(app,authorized,csrf):
  @app.post(base+'/tasks/{case_uid}/{index}/turn')
  def task_turn(source_id:str,case_uid:str,index:int,pack_id:str,body:Turn,value=Depends(csrf)):
   s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
-  def model_run():
-   with run_slot((str(p.tenant_id),p.subject)):
-    row=runtime.draft(s,p.subject,t)
-    if row['revision']!=body.revision:raise RevisionConflict()
-    vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
-    decision=runtime.apply_explicit_decision(body.text,t['stage'],vals) if intent=='update' else None
-    workflow_intent=runtime.apply_explicit_workflow_intent(body.text,t['stage'],vals) if intent=='update' else None
-    advance=runtime.explicit_advance_intent(body.text,t['stage'],workflow_intent) or bool(decision)
-   def commit(con,s,p):
-    fresh=runtime.task(con,s,case_uid,index,pack_id)
-    updated=runtime.update(s,p.subject,fresh,body.revision,vals,questions,turn_text=body.text,reply=reply)
-    assistant=runtime.assistant_state(updated['values'],fresh,s,updated.get('questions',[]))
-    if intent=='update' and body.auto_advance and advance and not assistant['missing']:
-     sent=runtime.submit(s,p.subject,fresh,updated['revision'])
-     return {'advanced':True,'status':sent['status'],'assistant':{
-      'stage':fresh['stage'],'summary':assistant['summary'],'missing':[],
-      'can_submit':False,'message':'دستور صریح شما اجرا شد و پرونده به مرحله بعد فرایند منتقل شد.'
-     }}
-    return response(s,p,fresh,updated)
-   return access(value,source_id,commit)
-  try:return guard_model(model_run)
-  except RevisionConflict:raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
-  except ValueError as exc:raise HTTPException(422,str(exc))
+  operation_start(p,body.request_id,'secretary_task_turn',{'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id})
+  try:
+   def model_run():
+    with run_slot((str(p.tenant_id),p.subject)):
+     row=runtime.draft(s,p.subject,t)
+     if row['revision']!=body.revision:raise RevisionConflict()
+     operation_active(p,body.request_id)
+     vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
+     operation_active(p,body.request_id)
+     decision=runtime.apply_explicit_decision(body.text,t['stage'],vals) if intent=='update' else None
+     workflow_intent=runtime.apply_explicit_workflow_intent(body.text,t['stage'],vals) if intent=='update' else None
+     advance=runtime.explicit_advance_intent(body.text,t['stage'],workflow_intent) or bool(decision)
+    def commit(con,fresh_scope,p2):
+     operation_active(p,body.request_id)
+     fresh=runtime.task(con,fresh_scope,case_uid,index,pack_id)
+     updated=runtime.update(fresh_scope,p2.subject,fresh,body.revision,vals,questions,turn_text=body.text,reply=reply)
+     assistant=runtime.assistant_state(updated['values'],fresh,fresh_scope,updated.get('questions',[]))
+     operation_active(p,body.request_id)
+     if intent=='update' and body.auto_advance and advance and not assistant['missing']:
+      sent=runtime.submit(fresh_scope,p2.subject,fresh,updated['revision'])
+      return {'advanced':True,'status':sent['status'],'assistant':{
+       'stage':fresh['stage'],'summary':assistant['summary'],'missing':[],
+       'can_submit':False,'message':'دستور صریح شما اجرا شد و پرونده به مرحله بعد فرایند منتقل شد.'
+      }}
+     return response(fresh_scope,p2,fresh,updated)
+    return access(value,source_id,commit)
+   result=guard_model(model_run)
+   operation_finish(p,body.request_id,'completed',{'case_uid':case_uid,'stage':t.get('stage'),'result':'updated'})
+   return result
+  except ux.OperationCancelled as exc:
+   operation_finish(p,body.request_id,'cancelled',{'case_uid':case_uid,'stage':t.get('stage')})
+   raise HTTPException(409,str(exc))
+  except HTTPException as exc:
+   operation_finish(p,body.request_id,'failed',{'case_uid':case_uid,'stage':t.get('stage'),'status':exc.status_code,'error':str(exc.detail)})
+   raise
+  except RevisionConflict:
+   operation_finish(p,body.request_id,'failed',{'case_uid':case_uid,'stage':t.get('stage'),'error':'revision_conflict'})
+   raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
+  except ValueError as exc:
+   operation_finish(p,body.request_id,'failed',{'case_uid':case_uid,'stage':t.get('stage'),'error':str(exc)})
+   raise HTTPException(422,str(exc))
+  except Exception as exc:
+   operation_finish(p,body.request_id,'failed',{'case_uid':case_uid,'stage':t.get('stage'),'error_type':type(exc).__name__})
+   raise
  @app.post(base+'/tasks/{case_uid}/{index}/attachment')
  async def task_attachment(source_id:str,case_uid:str,index:int,pack_id:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
   text,meta=await read_upload(request)
