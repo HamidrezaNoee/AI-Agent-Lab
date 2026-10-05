@@ -28,6 +28,20 @@ def normalize(values):
  return str(values)
 
 def process_for(pack,stage):return pack['action' if stage.startswith('action_') else 'meeting']['process_uid']
+def _native_case_values(scope,case_uid):
+ from .user_bpms_bindings import processmaker_profile
+ from .processmaker_store import open_production
+ profile=processmaker_profile(scope['source_id'])
+ try:
+  with open_production(profile['mysql']) as con:
+   rows=query(con,'SELECT APP_DATA FROM APPLICATION WHERE APP_UID=%s LIMIT 2',(str(case_uid),))
+ except Exception as exc:
+  raise ValueError('متغیرهای پرونده از دیتابیس خواندنی ProcessMaker قابل بازیابی نیستند.') from exc
+ if len(rows)!=1:
+  raise ValueError('پرونده ProcessMaker برای خواندن متغیرها به‌صورت یکتا پیدا نشد.')
+ return normalize(decode_case(rows[0][0]))
+
+
 def _meeting_sequence_prerequisite(scope):
  from .user_bpms_bindings import processmaker_profile
  from .processmaker_store import open_production
@@ -603,7 +617,8 @@ def submit(scope,actor,task,revision,*,pm=None):
   # Fresh native assignment and delegation, before any mutation or trigger.
   index=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
   if index!=task['index']:raise RevisionConflict('Native task changed')
-  current={**task,'native':normalize(pm.variables(task['case_uid']))}
+  current_native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
+  current={**task,'native':current_native}
   if native_stamp(current)!=native_stamp(task):raise RevisionConflict('Native data changed before submission')
   with agent_storage.transaction() as tx:
    key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
@@ -684,7 +699,7 @@ def _session_failure_text(exc):
  return re.sub(r'[\r\n\t]+',' ',text).strip()[:500]
 
 
-def _continue_session_case(scope,row,task,pm,save_row):
+def _continue_session_case(scope,row,task,pm,save_row,native_reader):
  stage=task['pack']['stages']['invitation']
  index=pm.assigned(row['case_uid'],stage['task_uid'],scope['external_user_id'])
  # The conversational draft is already human-reviewed. Persist it before any
@@ -694,7 +709,7 @@ def _continue_session_case(scope,row,task,pm,save_row):
  for trigger in stage['before']:
   pm.execute_trigger(row['case_uid'],trigger,operation='اجرای Trigger قبل از فرم')
  # Native BEFORE triggers own system-generated meeting number/form date.
- generated=normalize(pm.variables(row['case_uid']))
+ generated=normalize(native_reader(row['case_uid']))
  for key in ('MTG_MeetingNo','MTG_FRMTG001_FormDate'):
   if generated.get(key) and not row['values'].get(key):row['values'][key]=generated[key]
  save_row(row)
@@ -726,7 +741,8 @@ def session_send(scope,actor,identifier,revision,*,pm=None):
    initial=labelled(row['values'],task,scope)
    row['case_uid']=pm.create_for(stage['task_uid'],initial)
    save_row(row)
-   _continue_session_case(scope,row,task,pm,save_row)
+   native_reader=(lambda case:_native_case_values(scope,case)) if owned else pm.variables
+   _continue_session_case(scope,row,task,pm,save_row,native_reader)
   except Exception as exc:
    row.update(status='reconciliation_required',last_error=_session_failure_text(exc));save_row(row);raise
   save_row(row);return row
@@ -754,7 +770,8 @@ def session_reconcile(scope,actor,identifier,revision,*,pm=None):
    if not current or current['revision']!=revision or current['status']!='reconciliation_required':raise RevisionConflict()
    row=copy.deepcopy(current);row.update(status='executing',revision=revision+1,last_error='');tx.put(key,[row if r['id']==identifier else r for r in items])
   try:
-   _continue_session_case(scope,row,task,pm,save_row)
+   native_reader=(lambda case:_native_case_values(scope,case)) if owned else pm.variables
+   _continue_session_case(scope,row,task,pm,save_row,native_reader)
   except Exception as exc:
    row.update(status='reconciliation_required',last_error=_session_failure_text(exc));save_row(row);raise
   save_row(row);return row
