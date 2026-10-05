@@ -1738,14 +1738,35 @@ function renderAI(m,config){
  const label=node("label");append(label,enabled,node("span","","فعال‌سازی دستیار هوشمند"));
  const voiceEnabled=node("input");voiceEnabled.type="checkbox";voiceEnabled.checked=!!config.voice_enabled;
  const voiceLabel=node("label");append(voiceLabel,voiceEnabled,node("span","","فعال‌سازی تبدیل صوت به متن و خواندن پاسخ (مصرف API جداگانه)"));
- append(f,label,voiceLabel,field("نام مدل","model",config.model||"gpt-4.1-mini"),
+ const modelField=field("شناسه مدل انتخاب‌شده؛ قابل تغییر","model",config.model||"gpt-4.1-mini");
+ const choices=node("select");choices.setAttribute("aria-label","مدل‌های در دسترس حساب");
+ append(choices,node("option","","ابتدا فهرست مدل‌ها را دریافت کنید"));choices.disabled=true;
+ choices.addEventListener("change",()=>{if(choices.value)f.elements.namedItem("model").value=choices.value});
+ const currentModel=node("p","hint","مدل ذخیره‌شده: "+(config.model||"تنظیم نشده"));
+ append(f,label,voiceLabel,currentModel,modelField,choices,
+  node("p","hint","مدل متن را انتخاب کنید. فهرست حساب ممکن است مدل صوت و تصویر هم داشته باشد؛ نمایش در فهرست به معنی سازگاری با استخراج ساختاری آوان نیست. تغییر تا زمان ذخیره اعمال نمی‌شود."),
+  btn("دریافت مدل‌های حساب",async()=>{
+   busy(f,true);try{
+    const result=await api("ai/models",{api_key:formValue(f,"api_key")});
+    choices.replaceChildren();
+    const blank=node("option","","انتخاب مدل…");blank.value="";append(choices,blank);
+    for(const id of result.models){const option=node("option","",id);option.value=id;append(choices,option)}
+    choices.value=result.models.includes(formValue(f,"model"))?formValue(f,"model"):"";
+    out.replaceChildren(info(result.models.length+" مدل دریافت شد. می‌توانید شناسه مدل را دستی هم وارد کنید."));
+   }catch(e){showError(out,e)}finally{busy(f,false);choices.disabled=choices.options.length<=1}
+  },"secondary"),
+  btn("بررسی مدل انتخاب‌شده پیش از ذخیره",async()=>{
+   busy(f,true);try{const result=await api("ai/probe",{model:formValue(f,"model"),api_key:formValue(f,"api_key")});
+    out.replaceChildren(info("دسترسی به "+result.model+" تأیید شد. هنوز ذخیره نشده؛ این بررسی تولید پاسخ و سازگاری استخراج را آزمایش نمی‌کند."));
+   }catch(e){showError(out,e)}finally{busy(f,false)}
+  },"secondary"),
   field("کلید API؛ برای حفظ کلید قبلی خالی بگذارید","api_key","",{type:"password"}),
   field("مدل تبدیل صوت (gpt-4o-mini-transcribe / gpt-4o-transcribe / whisper-1)","transcription_model",config.transcription_model||"gpt-4o-mini-transcribe"),
   field("مدل خواندن پاسخ (gpt-4o-mini-tts / tts-1 / tts-1-hd)","speech_model",config.speech_model||"gpt-4o-mini-tts"),
   field("صدا (alloy / coral / onyx / nova / shimmer)","voice",config.voice||"alloy"));
  append(f,btn("ذخیره تنظیمات",async()=>{
   busy(f,true);try{await api("ai/save",{enabled:enabled.checked,model:formValue(f,"model"),api_key:formValue(f,"api_key"),voice_enabled:voiceEnabled.checked,transcription_model:formValue(f,"transcription_model"),speech_model:formValue(f,"speech_model"),voice:formValue(f,"voice")});
-   f.elements.namedItem("api_key").value="";out.replaceChildren(info("تنظیمات ذخیره شد."));
+   f.elements.namedItem("api_key").value="";currentModel.textContent="مدل ذخیره‌شده: "+formValue(f,"model");out.replaceChildren(info("مدل ذخیره شد و در درخواست بعدی استفاده می‌شود."));
   }catch(e){showError(out,e)}finally{busy(f,false)}
  }),btn("بررسی اتصال ذخیره‌شده",async()=>{
   busy(f,true);try{const r=await api("ai/check",{});out.replaceChildren(info("اتصال و دسترسی به مدل "+r.model+" تأیید شد. اجرای تحلیل از صفحه دستیار انجام می‌شود."))}

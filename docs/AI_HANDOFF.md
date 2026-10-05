@@ -72,3 +72,11 @@ participant/agenda headings omitted by the model trigger the existing one retry,
 then a visible clarification instead of silent success. Summary includes agenda
 presenters and minutes. Tests verify data plumbing and simulated model omissions,
 not paid-model extraction accuracy; live deployment remains unverified.
+
+## AI model selection
+Admin AI settings can list models visible to the saved or draft API key, select
+or manually enter an ID and probe visibility before saving. Both endpoints require
+_ready, use the official fixed endpoint and never save draft keys during probes.
+Visibility does not prove Responses/structured-output compatibility. Save preserves
+a blank key and takes effect on the next request. 481 Python tests passed; browser
+fixture checks list/select/probe/save. No live key or production deployment tested.

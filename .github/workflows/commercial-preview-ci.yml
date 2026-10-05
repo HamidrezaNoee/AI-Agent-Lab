@@ -129,6 +129,7 @@ jobs:
           node commercial/tests/secretary_desk_browser.cjs
           node commercial/tests/ui_smoke.cjs
           node commercial/tests/management_render_smoke.cjs
+          node commercial/tests/ai_model_selection_ui.cjs
           node commercial/tests/login_scene_smoke.cjs
       - name: Validate env-free first-run Compose
         run: |

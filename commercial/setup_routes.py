@@ -1910,6 +1910,46 @@ def ai_save(body:AIConfig,session=Depends(_ready)):
     return {'saved':True,'enabled':config['enabled'],'model':config['model']}
 
 
+class AIModelProbe(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    api_key:str=Field(default='',max_length=1024)
+    model:str=Field(default='',max_length=100,pattern=r'^[a-zA-Z0-9_.:-]*$')
+
+
+def _ai_probe_client(body):
+    from openai import OpenAI
+    import httpx
+    key=body.api_key.strip()
+    if not key or key=='********':key=(setup.get_setting('ai') or {}).get('api_key','')
+    if len(key)<16 or any(c in key for c in ('\r','\n','\x00')):
+        raise HTTPException(422,'ابتدا کلید API را وارد کنید یا کلید ذخیره‌شده را تنظیم کنید.')
+    return OpenAI(api_key=key,base_url='https://api.openai.com/v1',timeout=20,
+                  max_retries=0,http_client=httpx.Client(timeout=20,trust_env=False))
+
+
+@router.post('/api/ai/models')
+def ai_models(body:AIModelProbe,session=Depends(_ready)):
+    client=_ai_probe_client(body)
+    try:
+        ids=sorted({str(m.id) for m in client.models.list()})
+        return {'models':ids,'compatibility_verified':False}
+    except Exception:
+        raise HTTPException(503,'دریافت مدل‌ها ناموفق بود؛ کلید و ارتباط اینترنت را بررسی کنید.')
+    finally:client.close()
+
+
+@router.post('/api/ai/probe')
+def ai_probe(body:AIModelProbe,session=Depends(_ready)):
+    if not body.model:raise HTTPException(422,'مدل را انتخاب کنید.')
+    client=_ai_probe_client(body)
+    try:
+        client.models.retrieve(body.model)
+        return {'connected':True,'model':body.model,'generation_tested':False}
+    except Exception:
+        raise HTTPException(503,'دسترسی به مدل انتخاب‌شده تأیید نشد؛ کلید، نام مدل و اینترنت بررسی شود.')
+    finally:client.close()
+
+
 @router.post('/api/ai/check')
 def ai_check(session=Depends(_ready)):
     from .meeting_agent import configured_client,AgentUnavailable
