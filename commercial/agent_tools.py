@@ -31,7 +31,7 @@ class ActionQuery(Arguments):
     status: Literal['all','open','closed','overdue','due_soon']='all'
     period: Literal['all','this_month','last_month','last_30_days','last_7_days']='all'
     date_field: Literal['meeting','due']='meeting'
-    start: str | None = Field(None,max_length=40,description='Inclusive Gregorian ISO timestamp with timezone; prefer named Jalali periods.')
+    start: str | None = Field(None,max_length=40,description='Inclusive canonical ISO timestamp with timezone; prefer named periods, which follow the AVAN global calendar setting.')
     end: str | None = Field(None,max_length=40,description='Exclusive Gregorian ISO timestamp with timezone.')
     group_by: Literal['none','unit','owner','meeting','month']='none'
     limit: int = Field(15,ge=1,le=30)
