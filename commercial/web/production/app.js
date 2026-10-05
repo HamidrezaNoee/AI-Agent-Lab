@@ -702,6 +702,10 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    else add(step,el("span","secretary-step-wait","در انتظار پرونده"));
    stepButtons.push([key,step]);add(rail,step);
   });add(flow,rail);add(out,flow,taskArea);drawTasks();updateRail();
+  if(currentPack){
+   const graphTarget=el("div","meeting-flow-slot");add(out,graphTarget);
+   renderMeetingCaseFlowGraph(graphTarget,sourceId,currentPack).catch(e=>graphTarget.replaceChildren(note(e.message,true)));
+  }
   const connection=card("مجوز عملیات حساب BPMS",info.oauth_connected?"مجوز شخصی حساب متصل فعال است.":"برای ثبت و انتقال مراحل، مجوز حساب خودتان در ProcessMaker لازم است.");
   if(info.oauth_connected)add(connection,link("قطع مجوز شخصی",checked(async()=>{await post("/oauth/disconnect");await load()})));
   else{
