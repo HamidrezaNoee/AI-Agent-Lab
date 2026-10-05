@@ -15,7 +15,10 @@ DEFAULT_PREFERENCES={
 _SAFE_DETAIL_KEYS={
     "request_id","path","method","status","page","source_id","operation","kind",
     "case_uid","stage","session_id","error","error_type","message","duration_ms",
-    "result","filename","event","retryable",
+    "result","filename","event","retryable","model","question_hash","coverage_complete",
+    "input_tokens","output_tokens","total_tokens","meeting_id","action_id","pack_id",
+    "revision","del_index","process_uid","secretary_auto_play_voice",
+    "voice_auto_transcribe","voice_auto_send",
 }
 
 
@@ -114,7 +117,11 @@ def _prune_operations(rows,limit=50):
         key=lambda item:str(item[1].get("updated_at") or item[1].get("started_at") or ""),
         reverse=True,
     )
-    return dict(ordered[:limit])
+    # Running/cancelled entries may still have a late worker capable of returning.
+    # Never prune those guards until the worker reaches finish_operation.
+    guarded=[item for item in ordered if item[1].get("state") in ("running","cancelled")]
+    terminal=[item for item in ordered if item[1].get("state") not in ("running","cancelled")][:limit]
+    return dict([*guarded,*terminal])
 
 
 def start_operation(tenant_id,actor,request_id,kind,detail=None):
@@ -154,7 +161,7 @@ def ensure_active(tenant_id,actor,request_id):
     with agent_storage.transaction() as tx:
         rows=tx.get(_operations_key(tenant_id,actor),{})
     row=rows.get(str(request_id),{}) if isinstance(rows,dict) else {}
-    if row.get("state")=="cancelled":
+    if row.get("state") in ("cancelled","cancelled_finished"):
         raise OperationCancelled("پردازش توسط کاربر متوقف شد؛ هیچ تغییری از این پاسخ ثبت نشد.")
 
 
@@ -165,12 +172,15 @@ def finish_operation(tenant_id,actor,request_id,state="completed",detail=None):
         rows=tx.get(key,{},lock=True)
         if not isinstance(rows,dict):rows={}
         row=rows.get(str(request_id),{})
-        # Cancellation wins over late model completion.
-        final_state="cancelled" if row.get("state")=="cancelled" else state
+        # Cancellation wins over late model completion. Once the old worker
+        # reaches this point, downgrade the persistent guard to a terminal state
+        # that is eligible for bounded pruning.
+        was_cancelled=row.get("state")=="cancelled"
+        final_state="cancelled_finished" if was_cancelled else state
         rows[str(request_id)]={**row,"state":final_state,"updated_at":now}
         tx.put(key,_prune_operations(rows))
         # cancel_operation already writes the authoritative cancellation audit.
-        if not (final_state=="cancelled" and row.get("state")=="cancelled"):
+        if not was_cancelled:
             event={
                 "completed":"SECRETARY_PROCESSING_COMPLETED",
                 "failed":"SECRETARY_PROCESSING_FAILED",
