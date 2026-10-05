@@ -139,8 +139,8 @@ def register(app,authorized,csrf):
  @app.post(base+'/tasks/{case_uid}/{index}/turn')
  def task_turn(source_id:str,case_uid:str,index:int,pack_id:str,body:Turn,value=Depends(csrf)):
   s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
-  operation_start(p,body.request_id,'secretary_task_turn',{'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id})
   try:
+   operation_start(p,body.request_id,'secretary_task_turn',{'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id})
    def model_run():
     with run_slot((str(p.tenant_id),p.subject)):
      row=runtime.draft(s,p.subject,t)
@@ -186,8 +186,8 @@ def register(app,authorized,csrf):
  @app.post(base+'/tasks/{case_uid}/{index}/attachment')
  async def task_attachment(source_id:str,case_uid:str,index:int,pack_id:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
   request_id=header_request_id(request);p=value[2]
-  operation_start(p,request_id,'secretary_task_attachment',{'case_uid':case_uid,'source_id':source_id})
   try:
+   operation_start(p,request_id,'secretary_task_attachment',{'case_uid':case_uid,'source_id':source_id})
    text,meta=await read_upload(request)
    s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id))
    prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط را استخراج کن.\n\n'+text
@@ -285,8 +285,8 @@ def register(app,authorized,csrf):
  @app.post(base+'/sessions/{identifier}/turn')
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
   principal=value[2]
-  operation_start(principal,body.request_id,'secretary_session_turn',{'session_id':identifier,'source_id':source_id})
   try:
+   operation_start(principal,body.request_id,'secretary_session_turn',{'session_id':identifier,'source_id':source_id})
    def snapshot(con,s,p):
     row,t=runtime.session_load(s,p.subject,identifier)
     if row['revision']!=body.revision:raise RevisionConflict()
@@ -336,8 +336,8 @@ def register(app,authorized,csrf):
  @app.post(base+'/sessions/{identifier}/attachment')
  async def session_attachment(source_id:str,identifier:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
   request_id=header_request_id(request);principal=value[2]
-  operation_start(principal,request_id,'secretary_session_attachment',{'session_id':identifier,'source_id':source_id})
   try:
+   operation_start(principal,request_id,'secretary_session_attachment',{'session_id':identifier,'source_id':source_id})
    text,meta=await read_upload(request)
    prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط با دعوت‌نامه را استخراج کن.\n\n'+text
    def snapshot(con,s,p):
