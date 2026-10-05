@@ -501,3 +501,23 @@ def test_live_session_path_can_use_readonly_native_reader_instead_of_rest_variab
  result=r.session_send(S,'actor',draft['id'],draft['revision'])
  assert result['status']=='awaiting_invitation_approval'
  assert ('submit','MTG-1405-1002') in calls
+
+
+
+def test_route_only_recovery_does_not_replay_variables_or_triggers(pack,store):
+ t=task(pack,'invitation_approval',copy.deepcopy(V))
+ row=r.draft(S,'actor',t)
+ key=r.task_key(S,t['case_uid'],t['index'])
+ with r.agent_storage.transaction() as tx:
+  saved=tx.get(key,lock=True)
+  saved.update(status='reconciliation_required',last_error='ProcessMaker عملیات «ارسال پرونده به مرحله بعد» را نپذیرفت (HTTP 400).')
+  tx.put(key,saved)
+ calls=[]
+ class PM:
+  def assigned(self,*args):calls.append('assigned');return t['index']
+  def variables(self,*args):calls.append('variables');return copy.deepcopy(row['values'])
+  def route(self,case,index):calls.append(('route',case,index))
+ result=r.reconcile_task_route(S,'actor',t,row['revision'],pm=PM())
+ assert result['status']=='sent'
+ assert ('route',t['case_uid'],t['index']) in calls
+ assert all(x not in calls for x in ('set_variables','execute_trigger'))
