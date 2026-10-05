@@ -1,3 +1,4 @@
+import json
 import phpserialize
 import pytest
 
@@ -55,6 +56,12 @@ def test_flow_graph_builds_git_like_stage_and_current_owner(monkeypatch):
  assert row["my_roles"]==["secretary","participant"]
  assert row["progress_percent"]==29
  assert [n["state"] for n in row["nodes"][:3]]==["done","current","future"]
+ approval=row["nodes"][1]
+ assert approval["entered_at"]=="2026-10-05 10:05:00"
+ assert approval["chair"]["name"]=="مدیرعامل"
+ assert approval["secretary"]["name"]=="مدیر سیستم"
+ assert [p["name"] for p in approval["people"]]==["مدیرعامل"]
+ assert row["topology"]["split_after"]=="minutes_approval"
 
 
 def test_flow_graph_filters_by_role_and_owner(monkeypatch):
@@ -98,6 +105,10 @@ def test_action_branch_models_parallel_git_like_lane():
  assert branch["state"]=="execution"
  assert branch["progress_percent"]==60
  assert branch["current_owner"]["name"]=="مدیرعامل"
+ assert [n["key"] for n in branch["nodes"]]==["action_execution","action_review"]
+ assert branch["nodes"][0]["state"]=="current"
+ assert branch["nodes"][0]["entered_at"]=="2026-10-05 12:00:00"
+ assert branch["nodes"][0]["people"][0]["name"]=="مدیرعامل"
 
 
 def test_waiting_only_filters_to_selected_person(monkeypatch):
@@ -112,3 +123,58 @@ def test_waiting_only_filters_to_selected_person(monkeypatch):
  result=g.load(object(),{**SCOPE,"role":"SysAdmin"},g.FlowGraphQuery(pack_id="a"*24,person_uid=U2,waiting_only=True,period="all"))
  assert result["total"]==1
  assert result["summary"]["waiting_my_action"]==1
+
+
+def test_snapshot_returns_latest_cross_stage_case_data(monkeypatch):
+ child_uid="c"*32
+ data={
+  "MTG_MeetingNo":"MTG-200","MTG_MeetingTitle":"جلسه چندشاخه",
+  "MTG_Objective":"بررسی اقدامات","MTG_Location":"اتاق جلسات",
+  "MTG_MeetingStartDateTime":"1405/07/13","MTG_MeetingStartTime":"10:00",
+  "MTG_SecretaryUserUID":U1,"MTG_ChairUserUID":U2,
+  "MTG_Participants":{"1":{"MTG_ParticipantUserUID":U2,"MTG_ParticipantPresent":"Yes"}},
+  "MTG_Agenda":{"1":{"MTG_AgendaTitle":"بررسی قرارداد","MTG_AgendaPresenterUID":U2,"MTG_AgendaPlannedMinutes":"15"}},
+  "MTG_Decisions":{"1":{"MTG_DecisionNo":"D-01","MTG_DecisionText":"قرارداد پیگیری شود"}},
+  "MTG_Actions":{"1":{"MTG_ActionNo":"A-01","MTG_ActionDescription":"پیگیری قرارداد","MTG_ActionOwnerUID":U2,
+                      "MTG_persiandate_ActionDueDateTime":"1405/07/20","MTG_ActionDecisionNo":"D-01"}},
+  "MTG_ActionCaseMapJson":json.dumps({"A-01":{"caseUid":child_uid}}),
+ }
+ child_data={"MTGA_ActionNo":"A-01","MTGA_ActionDescription":"پیگیری قرارداد",
+             "MTGA_OwnerUserUID":U2,"MTGA_ProgressPercent":"60"}
+ parent=("f"*32,200,"TO_DO",phpserialize.dumps(data),"2026-10-05 10:00:00",None,U1)
+ child=(child_uid,901,"TO_DO",phpserialize.dumps(child_data),"2026-10-05 11:00:00",None,U2)
+ monkeypatch.setattr(g,"_pack",lambda scope,pack_id:PACK)
+ def fake_query(con,sql,args=()):
+  if "WHERE APP_UID=%s AND PRO_UID=%s LIMIT 1" in sql:return [parent]
+  if "FROM APPLICATION WHERE PRO_UID=%s AND APP_UID IN" in sql:return [child]
+  if "FROM APP_DELEGATION d" in sql:
+   return [
+    ("f"*32,1,"1"*32,U1,"CLOSED","2026-10-05 10:04:00","2026-10-05 10:00:00","دعوت"),
+    (child_uid,1,"5"*32,U2,"OPEN",None,"2026-10-05 11:05:00","اجرای اقدام"),
+   ]
+  raise AssertionError(sql)
+ monkeypatch.setattr(g,"query",fake_query)
+ result=g.snapshot(object(),SCOPE,"f"*32,g.FlowSnapshotQuery(pack_id="a"*24))
+ assert result["meeting"]["title"]=="جلسه چندشاخه"
+ assert result["secretary"]["name"]=="مدیر سیستم"
+ assert result["chair"]["name"]=="مدیرعامل"
+ assert result["participants"][0]["person"]["name"]=="مدیرعامل"
+ assert result["agenda"][0]["title"]=="بررسی قرارداد"
+ assert result["decisions"][0]["number"]=="D-01"
+ assert result["actions"][0]["action_no"]=="A-01"
+ assert result["actions"][0]["progress_percent"]==60
+ assert result["actions"][0]["nodes"][0]["entered_at"]=="2026-10-05 11:05:00"
+ assert {x["stage"] for x in result["stage_history"]}=={"invitation","action_execution"}
+
+
+def test_snapshot_rejects_case_without_membership(monkeypatch):
+ data={"MTG_MeetingTitle":"جلسه دیگر","MTG_SecretaryUserUID":U2}
+ parent=("f"*32,300,"TO_DO",phpserialize.dumps(data),"2026-10-05",None,U2)
+ monkeypatch.setattr(g,"_pack",lambda scope,pack_id:PACK)
+ def fake_query(con,sql,args=()):
+  if "WHERE APP_UID=%s AND PRO_UID=%s LIMIT 1" in sql:return [parent]
+  if "FROM APP_DELEGATION d" in sql:return []
+  raise AssertionError(sql)
+ monkeypatch.setattr(g,"query",fake_query)
+ with pytest.raises(ProductionAccessDenied):
+  g.snapshot(object(),SCOPE,"f"*32,g.FlowSnapshotQuery(pack_id="a"*24))
