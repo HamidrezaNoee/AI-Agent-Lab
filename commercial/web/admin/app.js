@@ -43,6 +43,14 @@ function btn(label,callback,cls=""){const b=node("button",cls,label);b.type="but
 function panel(title,description){return append(node("section","panel"),node("h2","",title),node("p","intro",description))}
 function info(text,bad=false){return node("div","notice"+(bad?" error":""),text)}
 function main(){const m=$("main");m.replaceChildren();return m}
+function calendarMode(){return state.settings?.ui?.calendar==="gregorian"?"gregorian":"jalali"}
+function adminDateText(value){
+ if(!value)return "—";
+ const raw=String(value),normalized=/^\d{4}-\d{2}-\d{2} /.test(raw)?raw.replace(" ","T"):raw,d=new Date(normalized);
+ if(Number.isNaN(d.getTime()))return raw;
+ const calendar=calendarMode()==="jalali"?"persian":"gregory";
+ return new Intl.DateTimeFormat("fa-IR-u-ca-"+calendar,{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Tehran"}).format(d);
+}
 function busy(form,b){for(const c of form.querySelectorAll("button"))c.disabled=b}
 async function api(path,body){
  const headers={"Accept":"application/json"};
@@ -1732,8 +1740,8 @@ async function renderCompany(m){
 
   const details=node("div","organization-details");
   append(details,
-   node("span","hint","ایجاد: "+(org.created_utc?new Date(org.created_utc).toLocaleString("fa-IR"):"—")),
-   node("span","hint","آخرین تغییر: "+(org.updated_utc?new Date(org.updated_utc).toLocaleString("fa-IR"):"—")));
+   node("span","hint","ایجاد: "+(adminDateText(org.created_utc))),
+   node("span","hint","آخرین تغییر: "+(adminDateText(org.updated_utc))));
   append(card,details);
 
   const cardActions=node("div","actions");
