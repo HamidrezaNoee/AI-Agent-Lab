@@ -663,8 +663,36 @@ async function renderUserBpmsBindings(m){
  await loadEditor();
 }
 
+async function renderGeneral(m,settings){
+ const config=settings.ui||{},p=panel("تنظیمات عمومی",
+  "نوع تقویم این بخش به‌صورت سراسری روی نمایش تاریخ‌ها، DatePickerها و بازه‌های ماهانه آوان اعمال می‌شود. مقدار ذخیره‌شده در API و بانک اطلاعاتی تغییر نمی‌کند.");
+ const form=node("form"),out=node("div");form.addEventListener("submit",e=>e.preventDefault());
+ const calendar=node("select");calendar.name="calendar";calendar.setAttribute("aria-label","نوع تقویم");
+ for(const [value,label] of [["jalali","شمسی (هجری شمسی)"],["gregorian","میلادی (Gregorian)"]]){
+  const option=node("option","",label);option.value=value;append(calendar,option);
+ }
+ calendar.value=config.calendar==="gregorian"?"gregorian":"jalali";
+ const fieldWrap=node("label","form-field");append(fieldWrap,node("span","","تقویم تاریخ‌های سامانه"),calendar);
+ append(form,fieldWrap,
+  info("با انتخاب «شمسی»، همه نمایش‌های تاریخ و انتخابگرهای تاریخ شمسی می‌شوند. با انتخاب «میلادی»، همان بخش‌ها با تقویم میلادی نمایش داده می‌شوند."),
+  btn("ذخیره تنظیمات تاریخ",async()=>{
+   busy(form,true);out.replaceChildren();
+   try{
+    const result=await api("ui/save",{calendar:calendar.value});
+    state.settings.ui={calendar:result.calendar};
+    out.replaceChildren(info("تنظیمات تاریخ ذخیره شد و در حال اعمال به فضای کاری است."));
+    if(window.parent!==window){
+     window.parent.postMessage({type:"avan-ui-settings-changed",calendar:result.calendar},window.location.origin);
+    }
+   }catch(err){showError(out,err)}finally{busy(form,false)}
+  }),out);
+ append(p,form);append(m,p);
+}
+
+
 const menu=[
  ["connections","وضعیت سامانه"],
+ ["general","تنظیمات عمومی"],
  ["bpms","اتصالات BPMS"],
  ["userbpms","اتصال کاربران به BPMS"],
  ["agentdb","بانک Agent"],
@@ -719,6 +747,7 @@ async function showSettings(page=state.page){
  append(m,contentHost);
  try{
   if(page==="connections")await renderConnections(contentHost,settings);
+  else if(page==="general")await renderGeneral(contentHost,settings);
   else if(page==="bpms")await renderBPMS(contentHost);
   else if(page==="userbpms")await renderUserBpmsBindings(contentHost);
   else if(page==="agentdb")await renderAgentDatabase(contentHost);
