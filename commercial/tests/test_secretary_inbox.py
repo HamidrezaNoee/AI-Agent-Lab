@@ -268,17 +268,52 @@ def test_new_meeting_uses_native_generated_number_before_routing_to_chair(pack,s
         MTG_AgendaPlannedMinutes='20',
     )
     draft=r.session_update(S,'actor',draft['id'],draft['revision'],values)
-    submitted=[]
+    created=[];written=[];submitted=[];triggers=[]
     class PM:
-        def create_for(self,*args):return 'a'*32
+        def create_for(self,task,payload):created.append(copy.deepcopy(payload));return 'a'*32
         def assigned(self,*args):return 1
-        def call(self,*args):return {}
+        def set_variables(self,case,index,payload,**kwargs):written.append(copy.deepcopy(payload))
+        def execute_trigger(self,case,trigger,**kwargs):triggers.append(trigger)
         def variables(self,*args):return {'MTG_MeetingNo':'MTG-1405-001','MTG_FRMTG001_FormDate':'1405/07/12'}
         def submit_stage(self,case,stage,person,payload,index):submitted.append(payload)
     result=r.session_send(S,'actor',draft['id'],draft['revision'],pm=PM())
     assert result['status']=='awaiting_invitation_approval'
     assert result['case_uid']=='a'*32
+    assert created[0]['MTG_MeetingTitle']==values['MTG_MeetingTitle']
+    assert created[0]['MTG_Agenda']['1']['MTG_AgendaPresenterUID']=='c'*32
+    assert written[0]['MTG_MeetingTitle']==values['MTG_MeetingTitle']
+    assert triggers==pack['stages']['invitation']['before']
     assert submitted[0]['MTG_MeetingNo']=='MTG-1405-001'
+
+
+def test_failed_new_meeting_reconciles_same_processmaker_case_without_duplicate(pack,store):
+    draft=r.session_create(S,'actor',pack['id'])
+    values=copy.deepcopy(V);values.pop('MTG_MeetingNo')
+    values['MTG_Agenda']['1'].update(MTG_AgendaPresenterUID='c'*32,MTG_AgendaPlannedMinutes='20')
+    draft=r.session_update(S,'actor',draft['id'],draft['revision'],values)
+    class FailingPM:
+        def create_for(self,task,payload):return 'a'*32
+        def assigned(self,*args):return 1
+        def set_variables(self,*args,**kwargs):raise RuntimeError('trigger transport stopped after create')
+    with pytest.raises(RuntimeError):
+        r.session_send(S,'actor',draft['id'],draft['revision'],pm=FailingPM())
+    failed=next(x for x in r.sessions(S,'actor') if x['id']==draft['id'])
+    assert failed['status']=='reconciliation_required'
+    assert failed['case_uid']=='a'*32
+    assert failed['last_error']
+
+    calls=[]
+    class RecoveryPM:
+        def assigned(self,case,*args):calls.append(('assigned',case));return 1
+        def set_variables(self,case,index,payload,**kwargs):calls.append(('variables',case,payload['MTG_MeetingTitle']))
+        def execute_trigger(self,case,trigger,**kwargs):calls.append(('before',case,trigger))
+        def variables(self,case):return {'MTG_MeetingNo':'MTG-1405-009','MTG_FRMTG001_FormDate':'1405/07/13'}
+        def submit_stage(self,case,stage,person,payload,index):calls.append(('submit',case,payload['MTG_MeetingNo']))
+    result=r.session_reconcile(S,'actor',draft['id'],failed['revision'],pm=RecoveryPM())
+    assert result['case_uid']=='a'*32
+    assert result['status']=='awaiting_invitation_approval'
+    assert all(call[1]=='a'*32 for call in calls)
+    assert ('submit','a'*32,'MTG-1405-009') in calls
 
 
 
