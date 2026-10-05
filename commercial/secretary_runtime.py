@@ -216,6 +216,26 @@ def _compact(value,limit=320):
  text=' '.join(str(value or '').split())
  return text if len(text)<=limit else text[:limit-1]+'…'
 
+def _display_date(value):
+ raw=str(value or '').strip()
+ if not raw:return ''
+ try:
+  from .setup_console import get_setting
+  import jdatetime
+  mode=str((get_setting('ui') or {}).get('calendar','jalali')).lower()
+  if len(raw)>=10 and raw[:4].isdigit() and int(raw[:4])<1700:
+   instant=legacy.jalali_instant(raw[:10].replace('-','/'),'00:00')
+   gregorian=instant.date()
+  else:
+   normalized=raw.replace('Z','+00:00')
+   if len(normalized)>=10:
+    gregorian=datetime.fromisoformat(normalized[:10]).date()
+   else:return raw
+  if mode=='gregorian':return gregorian.strftime('%Y/%m/%d')
+  return jdatetime.date.fromgregorian(date=gregorian).strftime('%Y/%m/%d')
+ except (ValueError,TypeError):
+  return raw
+
 def assistant_state(values,task,scope,questions=()):
  """Deterministic, reviewable secretary response built from PMX-bound fields."""
  stage=task['stage'];v={**task.get('native',{}),**values}
@@ -223,7 +243,7 @@ def assistant_state(values,task,scope,questions=()):
  lines=[]
  if stage in ('invitation','invitation_approval','minutes','minutes_approval','monitoring'):
   no=_compact(v.get('MTG_MeetingNo'))
-  when=' '.join(x for x in [_compact(v.get('MTG_MeetingStartDateTime')),_compact(v.get('MTG_MeetingStartTime'))] if x)
+  when=' '.join(x for x in [_display_date(v.get('MTG_MeetingStartDateTime')),_compact(v.get('MTG_MeetingStartTime'))] if x)
   place=_compact(v.get('MTG_Location'))
   chair=_person(v.get('MTG_ChairUserUID'),scope)
   secretary=_person(v.get('MTG_SecretaryUserUID'),scope)
@@ -253,7 +273,7 @@ def assistant_state(values,task,scope,questions=()):
    if actions:lines.append('اقدامات: '+ '؛ '.join(actions[:8]))
  elif stage in ('action_execution','action_review'):
   lines.append('اقدام '+_compact(v.get('MTGA_ActionNo'))+' · '+_compact(v.get('MTGA_ActionDescription') or task.get('title')))
-  if v.get('MTGA_DueDateTime'):lines.append('مهلت: '+_compact(v.get('MTGA_DueDateTime'))+' '+_compact(v.get('MTGA_DueTime')))
+  if v.get('MTGA_DueDateTime'):lines.append('مهلت: '+_display_date(v.get('MTGA_DueDateTime'))+' '+_compact(v.get('MTGA_DueTime')))
   if v.get('MTGA_ProgressPercent') not in (None,''):lines.append('پیشرفت اعلامی: '+str(v.get('MTGA_ProgressPercent'))+'٪')
  summary='\n'.join(x for x in lines if x)
  missing_now=gaps(values,task)
