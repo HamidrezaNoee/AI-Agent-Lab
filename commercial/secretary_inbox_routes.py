@@ -220,27 +220,29 @@ def register(app,authorized,csrf):
  @app.post(base+'/sessions/{identifier}/turn')
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
   principal=value[2]
-  def run(con,s,p):
+  def snapshot(con,s,p):
    row,t=runtime.session_load(s,p.subject,identifier)
    if row['revision']!=body.revision:raise RevisionConflict()
-   with run_slot((str(principal.tenant_id),p.subject)):
-    vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
-   def commit(con,s,p):
-    current,t=runtime.session_load(s,p.subject,identifier)
-    if current['revision']!=body.revision:raise RevisionConflict()
-    updated=runtime.session_update(s,p.subject,identifier,body.revision,vals,questions,turn_text=body.text,reply=reply)
-    assistant=runtime.assistant_state(updated['values'],t,s,updated.get('questions',[]))
-    if intent=='update' and body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
-     sent=runtime.session_send(s,p.subject,identifier,updated['revision'])
-     return {'advanced':True,'status':sent['status'],'case_uid':sent.get('case_uid'),'assistant':{
-      'stage':'invitation','summary':runtime.assistant_state(sent['values'],t,s,[])['summary'],
-      'missing':[],'can_submit':False,
-      'message':'گام اول فرایند ایجاد شد و دعوت‌نامه برای بررسی رئیس جلسه ارسال شد.'
-     }}
-    return session_response(s,p,updated,t)
-   # Revalidate source binding and revision after the external model call.
-   return access(value,source_id,commit)
-  return access(value,source_id,run)
+   return s,row,t
+  # Never hold a ProcessMaker MySQL transaction open while waiting on the
+  # external model. Take an authorized snapshot, close it, then revalidate.
+  s,row,t=access(value,source_id,snapshot)
+  with run_slot((str(principal.tenant_id),principal.subject)):
+   vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
+  def commit(con,fresh_scope,p):
+   current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
+   if current['revision']!=body.revision:raise RevisionConflict()
+   updated=runtime.session_update(fresh_scope,p.subject,identifier,body.revision,vals,questions,turn_text=body.text,reply=reply)
+   assistant=runtime.assistant_state(updated['values'],fresh_task,fresh_scope,updated.get('questions',[]))
+   if intent=='update' and body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
+    sent=runtime.session_send(fresh_scope,p.subject,identifier,updated['revision'])
+    return {'advanced':True,'status':sent['status'],'case_uid':sent.get('case_uid'),'assistant':{
+     'stage':'invitation','summary':runtime.assistant_state(sent['values'],fresh_task,fresh_scope,[])['summary'],
+     'missing':[],'can_submit':False,
+     'message':'گام اول فرایند ایجاد شد و دعوت‌نامه برای بررسی رئیس جلسه ارسال شد.'
+    }}
+   return session_response(fresh_scope,p,updated,fresh_task)
+  return access(value,source_id,commit)
  @app.post(base+'/sessions/{identifier}/attachment')
  async def session_attachment(source_id:str,identifier:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
   text,meta=await read_upload(request);principal=value[2]
