@@ -1,5 +1,5 @@
 "use strict";
-const app={processChoices:{},processManifests:{},secretaryTimer:null,user:null,csrf:null,page:"overview",selectedSourceId:null,cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,calendar:"jalali",cleanup:[]};
+const app={processChoices:{},processManifests:{},secretaryTimer:null,user:null,csrf:null,page:"overview",selectedSourceId:null,cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,calendar:"jalali",preferences:{secretary_auto_play_voice:false,voice_auto_transcribe:true,voice_auto_send:false},activeOperation:null,cleanup:[]};
 const $=id=>document.getElementById(id);
 function el(tag,klass,text){const n=document.createElement(tag);if(klass)n.className=klass;if(text!==undefined)n.textContent=String(text);return n}
 function add(parent,...children){for(const x of children.flat())if(x!==undefined&&x!==null)parent.append(x);return parent}
@@ -173,23 +173,53 @@ function toast(text){const t=$("toast");t.textContent=text;t.hidden=false}
 function sourceApi(sourceId,path){
  return sourceId?("/api/sources/"+encodeURIComponent(sourceId)+path):("/api"+path);
 }
+function makeRequestId(){
+ if(globalThis.crypto?.randomUUID)return crypto.randomUUID().replaceAll("-","");
+ return Date.now().toString(36)+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
+}
+async function clientAudit(event,detail={}){
+ if(!app.user||!app.csrf||app.user.bootstrap_mode)return;
+ try{
+  await fetch("/api/support/client-event",{
+   method:"POST",credentials:"same-origin",cache:"no-store",redirect:"error",
+   headers:{"Accept":"application/json","Content-Type":"application/json","X-AVAN-CSRF":app.csrf},
+   body:JSON.stringify({event,detail})
+  });
+ }catch(_){}
+}
+function errorDescription(error){
+ const parts=[error?.message||"خطای نامشخص"];
+ if(error?.status)parts.push("HTTP "+error.status);
+ if(error?.requestId)parts.push("شناسه پیگیری: "+error.requestId);
+ return parts.join(" · ");
+}
 async function request(url,options={}){
- const headers={"Accept":"application/json",...(options.headers||{})};
+ const requestId=options.requestId||makeRequestId();
+ const headers={"Accept":"application/json","X-AVAN-Request-ID":requestId,...(options.headers||{})};
  const scoped=url.match(/^\/api\/sources\/([^/]+)\/(ask|questions|meetings(?:\/[^/]+)?|agent\/(status|history)|reports\/actions(?:\/ask)?|monitor(?:\/[^/]+)?|voice\/(speech|transcribe))(?:\?|$)/);
  if(scoped){
   const sourceId=scoped[1],choice=app.processChoices[sourceId],manifest=app.processManifests[sourceId];
-  // Only a typed meeting_v2 workspace may narrow analytical endpoints.
-  // Generic native_tasks_v1 selections are inbox navigation, not analytical
-  // context; sending them caused the BPMS assistant to fail with a misleading 403.
   if(choice?.packId && manifest?.process?.id===choice.packId &&
      manifest?.process?.adapter==="meeting_v2" && manifest?.process?.renderer==="meeting"){
-    headers["X-AVAN-Process-Pack"]=choice.packId;
+   headers["X-AVAN-Process-Pack"]=choice.packId;
   }
  }
  if(options.background)headers["X-AVAN-BACKGROUND"]="1";
  if(options.method==="POST" && app.csrf)headers["X-AVAN-CSRF"]=app.csrf;
- const {background,...fetchOptions}=options;
- const response=await fetch(url,{...fetchOptions,headers,credentials:"same-origin",cache:"no-store",redirect:"error"});
+ const {background,requestId:ignoredRequestId,audit=true,...fetchOptions}=options;
+ let response;
+ try{
+  response=await fetch(url,{...fetchOptions,headers,credentials:"same-origin",cache:"no-store",redirect:"error"});
+ }catch(cause){
+  if(cause?.name==="AbortError"){
+   const error=Error("پردازش به درخواست شما متوقف شد.");error.code="ABORTED";error.requestId=requestId;
+   void clientAudit("CLIENT_REQUEST_ABORTED",{request_id:requestId,path:url,method:options.method||"GET",result:"cancelled"});
+   throw error;
+  }
+  const error=Error("ارتباط با سرور AVAN برقرار نشد.");error.code="NETWORK_ERROR";error.requestId=requestId;error.cause=cause;
+  void clientAudit("CLIENT_NETWORK_ERROR",{request_id:requestId,path:url,method:options.method||"GET",error_type:cause?.name||"network"});
+  throw error;
+ }
  if(response.status===401){
    if(app.user?.bootstrap_mode && url!=="/api/me" && url.startsWith("/api/")){
      throw Error("هویت سازمانی GodAdmin هنوز متصل نشده است؛ این بخش فعلاً در حالت محدود نمایش داده می‌شود.");
@@ -197,9 +227,21 @@ async function request(url,options={}){
    sessionExpired();throw Error("نشست سازمانی پایان یافته است. دوباره وارد شوید.")
  }
  if(!response.ok){
-   let message="دریافت اطلاعات با خطا مواجه شد.";
-   try{const e=await response.json();if(typeof e.detail==="string")message=e.detail}catch{}
-   const error=Error(message);error.status=response.status;throw error;
+   let message="دریافت اطلاعات با خطا مواجه شد.",code="HTTP_"+response.status,serverRequestId=null;
+   try{
+    const e=await response.json();
+    if(typeof e.detail==="string")message=e.detail;
+    else if(e.detail?.message)message=e.detail.message;
+    if(typeof e.code==="string")code=e.code;
+    if(typeof e.request_id==="string")serverRequestId=e.request_id;
+   }catch{}
+   const error=Error(message);error.status=response.status;error.code=code;error.requestId=serverRequestId||requestId;
+   void clientAudit("API_ERROR",{request_id:error.requestId,path:url,method:options.method||"GET",status:response.status,error:message});
+   throw error;
+ }
+ if(audit!==false && !background && options.method==="POST" &&
+    !url.startsWith("/api/support/client-event") && !url.includes("/auth/heartbeat")){
+   void clientAudit("API_ACTION",{request_id:requestId,path:url.split("?")[0],method:"POST",status:response.status,result:"success"});
  }
  return options.binary?response:response.json();
 }
@@ -305,8 +347,9 @@ window.addEventListener("message",event=>{
 function select(page){
  const platformPage=page.startsWith("platform-");
  const adminPage=page==="system-management";
+ const personalPage=page==="user-settings"||page==="support-logs";
  const sourcePage=page.startsWith("source-");
- const orgPage=!platformPage&&!adminPage&&!sourcePage;
+ const orgPage=!platformPage&&!adminPage&&!sourcePage&&!personalPage;
  if(platformPage&&(!app.user?.is_godadmin||app.user?.platform_access===false))return;
  if(adminPage&&!app.user?.is_godadmin)return;
  if(sourcePage){
@@ -320,14 +363,15 @@ function select(page){
  cleanMedia();
  if(app.monitorTimer){clearTimeout(app.monitorTimer);app.monitorTimer=null}
  app.page=page;
- const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-assistant":"دستیار BPMS","source-secretary":"اجرای هوشمند جلسات","source-reports":"گزارش اقدامات BPMS","source-monitor":"هشدار و پیگیری BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه"};
+ if(app.user&&!app.user.bootstrap_mode)void clientAudit("NAVIGATE",{page,source_id:app.selectedSourceId||null});
+ const labels={overview:"نمای کلی",meetings:"جلسات و مصوبات",assistant:"دستیار مدیریتی",reports:"گزارش اقدامات",bi:"BI همه فرایندها",secretary:"دبیر هوشمند",monitor:"هشدار و پیگیری","source-overview":"BPMS متصل","source-meetings":"جلسات BPMS","source-assistant":"دستیار BPMS","source-secretary":"اجرای هوشمند جلسات","source-reports":"گزارش اقدامات BPMS","source-monitor":"هشدار و پیگیری BPMS","source-bi":"BI منبع","platform-overview":"نمای کلی پلتفرم","platform-assistant":"دستیار پلتفرم","platform-bi":"گزارش BPMSها","system-management":"مدیریت سامانه","user-settings":"تنظیمات من","support-logs":"پشتیبانی · لاگ‌ها"};
  $("breadcrumb").textContent=labels[page]||"آوان";
  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("active",
    sourcePage&&b.dataset.sourceId
     ?b.dataset.sourceId===app.selectedSourceId&&b.dataset.page===page&&(!b.dataset.section||(b.dataset.packId===app.processChoices[app.selectedSourceId]?.packId&&b.dataset.section===app.processChoices[app.selectedSourceId]?.section))
     :b.dataset.page===page));
  const m=root();add(m,el("p","muted",adminPage?"در حال باز کردن مدیریت سامانه...":"در حال دریافت اطلاعات سازمان..."));
- const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>intelligentMeetingPage(),"source-process":processWorkspacePage,"source-reports":()=>reportsPage(app.selectedSourceId),"source-monitor":()=>monitorPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement}[page];
+ const work={overview:overview,meetings:meetingPage,assistant:assistantPage,reports:reportsPage,bi:biPage,secretary:secretaryPage,monitor:monitorPage,"source-overview":boundSourceOverview,"source-meetings":boundSourceMeetings,"source-assistant":()=>assistantPage(app.selectedSourceId),"source-secretary":()=>intelligentMeetingPage(),"source-process":processWorkspacePage,"source-reports":()=>reportsPage(app.selectedSourceId),"source-monitor":()=>monitorPage(app.selectedSourceId),"source-bi":()=>biPage(app.selectedSourceId),"platform-overview":platformOverview,"platform-assistant":platformAssistant,"platform-bi":platformBI,"system-management":systemManagement,"user-settings":userSettingsPage,"support-logs":supportLogsPage}[page];
  if(work)work().catch(err=>{
   const target=root();
   if(orgPage&&app.user?.is_godadmin){
@@ -465,6 +509,9 @@ async function init(){
   const user=await request("/api/me");
   try{const ui=await request("/api/ui-config");app.calendar=ui.calendar==="gregorian"?"gregorian":"jalali"}catch(_){app.calendar="jalali"}
   setupUser(user);
+  if(!user.bootstrap_mode){
+   try{app.preferences={...app.preferences,...await request("/api/user/preferences",{audit:false})}}catch(_){}
+  }
   const workspaceNavigation=(user.bpms_sources||[]).length>0;
   if(user.bootstrap_mode){select("system-management");return}
   if(workspaceNavigation){app.selectedSourceId=user.bpms_sources[0].source_id;select("source-overview");return}
