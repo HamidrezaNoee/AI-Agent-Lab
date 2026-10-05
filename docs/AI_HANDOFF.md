@@ -80,3 +80,11 @@ _ready, use the official fixed endpoint and never save draft keys during probes.
 Visibility does not prove Responses/structured-output compatibility. Save preserves
 a blank key and takes effect on the next request. 481 Python tests passed; browser
 fixture checks list/select/probe/save. No live key or production deployment tested.
+
+## Server-side person resolution
+Extraction now resolves exact usernames/full names/UID casing against active users
+of the current BPMS before validation. Ambiguous/inactive/unknown references become
+blank fields with specific questions; valid agenda and other facts survive. Missing
+participant IDs are explicit gaps blocking invitation submission. Evidence checks,
+source boundaries and explicit send authorization remain in place. Regression uses
+eight example accounts and simulated model output, not a live model/PM connection.

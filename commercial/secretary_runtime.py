@@ -143,6 +143,9 @@ def gaps(values,task):
  stage=task['stage'];required=[]
  if stage in ('invitation','minutes'):
   result=legacy.missing(values,stage)
+  for i,row in enumerate(_rows(values.get('MTG_Participants')),1):
+   if not row.get('MTG_ParticipantUserUID'):
+    result.append({'field':f'MTG_Participants.{i}.MTG_ParticipantUserUID','question':f'شرکت‌کننده ردیف {i} را از کاربران فعال همین اتصال انتخاب کنید.'})
   # FR-MTG-001 generates the meeting number in its native BEFORE trigger.
   # A conversational session does not have a Case UID yet, so asking the user
   # for MTG_MeetingNo would duplicate a system-owned field.
@@ -400,9 +403,9 @@ def _merge_assignment(field,current,value,notes):
   return _merge_extracted_value(current,value)
  base=copy.deepcopy(current) if isinstance(current,dict) else {}
  for row in value.values():
-  if not isinstance(row,dict) or not row.get(identity):
+  if not isinstance(row,dict):
    raise AgentInvalid('Added row requires a participant or agenda identity')
-  matching=next((k for k,v in base.items() if isinstance(v,dict) and v.get(identity)==row[identity]),None)
+  matching=next((k for k,v in base.items() if row.get(identity) and isinstance(v,dict) and v.get(identity)==row[identity]),None)
   key=matching or str(max([int(k) for k in base if str(k).isdigit()]+[0])+1)
   base[key]={**base.get(key,{}),**row}
  return base
@@ -447,6 +450,36 @@ def _model_failure(exc):
  return 'استخراج اطلاعات توسط مدل انجام نشد؛ دوباره تلاش کنید. کد فنی: AI-EXTRACT · '+safe+suffix
 
 
+def resolve_extracted_people(field,value,spec,directory):
+ """Resolve references locally within this BPMS; never accept a guessed identity."""
+ from .secretary_ai_context import normalize as person_text
+ questions=[]
+ def person(raw,label):
+  if raw in ('',None):return ''
+  text=str(raw).strip()
+  active={uid:p for uid,p in directory.items() if p.get('active')}
+  if text in active:return text
+  uid_matches=[uid for uid in active if uid.lower()==text.lower()]
+  if len(uid_matches)==1:return uid_matches[0]
+  matches=[uid for uid,p in active.items() if p.get('username') and str(p['username']).casefold()==text.casefold()]
+  if not matches:
+   matches=[uid for uid,p in active.items() if p.get('name') and person_text(p['name'])==person_text(text)]
+  if len(matches)==1:return matches[0]
+  reason='چند حساب مطابق دارد' if matches else 'در کاربران فعال این اتصال پیدا نشد'
+  questions.append(str(label)+': «'+text[:100]+'» '+reason+'؛ شخص درست را در فرم انتخاب کنید.')
+  return ''
+ if field.endswith('UID'):return person(value,spec.get('label') or field),questions
+ if spec.get('type')=='grid' and isinstance(value,dict):
+  value=copy.deepcopy(value)
+  columns={c['id']:c for c in spec.get('columns',[])}
+  for number,row in value.items():
+   if not isinstance(row,dict):continue
+   for key in list(row):
+    if key in columns and key.endswith('UID'):
+     row[key]=person(row[key],str(spec.get('label') or field)+' / '+str(number)+' / '+str(columns[key].get('label') or key))
+ return value,questions
+
+
 def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
  from .secretary_ai_context import build_context
  payload=build_context(notes,task,current,scope,form(task),questions)
@@ -478,9 +511,12 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
      if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
      parsed=legacy.validate_model_json(legacy.Extraction,legacy.response_text(result))
     values=copy.deepcopy(current)
+    identity_questions=[]
     for a in parsed.assignments:
      if a.field not in form(task) or not a.quote.strip() or not _evidence_in_notes(a.quote,notes):raise AgentInvalid('Invalid assignment evidence')
      val=normalize(json.loads(a.value_json))
+     val,issues=resolve_extracted_people(a.field,val,form(task)[a.field],scope['directory'])
+     identity_questions.extend(issues)
      values[a.field]=_merge_assignment(a.field,values.get(a.field),val,notes)
     validate(values,task,scope)
     unanswered=[]
@@ -488,7 +524,7 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None):
      if heading in _intent_text(notes) and field in form(task) and not any(a.field==field for a in parsed.assignments):
       unanswered.append('بخش '+label+' در این پیام استخراج نشد؛ لطفاً آن بخش را جداگانه بفرستید یا در فرم بررسی کنید.')
     if unanswered and attempt==0:raise AgentInvalid('Explicit list was omitted')
-    return values,list(parsed.questions)+unanswered
+    return values,list(dict.fromkeys(identity_questions+list(parsed.questions)+unanswered))
    except (AgentInvalid,ValueError) as exc:
     last=exc
     if attempt==0:continue

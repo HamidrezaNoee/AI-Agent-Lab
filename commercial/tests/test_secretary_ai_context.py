@@ -119,3 +119,28 @@ def test_omitted_explicit_sections_retry_then_report_instead_of_silent_success(p
   client=SimpleNamespace(responses=SimpleNamespace(create=create)),model='test')
  assert len(calls)==2
  assert len(questions)==2 and all('استخراج نشد' in q for q in questions)
+
+def test_username_resolution_and_unknown_people_preserve_agenda(pack):
+ scope=copy.deepcopy(S)
+ names=['administrator','ceo','mgr.strategy','mgr.commercial','mgr.foreign','mgr.finance','mgr.legal','mgr.sales']
+ scope['directory']={f'{i+300:032x}':{'active':True,'username':name,'name':'نام '+str(i)} for i,name in enumerate(names)}
+ assignments=[
+  {'field':'MTG_ChairUserUID','value_json':'"ceo"','quote':'ceo'},
+  {'field':'MTG_Participants','value_json':json.dumps({str(i+1):{'MTG_ParticipantUserUID':n} for i,n in enumerate(names)}),'quote':'شرکت‌کنندگان'},
+  {'field':'MTG_Agenda','value_json':json.dumps({'1':{'MTG_AgendaTitle':'بررسی توسعه','MTG_AgendaPresenterUID':'mgr.strategy','MTG_AgendaPlannedMinutes':'15'},'2':{'MTG_AgendaTitle':'بررسی مالی','MTG_AgendaPresenterUID':'not-found','MTG_AgendaPlannedMinutes':'10'}}),'quote':'دستور جلسه'}
+ ]
+ client=SimpleNamespace(responses=SimpleNamespace(create=lambda **kw:SimpleNamespace(status='completed',output_text=json.dumps({'assignments':assignments,'questions':[]}))))
+ values,questions=r.extract('ceo شرکت‌کنندگان دستور جلسه',task(pack,'invitation'),{},scope,client=client,model='test')
+ assert len(values['MTG_Participants'])==8
+ assert values['MTG_ChairUserUID']==f'{301:032x}'
+ assert values['MTG_Agenda']['1']['MTG_AgendaPresenterUID']==f'{302:032x}'
+ assert values['MTG_Agenda']['2']['MTG_AgendaTitle']=='بررسی مالی'
+ assert values['MTG_Agenda']['2']['MTG_AgendaPresenterUID']==''
+ assert any('not-found' in q for q in questions)
+ assert any('2' in q['question'] for q in r.gaps(values,task(pack,'invitation')))
+
+def test_ambiguous_and_inactive_people_not_assigned():
+ directory={'a':{'active':True,'name':'علی رضایی'},'b':{'active':True,'name':'علی رضایی'},'c':{'active':False,'username':'ceo'}}
+ for raw in ('علی رضایی','ceo','fake-uid'):
+  value,questions=r.resolve_extracted_people('MTG_ChairUserUID',raw,{},directory)
+  assert value=='' and questions
