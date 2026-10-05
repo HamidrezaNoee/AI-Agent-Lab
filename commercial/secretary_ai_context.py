@@ -55,19 +55,26 @@ def build_context(notes, task, current, scope, fields, questions=()):
     for uid, person in scope['directory'].items():
         if not person.get('active'):
             continue
-        name=normalize(person.get('name',''))
+        names=[person.get('name',''),person.get('avan_name','')]
+        normalized=[normalize(x) for x in names if x]
         if uid in referenced:
-            people[uid]={'name':person.get('name','')}
-        elif username_matches(person.get('username'), notes) or (name and ((' '+name+' ') in (' '+text+' ') or name_matches(name, notes))):
-            candidates.append((uid,person.get('name','')))
+            people[uid]={'name':person.get('name','') or person.get('avan_name','')}
+        elif (username_matches(person.get('username'), notes)
+              or username_matches(person.get('avan_username'), notes)
+              or any(name and ((' '+name+' ') in (' '+text+' ') or name_matches(name, notes)) for name in normalized)):
+            candidates.append((uid,person.get('name','') or person.get('avan_name','')))
     if len(people)+len(candidates)>MAX_PEOPLE:
         raise ValueError('افراد این درخواست زیاد هستند؛ اطلاعات را در چند بخش وارد کنید.')
     people.update({uid:{'name':name} for uid,name in candidates})
     for uid in people:
         people[uid]['unit']=scope['directory'][uid].get('unit','')
         people[uid]['username']=scope['directory'][uid].get('username','')
+        people[uid]['avan_name']=scope['directory'][uid].get('avan_name','')
+        people[uid]['avan_username']=scope['directory'][uid].get('avan_username','')
     # Include every matching candidate; never resolve ambiguous names by directory order.
-    active={k:{'name':v.get('name',''),'unit':v.get('unit',''),'username':v.get('username','')} for k,v in scope['directory'].items() if v.get('active')}
+    active={k:{'name':v.get('name',''),'unit':v.get('unit',''),'username':v.get('username',''),
+               'avan_name':v.get('avan_name',''),'avan_username':v.get('avan_username','')}
+            for k,v in scope['directory'].items() if v.get('active')}
     if len(active)<=MAX_PEOPLE:
         people=active
     payload={'calendar':calendar_context(),'notes':notes,'stage':task['stage'],'current':current,
