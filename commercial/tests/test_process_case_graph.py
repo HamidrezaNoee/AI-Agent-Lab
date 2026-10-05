@@ -39,7 +39,7 @@ def test_flow_graph_builds_git_like_stage_and_current_owner(monkeypatch):
   "MTG_SecretaryUserUID":U1,"MTG_ChairUserUID":U2,
   "MTG_Participants":{"1":{"MTG_ParticipantUserUID":U1}},
  }
- parent=("f"*32,718,"TO_DO",phpserialize.dumps(data),"2026-10-05 10:00:00","2026-10-05 10:05:00",None,U1)
+ parent=("f"*32,718,"TO_DO",phpserialize.dumps(data),"2026-10-05 10:00:00",None,U1)
  monkeypatch.setattr(g,"_pack",lambda scope,pack_id:PACK)
  def fake_query(con,sql,args=()):
   if "FROM APPLICATION a WHERE" in sql:return [parent]
@@ -59,7 +59,7 @@ def test_flow_graph_builds_git_like_stage_and_current_owner(monkeypatch):
 
 def test_flow_graph_filters_by_role_and_owner(monkeypatch):
  data={"MTG_MeetingTitle":"جلسه","MTG_SecretaryUserUID":U1,"MTG_ChairUserUID":U2}
- parent=("f"*32,10,"TO_DO",phpserialize.dumps(data),"2026-10-05",None,None,U1)
+ parent=("f"*32,10,"TO_DO",phpserialize.dumps(data),"2026-10-05",None,U1)
  monkeypatch.setattr(g,"_pack",lambda scope,pack_id:PACK)
  def fake_query(con,sql,args=()):
   if "FROM APPLICATION a WHERE" in sql:return [parent]
