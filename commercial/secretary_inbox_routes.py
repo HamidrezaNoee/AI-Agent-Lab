@@ -271,3 +271,8 @@ def register(app,authorized,csrf):
   if not body.confirmed:raise HTTPException(422,'دعوت‌نامه را بازبینی و ارسال را تأیید کنید.')
   return access(value,source_id,lambda con,s,p:runtime.session_send(s,p.subject,identifier,body.revision))
 
+ @app.post(base+'/sessions/{identifier}/reconcile')
+ def reconcile_session(source_id:str,identifier:str,body:Submit,value=Depends(csrf)):
+  if not body.confirmed:raise HTTPException(422,'ادامه همان پرونده ProcessMaker را صریحاً تأیید کنید.')
+  return access(value,source_id,lambda con,s,p:runtime.session_reconcile(s,p.subject,identifier,body.revision))
+
