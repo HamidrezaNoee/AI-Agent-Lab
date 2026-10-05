@@ -66,7 +66,10 @@ If no evidence supports the answer, return no claims and explain the missing dat
 Never present model inference as audited fact, lack of data as zero, or a suggested action as done.'''
 
 _LOCK=threading.Lock()
-_ACTIVE=set()
+# key -> generation token. A cancelled request can release the user key without
+# pretending the external model call has already ended; the old worker keeps its
+# global capacity slot until its own finally block executes.
+_ACTIVE={}
 _LAST={}
 _CAPACITY=threading.BoundedSemaphore(4)
 
@@ -74,17 +77,30 @@ _CAPACITY=threading.BoundedSemaphore(4)
 @contextmanager
 def run_slot(key):
     now=time.monotonic()
+    token=object()
     with _LOCK:
         if key in _ACTIVE or now-_LAST.get(key,-100)<2:raise AgentBusy('لطفاً پایان درخواست قبلی را منتظر بمانید.')
         if not _CAPACITY.acquire(blocking=False):raise AgentBusy('ظرفیت تحلیل موقتاً تکمیل است؛ دوباره تلاش کنید.')
-        _ACTIVE.add(key)
+        _ACTIVE[key]=token
         _LAST[key]=now
         for old,at in list(_LAST.items()):
             if now-at>3600:_LAST.pop(old,None)
     try:yield
     finally:
-        with _LOCK:_ACTIVE.discard(key)
+        with _LOCK:
+            if _ACTIVE.get(key) is token:_ACTIVE.pop(key,None)
         _CAPACITY.release()
+
+
+def cancel_run_slot(key):
+    """Release only the user's logical lock; the old worker retains capacity."""
+    with _LOCK:
+        existed=key in _ACTIVE
+        _ACTIVE.pop(key,None)
+        # Cancellation is an explicit user action, so do not enforce the normal
+        # two-second anti-double-submit delay on the replacement request.
+        _LAST.pop(key,None)
+        return existed
 
 
 def _model_schema(model):
