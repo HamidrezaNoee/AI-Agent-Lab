@@ -267,7 +267,7 @@ def load(con,scope,args:FlowGraphQuery):
   action_counts={"total":0,"open":0,"review":0,"closed":0}
   for d in by_case.get(case_uid,[]):
    stage=by_task.get(str(d[2]))
-   if stage and str(d[4])=="OPEN" and not d[5]:
+   if stage and str(d[4])=="OPEN":
     current.append(STAGE_INDEX[stage])
     if d[3]:owners.append(str(d[3]))
   for cid in _child_ids(data):
@@ -278,7 +278,7 @@ def load(con,scope,args:FlowGraphQuery):
    if closed:action_counts["closed"]+=1
    for d in by_case.get(cid,[]):
     stage=by_task.get(str(d[2]))
-    if stage and str(d[4])=="OPEN" and not d[5]:
+    if stage and str(d[4])=="OPEN":
      idx=STAGE_INDEX[stage];current.append(idx)
      if stage=="action_review":action_counts["review"]+=1
      else:action_counts["open"]+=1
