@@ -275,6 +275,15 @@ def health():
             "database_checked":False,"identity_checked":False}
 
 
+@app.get("/api/ui-config")
+def ui_config():
+    from .setup_console import get_setting
+    calendar=str((get_setting("ui") or {}).get("calendar","jalali")).lower()
+    if calendar not in ("jalali","gregorian"):
+        calendar="jalali"
+    return {"calendar":calendar}
+
+
 def _internal_security_secret()->str:
     path=Path(os.getenv("AVAN_SECURITY_BRIDGE_TOKEN_PATH",
                         "/run/secrets/avan_bff_client_secret"))
