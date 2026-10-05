@@ -44,7 +44,7 @@ def test_flow_graph_builds_git_like_stage_and_current_owner(monkeypatch):
  def fake_query(con,sql,args=()):
   if "FROM APPLICATION a WHERE" in sql:return [parent]
   if "FROM APP_DELEGATION d" in sql:
-   return [("f"*32,2,"2"*32,U2,"OPEN",None,"تأیید دعوت")]
+   return [("f"*32,2,"2"*32,U2,"OPEN",None,"2026-10-05 10:05:00","تأیید دعوت")]
   raise AssertionError(sql)
  monkeypatch.setattr(g,"query",fake_query)
  result=g.load(object(),SCOPE,g.FlowGraphQuery(pack_id="a"*24,period="all"))
@@ -63,7 +63,7 @@ def test_flow_graph_filters_by_role_and_owner(monkeypatch):
  monkeypatch.setattr(g,"_pack",lambda scope,pack_id:PACK)
  def fake_query(con,sql,args=()):
   if "FROM APPLICATION a WHERE" in sql:return [parent]
-  if "FROM APP_DELEGATION d" in sql:return [("f"*32,1,"2"*32,U2,"OPEN",None,"")]
+  if "FROM APP_DELEGATION d" in sql:return [("f"*32,1,"2"*32,U2,"OPEN",None,"2026-10-05 10:05:00","")]
   raise AssertionError(sql)
  monkeypatch.setattr(g,"query",fake_query)
  yes=g.load(object(),SCOPE,g.FlowGraphQuery(pack_id="a"*24,role="secretary",owner_uid=U2,period="all"))
@@ -83,3 +83,32 @@ def test_completed_case_marks_all_seven_nodes_done():
  assert len(nodes)==7
  assert all(n["state"]=="done" for n in nodes)
  assert g._progress([],True)==100
+
+
+def test_action_branch_models_parallel_git_like_lane():
+ scope={**SCOPE,"visible_uids":{U1,U2}}
+ branch=g._action_branch(
+  scope,"A-01",{"title":"پیگیری قرارداد","owner_uid":U2},
+  "c"*32,("c"*32,900,"TO_DO",b"",None,None,U2),
+  {"MTGA_ActionDescription":"پیگیری قرارداد","MTGA_OwnerUserUID":U2,"MTGA_ProgressPercent":"60"},
+  [("c"*32,1,"5"*32,U2,"OPEN",None,"2026-10-05 12:00:00","اجرای اقدام")],
+  {"5"*32:"action_execution","6"*32:"action_review"},
+ )
+ assert branch["stage"]=="action_execution"
+ assert branch["state"]=="execution"
+ assert branch["progress_percent"]==60
+ assert branch["current_owner"]["name"]=="مدیرعامل"
+
+
+def test_waiting_only_filters_to_selected_person(monkeypatch):
+ data={"MTG_MeetingTitle":"جلسه","MTG_SecretaryUserUID":U1,"MTG_ChairUserUID":U2}
+ parent=("f"*32,10,"TO_DO",phpserialize.dumps(data),"2026-10-05",None,U1)
+ monkeypatch.setattr(g,"_pack",lambda scope,pack_id:PACK)
+ def fake_query(con,sql,args=()):
+  if "FROM APPLICATION a WHERE" in sql:return [parent]
+  if "FROM APP_DELEGATION d" in sql:return [("f"*32,1,"2"*32,U2,"OPEN",None,"2026-10-05 10:05:00","")]
+  raise AssertionError(sql)
+ monkeypatch.setattr(g,"query",fake_query)
+ result=g.load(object(),{**SCOPE,"role":"SysAdmin"},g.FlowGraphQuery(pack_id="a"*24,person_uid=U2,waiting_only=True,period="all"))
+ assert result["total"]==1
+ assert result["summary"]["waiting_my_action"]==1
