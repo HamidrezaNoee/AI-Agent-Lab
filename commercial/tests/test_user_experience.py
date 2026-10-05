@@ -6,6 +6,7 @@ import pytest
 
 from commercial import user_experience as ux
 from commercial import agent_storage
+from commercial import meeting_agent
 
 
 @pytest.fixture
@@ -148,3 +149,30 @@ def test_audit_sanitizes_secret_fields(memory_store):
     assert "password" not in detail
     assert "token" not in detail
     assert "body" not in detail
+
+
+def test_cancel_run_slot_allows_immediate_replacement_without_old_finally_clobbering_it():
+    key=("tenant-cancel","actor-cancel")
+    first=meeting_agent.run_slot(key)
+    first.__enter__()
+    second=None
+    try:
+        with pytest.raises(meeting_agent.AgentBusy):
+            with meeting_agent.run_slot(key):
+                pass
+        assert meeting_agent.cancel_run_slot(key) is True
+        second=meeting_agent.run_slot(key)
+        second.__enter__()
+        # The late completion of the cancelled worker must not remove the new
+        # generation's active marker.
+        first.__exit__(None,None,None)
+        first=None
+        with pytest.raises(meeting_agent.AgentBusy):
+            with meeting_agent.run_slot(key):
+                pass
+    finally:
+        if first is not None:
+            first.__exit__(None,None,None)
+        if second is not None:
+            second.__exit__(None,None,None)
+        meeting_agent.cancel_run_slot(key)
