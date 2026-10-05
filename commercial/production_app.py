@@ -1098,6 +1098,8 @@ from .agent_routes import register as register_agent_routes
 register_agent_routes(app,_authorized,_csrf)
 from .process_bi_routes import register as register_bi_routes
 register_bi_routes(app,_csrf)
+from .process_case_graph_routes import register as register_process_case_graph_routes
+register_process_case_graph_routes(app,_csrf)
 from .platform_routes import register as register_platform_routes
 register_platform_routes(app,_platform_authorized,_platform_csrf)
 
