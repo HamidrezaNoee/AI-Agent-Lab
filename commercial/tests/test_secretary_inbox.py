@@ -408,3 +408,12 @@ def test_extracted_grid_preserves_existing_row_fields():
  assert merged['1']['MTG_ParticipantName']=='جدید'
  assert merged['2']['MTG_ParticipantUserUID']=='u2'
 
+
+def test_conversational_reply_is_persisted_in_history(store,pack):
+ t=task(pack,'invitation')
+ row=r.draft(S,'actor',t)
+ reply='موضوع ردیف سوم نیازمندی‌های بازرگانی است.'
+ updated=r.update(S,'actor',t,row['revision'],row['values'],turn_text='موضوع ردیف چیه؟',reply=reply)
+ assert updated['reply']==reply
+ assert updated['history'][-1]['text']==reply
+ assert updated['values']==row['values']

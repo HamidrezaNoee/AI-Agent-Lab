@@ -88,3 +88,14 @@ blank fields with specific questions; valid agenda and other facts survive. Miss
 participant IDs are explicit gaps blocking invitation submission. Evidence checks,
 source boundaries and explicit send authorization remain in place. Regression uses
 eight example accounts and simulated model output, not a live model/PM connection.
+
+## Conversational secretary
+Text turns now use ConversationExtraction: question/update intent plus Persian reply,
+assignments and questions in one model call. Question intent discards assignments,
+preserves prior pending questions and cannot auto-advance. Replies persist in both
+native-task and invitation-session history and API output. Simple agenda-row queries
+use draft facts without a model call; implicit row refers to the current missing
+agenda presenter. Payload includes actual pending fields and assistant prompt.
+Legacy extraction remains for file ingestion. Full suite: 486 passed before two
+additional regressions; focused final set: 66 passed including both additions.
+Model quality and production BPMS behavior are not established by fixture tests.

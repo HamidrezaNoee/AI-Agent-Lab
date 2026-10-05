@@ -59,6 +59,7 @@ def register(app,authorized,csrf):
  def response(s,p,t,row):
   context={k:v for k,v in t['native'].items() if k in t['pack']['stages'][t['stage']]['fields'] and not any(x in k for x in ('File','Evidence','Json','History'))}
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
+  if row.get('reply'):assistant['message']=row['reply']
   return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},
           'draft':{k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments')},
           'form':runtime.form(t),'context':context,'missing':assistant['missing'],'assistant':assistant,
@@ -66,6 +67,7 @@ def register(app,authorized,csrf):
 
  def session_response(s,p,row,t):
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
+  if row.get('reply'):assistant['message']=row['reply']
   return {'session':{k:v for k,v in row.items() if k not in ('actor','scope')},
           'task':{'stage':'invitation','title':row['values'].get('MTG_MeetingTitle') or 'جلسه جدید'},
           'form':runtime.form(t),'missing':assistant['missing'],'assistant':assistant,
@@ -126,15 +128,15 @@ def register(app,authorized,csrf):
    with run_slot((str(p.tenant_id),p.subject)):
     row=runtime.draft(s,p.subject,t)
     if row['revision']!=body.revision:raise RevisionConflict()
-    vals,questions=runtime.extract(body.text,t,row['values'],s,questions=row.get('questions',[]))
-    decision=runtime.apply_explicit_decision(body.text,t['stage'],vals)
-    workflow_intent=runtime.apply_explicit_workflow_intent(body.text,t['stage'],vals)
+    vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
+    decision=runtime.apply_explicit_decision(body.text,t['stage'],vals) if intent=='update' else None
+    workflow_intent=runtime.apply_explicit_workflow_intent(body.text,t['stage'],vals) if intent=='update' else None
     advance=runtime.explicit_advance_intent(body.text,t['stage'],workflow_intent) or bool(decision)
    def commit(con,s,p):
     fresh=runtime.task(con,s,case_uid,index,pack_id)
-    updated=runtime.update(s,p.subject,fresh,body.revision,vals,questions,turn_text=body.text)
+    updated=runtime.update(s,p.subject,fresh,body.revision,vals,questions,turn_text=body.text,reply=reply)
     assistant=runtime.assistant_state(updated['values'],fresh,s,updated.get('questions',[]))
-    if body.auto_advance and advance and not assistant['missing']:
+    if intent=='update' and body.auto_advance and advance and not assistant['missing']:
      sent=runtime.submit(s,p.subject,fresh,updated['revision'])
      return {'advanced':True,'status':sent['status'],'assistant':{
       'stage':fresh['stage'],'summary':assistant['summary'],'missing':[],
@@ -222,13 +224,13 @@ def register(app,authorized,csrf):
    row,t=runtime.session_load(s,p.subject,identifier)
    if row['revision']!=body.revision:raise RevisionConflict()
    with run_slot((str(principal.tenant_id),p.subject)):
-    vals,questions=runtime.extract(body.text,t,row['values'],s,questions=row.get('questions',[]))
+    vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
    def commit(con,s,p):
     current,t=runtime.session_load(s,p.subject,identifier)
     if current['revision']!=body.revision:raise RevisionConflict()
-    updated=runtime.session_update(s,p.subject,identifier,body.revision,vals,questions,turn_text=body.text)
+    updated=runtime.session_update(s,p.subject,identifier,body.revision,vals,questions,turn_text=body.text,reply=reply)
     assistant=runtime.assistant_state(updated['values'],t,s,updated.get('questions',[]))
-    if body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
+    if intent=='update' and body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
      sent=runtime.session_send(s,p.subject,identifier,updated['revision'])
      return {'advanced':True,'status':sent['status'],'case_uid':sent.get('case_uid'),'assistant':{
       'stage':'invitation','summary':runtime.assistant_state(sent['values'],t,s,[])['summary'],
@@ -268,3 +270,4 @@ def register(app,authorized,csrf):
  def send_session(source_id:str,identifier:str,body:Submit,value=Depends(csrf)):
   if not body.confirmed:raise HTTPException(422,'دعوت‌نامه را بازبینی و ارسال را تأیید کنید.')
   return access(value,source_id,lambda con,s,p:runtime.session_send(s,p.subject,identifier,body.revision))
+

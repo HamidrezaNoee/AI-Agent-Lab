@@ -144,3 +144,35 @@ def test_ambiguous_and_inactive_people_not_assigned():
  for raw in ('علی رضایی','ceo','fake-uid'):
   value,questions=r.resolve_extracted_people('MTG_ChairUserUID',raw,{},directory)
   assert value=='' and questions
+
+def test_row_question_answers_from_draft_without_model_or_mutation(pack,monkeypatch):
+ t=task(pack,'invitation')
+ values={'MTG_Agenda':{'3':{'MTG_AgendaTitle':'نیازمندی‌های بازرگانی','MTG_AgendaPlannedMinutes':'10'}}}
+ before=copy.deepcopy(values)
+ monkeypatch.setattr(r,'extract',lambda *a,**kw:pytest.fail('Read-only row query must not call model'))
+ result,questions,reply,intent=r.converse('موضوع ردیف ۳ چیه؟',t,values,S,questions=['قبلی'])
+ assert 'نیازمندی‌های بازرگانی' in reply and '10' in reply
+ assert intent=='question' and result==before==values and questions==['قبلی']
+
+def test_model_question_cannot_apply_assignments_or_clear_pending_questions(pack):
+ def create(**kw):
+  return SimpleNamespace(status='completed',output_text=json.dumps({
+   'intent':'question','reply':'موضوع ردیف سوم بررسی نیازمندی‌هاست.',
+   'assignments':[{'field':'MTG_ChairUserUID','value_json':'"fake"','quote':'ندارد'}],'questions':[]}))
+ original={'MTG_MeetingTitle':'جلسه'}
+ result,questions,reply,intent=r.extract('موضوع چیه؟',task(pack,'invitation'),original,S,questions=['سؤال قبلی'],
+  client=SimpleNamespace(responses=SimpleNamespace(create=create)),model='test',with_reply=True)
+ assert result==original and questions==['سؤال قبلی'] and intent=='question'
+ assert reply=='موضوع ردیف سوم بررسی نیازمندی‌هاست.'
+
+def test_conversation_schema_requires_reply_and_intent():
+ schema=r.legacy.model_schema(r.ConversationExtraction)
+ assert {'reply','intent'}<=set(schema['required'])
+
+def test_implicit_row_refers_to_current_missing_presenter(pack,monkeypatch):
+ from commercial.tests.test_secretary_workflow import V
+ values=copy.deepcopy(V)
+ values['MTG_Agenda']={'3':{'MTG_AgendaTitle':'نیازمندی‌های واحد بازرگانی','MTG_AgendaPlannedMinutes':'10'}}
+ monkeypatch.setattr(r,'extract',lambda *a,**kw:pytest.fail('Model should not be needed'))
+ _,_,reply,intent=r.converse('موضوع ردیف چیه؟',task(pack,'invitation'),values,S)
+ assert 'ردیف 3' in reply and 'نیازمندی‌های واحد بازرگانی' in reply and intent=='question'
