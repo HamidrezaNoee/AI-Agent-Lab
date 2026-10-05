@@ -144,14 +144,14 @@ function dateControl(initial="",options={}){
   const grid=el("div","avan-date-grid"),first=firstCalendarMonthDate(anchor),month=calendarParts(first);
   const offset=(first.getDay()+1)%7;
   const start=new Date(first);start.setDate(first.getDate()-offset);
-  const today=isoDate(new Date());
+  const today=isoDate(new Date()),selectedDate=parseDateValue(canonical.value),selectedIso=selectedDate?isoDate(selectedDate):"";
   for(let i=0;i<42;i++){
    const day=new Date(start);day.setDate(start.getDate()+i);
    const parts=calendarParts(day),value=isoDate(day),button=el("button","avan-date-day",fmt(parts?.day??""));
    button.type="button";
    if(parts?.year!==month?.year||parts?.month!==month?.month)button.classList.add("is-outside");
    if(value===today)button.classList.add("is-today");
-   if(value===canonical.value)button.classList.add("is-selected");
+   if(value===selectedIso)button.classList.add("is-selected");
    button.setAttribute("aria-label",dateOnlyText(value));
    button.addEventListener("click",()=>set(value));add(grid,button);
   }
