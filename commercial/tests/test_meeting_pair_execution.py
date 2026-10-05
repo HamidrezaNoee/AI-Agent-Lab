@@ -74,3 +74,35 @@ def test_native_document_download_accepts_pm_success_statuses(pack,monkeypatch,s
  monkeypatch.setattr(e,'PM',lambda *args,**kwargs:pm)
  result=e.read_native(task(pack,'action_review'),S,'actor','d'*32,1)
  assert result['text']=='گزارش انجام کار'
+
+
+
+def test_new_case_posts_reviewed_invitation_values_immediately():
+ captured={}
+ def transport(request):
+  captured['method']=request.method;captured['path']=request.url.path
+  captured['json']=__import__('json').loads(request.content.decode())
+  return httpx.Response(200,json={'app_uid':'a'*32,'app_number':718})
+ pm=PM.__new__(PM);pm.base='https://pm.test/api/1.0/workflow';pm.process_uid='p'*32
+ pm.client=httpx.Client(transport=httpx.MockTransport(transport))
+ try:
+  uid=pm.create_for('t'*32,{'MTG_MeetingTitle':'جلسه تست','MTG_Location':'طبقه ۴'})
+ finally:pm.close()
+ assert uid=='a'*32
+ assert captured['method']=='POST' and captured['path'].endswith('/cases')
+ assert captured['json']['variables'][0]['MTG_MeetingTitle']=='جلسه تست'
+ assert captured['json']['variables'][0]['MTG_Location']=='طبقه ۴'
+
+
+def test_processmaker_rejection_names_exact_failed_operation():
+ from fastapi import HTTPException
+ def transport(request):
+  return httpx.Response(403,json={'error':{'code':403,'message':'Not authorized'}})
+ pm=PM.__new__(PM);pm.base='https://pm.test/api/1.0/workflow';pm.process_uid='p'*32
+ pm.client=httpx.Client(transport=httpx.MockTransport(transport))
+ try:
+  with pytest.raises(HTTPException) as exc:
+   pm.call('PUT','/cases/'+'a'*32+'/execute-trigger/'+'b'*32,operation='اجرای Trigger قبل از فرم')
+ finally:pm.close()
+ assert 'اجرای Trigger قبل از فرم' in exc.value.detail
+ assert 'HTTP 403' in exc.value.detail
