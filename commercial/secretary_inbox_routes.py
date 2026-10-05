@@ -292,10 +292,13 @@ def register(app,authorized,csrf):
     if row['revision']!=body.revision:raise RevisionConflict()
     return s,row,t
    s,row,t=access(value,source_id,snapshot)
-   with run_slot((str(principal.tenant_id),principal.subject)):
-    operation_active(principal,body.request_id)
-    vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
-    operation_active(principal,body.request_id)
+   def model_only():
+    with run_slot((str(principal.tenant_id),principal.subject)):
+     operation_active(principal,body.request_id)
+     result=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
+     operation_active(principal,body.request_id)
+     return result
+   vals,questions,reply,intent=guard_model(model_only)
    def commit(con,fresh_scope,p):
     operation_active(principal,body.request_id)
     current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
@@ -342,10 +345,13 @@ def register(app,authorized,csrf):
     if row['revision']!=revision:raise RevisionConflict()
     return s,row,t
    s,row,t=access(value,source_id,snapshot)
-   with run_slot((str(principal.tenant_id),principal.subject)):
-    operation_active(principal,request_id)
-    vals,questions=runtime.extract(prompt,t,row['values'],s,questions=row.get('questions',[]))
-    operation_active(principal,request_id)
+   def model_only():
+    with run_slot((str(principal.tenant_id),principal.subject)):
+     operation_active(principal,request_id)
+     result=runtime.extract(prompt,t,row['values'],s,questions=row.get('questions',[]))
+     operation_active(principal,request_id)
+     return result
+   vals,questions=guard_model(model_only)
    def commit(con,fresh_scope,p):
     operation_active(principal,request_id)
     current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
