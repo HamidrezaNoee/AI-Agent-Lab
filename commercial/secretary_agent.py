@@ -101,7 +101,7 @@ def validate_edit(draft, previous, candidates):
                 if not 1900 <= parsed.year <= 2200:
                     raise ValueError()
             except ValueError:
-                raise ValueError('موعد را به صورت تاریخ میلادی YYYY-MM-DD وارد کنید.')
+                raise ValueError('موعد انتخاب‌شده معتبر نیست؛ تاریخ را از انتخابگر آوان تعیین کنید.')
     return {**previous, **draft.model_dump(), 'candidate_owners': candidates,
             'human_edited': True, 'registration_status': 'not_registered'}
 
