@@ -15,9 +15,45 @@ function calendarLocale(latin=false){
  const calendar=calendarMode()==="jalali"?"persian":"gregory";
  return "fa-IR-u-ca-"+calendar+(latin?"-nu-latn":"");
 }
+const jalaliIsoCache=new Map();
+function persianParts(value){
+ const d=value instanceof Date?value:new Date(value);
+ if(Number.isNaN(d.getTime()))return null;
+ const out={};
+ for(const part of new Intl.DateTimeFormat("fa-IR-u-ca-persian-nu-latn",{year:"numeric",month:"numeric",day:"numeric"}).formatToParts(d)){
+  if(part.type==="year"||part.type==="month"||part.type==="day")out[part.type]=Number(part.value);
+ }
+ return out;
+}
+function jalaliToIso(value){
+ const raw=String(value||"").trim().replaceAll("-","/");
+ if(jalaliIsoCache.has(raw))return jalaliIsoCache.get(raw);
+ const match=raw.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);if(!match)return "";
+ const jy=Number(match[1]),jm=Number(match[2]),jd=Number(match[3]);
+ if(jy<1300||jy>1600||jm<1||jm>12||jd<1||jd>31)return "";
+ const cursor=new Date(jy+621,2,1,12,0,0,0);
+ for(let i=0;i<430;i++){
+  const parts=persianParts(cursor);
+  if(parts?.year===jy&&parts?.month===jm&&parts?.day===jd){
+   const result=[cursor.getFullYear(),String(cursor.getMonth()+1).padStart(2,"0"),String(cursor.getDate()).padStart(2,"0")].join("-");
+   jalaliIsoCache.set(raw,result);return result;
+  }
+  cursor.setDate(cursor.getDate()+1);
+ }
+ return "";
+}
+function isoToJalali(value){
+ const d=value instanceof Date?value:parseDateValue(value);if(!d)return "";
+ const parts=persianParts(d);if(!parts)return "";
+ return [parts.year,String(parts.month).padStart(2,"0"),String(parts.day).padStart(2,"0")].join("/");
+}
 function parseDateValue(value){
  if(!value)return null;
  const raw=String(value).trim();
+ if(/^1[3-6]\d{2}[\/-]\d{1,2}[\/-]\d{1,2}$/.test(raw)){
+  const iso=jalaliToIso(raw);if(!iso)return null;
+  const [year,month,day]=iso.split("-").map(Number);return new Date(year,month-1,day,12,0,0,0);
+ }
  if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){
   const [year,month,day]=raw.split("-").map(Number);
   const result=new Date(year,month-1,day,12,0,0,0);
@@ -74,12 +110,13 @@ function shiftCalendarMonth(anchor,delta){
 function monthTitle(anchor){
  return new Intl.DateTimeFormat(calendarLocale(),{year:"numeric",month:"long"}).format(anchor);
 }
-function dateControl(initial=""){
+function dateControl(initial="",options={}){
  const control=el("div","avan-date-picker"),canonical=el("input","avan-date-canonical"),
   display=el("input","avan-date-display"),toggle=el("button","avan-date-toggle","▦"),
   popup=el("div","avan-date-popover");
  canonical.type="hidden";
- canonical.value=/^\d{4}-\d{2}-\d{2}/.test(String(initial||""))?String(initial).slice(0,10):"";
+ const storage=options.storage==="jalali"?"jalali":"iso",initialDate=parseDateValue(initial),initialIso=initialDate?isoDate(initialDate):"";
+ canonical.value=initialIso?(storage==="jalali"?isoToJalali(initialIso):initialIso):"";
  display.type="text";display.readOnly=true;display.autocomplete="off";
  display.placeholder=calendarMode()==="jalali"?"انتخاب تاریخ شمسی":"انتخاب تاریخ میلادی";
  toggle.type="button";toggle.setAttribute("aria-label","باز کردن انتخابگر تاریخ "+calendarName());
@@ -87,7 +124,8 @@ function dateControl(initial=""){
  let anchor=parseDateValue(canonical.value)||new Date();
  const sync=()=>{display.value=canonical.value?dateOnlyText(canonical.value):""};
  const set=value=>{
-  canonical.value=value?String(value).slice(0,10):"";
+  const selected=value?String(value).slice(0,10):"";
+  canonical.value=selected?(storage==="jalali"?isoToJalali(selected):selected):"";
   anchor=parseDateValue(canonical.value)||new Date();
   sync();popup.hidden=true;
   canonical.dispatchEvent(new Event("input",{bubbles:true}));
@@ -129,7 +167,7 @@ function dateControl(initial=""){
  const outside=event=>{if(!control.contains(event.target))popup.hidden=true};
  document.addEventListener("pointerdown",outside);app.cleanup.push(()=>document.removeEventListener("pointerdown",outside));
  add(control,canonical,display,toggle,popup);sync();
- return {control,input:canonical,display,set};
+ return {control,input:canonical,display,toggle,set};
 }
 function toast(text){const t=$("toast");t.textContent=text;t.hidden=false}
 function sourceApi(sourceId,path){
@@ -999,12 +1037,30 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const status=el("div"),controls=[],locked=d.status!=="draft";let dirty=false;
   let send;
   function changed(){dirty=true;if(send)send.disabled=true;status.replaceChildren(note("تغییرات فرم ذخیره نشده‌اند؛ ابتدا ذخیره کنید."))}
+  function workflowDateKey(key){
+   return /DateTime|FormDate|persiandate|ActualDate/i.test(String(key||""));
+  }
+  function workflowDisplayValue(key,value){
+   if(value==null||value==="")return value??"";
+   if(workflowDateKey(key)&&typeof value==="string")return dateOnlyText(value);
+   if(Array.isArray(value))return value.map(x=>workflowDisplayValue(key,x));
+   if(typeof value==="object"){
+    const mapped={};for(const [childKey,childValue] of Object.entries(value))mapped[childKey]=workflowDisplayValue(childKey,childValue);
+    return JSON.stringify(mapped);
+   }
+   return String(value);
+  }
   function control(key,spec,value,change){
-   const label=spec.label||key,wrap=el("label","field");add(wrap,el("span","",label));let input;
+   const baseLabel=spec.label||key,label=workflowDateKey(key)?baseLabel+" ("+calendarName()+")":baseLabel,wrap=el("label","field");add(wrap,el("span","",label));let input;
    let options=spec.options||[];
    if(key.endsWith("UID"))options=(r.people||[]).map(x=>({value:x.uid,label:x.name}));
    if(key==="MTG_InvitationApproval"||key==="MTG_MinutesApproval")options=[{value:"Approved",label:"تأیید"},{value:"NeedsRevision",label:"نیاز به اصلاح"}];
    if(options.length){input=el("select");add(input,el("option","","انتخاب کنید"));for(const x of options){const o=el("option","",x.label||x.value);o.value=x.value;add(input,o)}input.value=value||""}
+   else if(workflowDateKey(key)){
+    const picker=dateControl(value,{storage:"jalali"});input=picker.input;
+    picker.display.setAttribute("aria-label",label);picker.display.disabled=locked||key==="MTG_MonActionNo";picker.toggle.disabled=picker.display.disabled;
+    input.addEventListener("input",()=>{change(input.value);changed()});add(wrap,picker.control);controls.push(picker.display);return wrap;
+   }
    else{input=el(spec.type==="textarea"?"textarea":"input");input.value=value??"";input.maxLength=14000}
    input.setAttribute("aria-label",label);input.disabled=locked||key==="MTG_MonActionNo";input.addEventListener("input",()=>{change(input.value);changed()});add(wrap,input);controls.push(input);return wrap;
   }
@@ -1202,7 +1258,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    }else add(formBody,control(key,spec,values[key],v=>values[key]=v));
   }
   const context=el("details");add(context,el("summary","","شرح ثبت‌شده در فرایند"));
-  for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+(typeof v==="object"?JSON.stringify(v):v)))}add(formBody,context);
+  for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+workflowDisplayValue(k,v)))}add(formBody,context);
   const save=link("ذخیره اصلاحات",checked(async()=>{await post(path+"/edit"+query,{revision:d.revision,values});if(isSession)await session(d.id);else await open(t,false)}));save.disabled=locked;
   send=link("تأیید بازبینی و ارسال به مرحله بعد",checked(async()=>{send.disabled=true;try{await post(path+"/submit"+query,{revision:d.revision,confirmed:true});editor.dataset.editing="false";editor.replaceChildren(note("اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));await load()}finally{send.disabled=locked||dirty}}),"button primary");
   send.disabled=locked||missing.length>0||!info.oauth_connected;
