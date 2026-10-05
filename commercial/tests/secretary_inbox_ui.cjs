@@ -10,6 +10,25 @@ function view(){return {task,draft:structuredClone(row),form:{MTG_InvitationAppr
 w.fetch=async(url,options={})=>{
  calls.push({url,options});let data;
  if(url.endsWith('/inbox'))data={tasks:[task],notifications:[],packs:[{id:pack,title:'مدیریت جلسات'}],oauth_connected:true,sessions:[]};
+ else if(url.endsWith('/flow-graph'))data={
+  person:{uid:'u1',name:'مدیر سیستم',username:'administrator'},
+  summary:{total_cases:1,active_cases:1,completed_cases:0,waiting_my_action:0,average_progress:29},
+  rows:[{case_uid:caseid,case_number:100,meeting_no:'MTG-100',title:'جلسه تست',status:'active',status_label:'فعال',
+   current_stage:'invitation_approval',current_stage_title:'تأیید دعوت‌نامه',current_owners:[{uid:'u2',name:'مدیرعامل',unit:'مدیریت'}],
+   current_owner_label:'مدیرعامل',my_roles:['secretary'],my_role_label:'دبیر',progress_percent:29,
+   nodes:[
+    {key:'invitation',title:'دعوت جلسه',role:'دبیر',index:1,state:'done'},
+    {key:'invitation_approval',title:'تأیید دعوت‌نامه',role:'رئیس جلسه',index:2,state:'current'},
+    {key:'minutes',title:'ثبت صورت‌جلسه',role:'دبیر',index:3,state:'future'},
+    {key:'minutes_approval',title:'تأیید صورت‌جلسه',role:'رئیس جلسه',index:4,state:'future'},
+    {key:'action_execution',title:'اجرای اقدام',role:'اقدام‌کننده',index:5,state:'future'},
+    {key:'action_review',title:'بررسی اقدام',role:'دبیر',index:6,state:'future'},
+    {key:'monitoring',title:'پایش و اختتام',role:'دبیر',index:7,state:'future'}],
+   actions:{total:0,open:0,review:0,closed:0}}],
+  filters:{people:[{uid:'u1',name:'مدیر سیستم',username:'administrator'}],owners:[{uid:'u2',name:'مدیرعامل'}],units:['مدیریت'],
+   roles:[{value:'secretary',label:'دبیر'}],stages:[{value:'invitation_approval',label:'تأیید دعوت‌نامه'}],statuses:[{value:'active',label:'فعال'}]},
+  total:1,offset:0,limit:30,has_more:false,truncated:false
+ };
  else if(url.endsWith('/tasks/open')||url.endsWith('/tasks/load'))data=view();
  else if(url.includes('/turn?')){const body=JSON.parse(options.body);assert.equal(body.revision,row.revision);if(failTurn){failTurn=false;return {ok:false,status:503,json:async()=>({detail:'سرویس هوش مصنوعی در زمان مقرر پاسخ نداد؛ دوباره تلاش کنید.'})}}row={...row,revision:row.revision+1,history:[...row.history,{role:'user',text:body.text},{role:'assistant',text:'پیام شما بررسی شد.'}]};data={...view(),assistant:{message:'پیام شما بررسی شد.',summary:'',missing:view().missing},draft:structuredClone(row)}}
  else if(url.includes('/edit?')){const body=JSON.parse(options.body);assert.equal(body.revision,row.revision);row={...row,values:body.values,revision:row.revision+1};data=view()}
@@ -21,7 +40,10 @@ let code=fs.readFileSync(path.join(__dirname,'../web/production/app.js'),'utf8')
 w.eval(code+'\nwindow.testAVAN={app,secretaryPage,cleanMedia};');w.testAVAN.app.user={modules:[2]};w.testAVAN.app.csrf='csrf-test';
 const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
 (async()=>{
- await w.testAVAN.secretaryPage(source);
+ await w.testAVAN.secretaryPage(source);await tick();
+ assert(w.document.body.textContent.includes('نقشه جریان پرونده‌ها'));
+ assert.equal(w.document.querySelectorAll('.case-git-node').length,7);
+ assert(w.document.body.textContent.includes('مدیرعامل'));
  const buttons=()=>Array.from(w.document.querySelectorAll('button'));
  const steps=Array.from(w.document.querySelectorAll('.secretary-step'));
  assert.equal(steps.length,7);
