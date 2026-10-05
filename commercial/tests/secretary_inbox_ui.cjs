@@ -24,7 +24,11 @@ w.fetch=async(url,options={})=>{
     {key:'action_execution',title:'اجرای اقدام',role:'اقدام‌کننده',index:5,state:'future'},
     {key:'action_review',title:'بررسی اقدام',role:'دبیر',index:6,state:'future'},
     {key:'monitoring',title:'پایش و اختتام',role:'دبیر',index:7,state:'future'}],
-   actions:{total:0,open:0,review:0,closed:0}}],
+   actions:{total:1,open:1,review:0,closed:0},
+   action_branches:[{action_no:'A-01',title:'پیگیری قرارداد',case_uid:'c'.repeat(32),case_number:900,
+    owner:{uid:'u2',name:'مدیرعامل',username:'ceo',unit:'مدیریت'},current_owner:{uid:'u2',name:'مدیرعامل',username:'ceo',unit:'مدیریت'},
+    stage:'action_execution',stage_label:'اجرای اقدام',state:'execution',progress_percent:60}],
+   history:[{case_uid:caseid,index:1,stage:'invitation',stage_title:'دعوت جلسه',owner:{name:'مدیر سیستم',username:'administrator'},state:'done',delegated_at:'2026-10-05 09:00:00'}]}],
   filters:{people:[{uid:'u1',name:'مدیر سیستم',username:'administrator'}],owners:[{uid:'u2',name:'مدیرعامل'}],units:['مدیریت'],
    roles:[{value:'secretary',label:'دبیر'}],stages:[{value:'invitation_approval',label:'تأیید دعوت‌نامه'}],statuses:[{value:'active',label:'فعال'}]},
   total:1,offset:0,limit:30,has_more:false,truncated:false
@@ -44,6 +48,10 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
  assert(w.document.body.textContent.includes('نقشه جریان پرونده‌ها'));
  assert.equal(w.document.querySelectorAll('.case-git-node').length,7);
  assert(w.document.body.textContent.includes('مدیرعامل'));
+ assert(w.document.body.textContent.includes('شاخه‌های اقدامات'));
+ assert.equal(w.document.querySelectorAll('.case-branch').length,1);
+ assert(w.document.body.textContent.includes('نمای سریع'));
+ assert(w.document.querySelector('[aria-label="مرتب‌سازی"]'));
  const buttons=()=>Array.from(w.document.querySelectorAll('button'));
  const steps=Array.from(w.document.querySelectorAll('.secretary-step'));
  assert.equal(steps.length,7);
