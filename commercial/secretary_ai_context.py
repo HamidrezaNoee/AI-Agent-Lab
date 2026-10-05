@@ -36,10 +36,15 @@ def username_matches(username, text):
 
 def calendar_context():
     import jdatetime
+    from .setup_console import get_setting
     now = datetime.now(ZoneInfo('Asia/Tehran'))
-    return {'timezone':'Asia/Tehran','now':now.isoformat(),
+    mode=str((get_setting('ui') or {}).get('calendar','jalali')).lower()
+    if mode not in ('jalali','gregorian'):mode='jalali'
+    tomorrow=now.date()+timedelta(days=1)
+    return {'timezone':'Asia/Tehran','now':now.isoformat(),'display_calendar':mode,
+            'gregorian_today':now.date().isoformat(),'gregorian_tomorrow':tomorrow.isoformat(),
             'jalali_today':jdatetime.date.fromgregorian(date=now.date()).strftime('%Y/%m/%d'),
-            'jalali_tomorrow':jdatetime.date.fromgregorian(date=now.date()+timedelta(days=1)).strftime('%Y/%m/%d')}
+            'jalali_tomorrow':jdatetime.date.fromgregorian(date=tomorrow).strftime('%Y/%m/%d')}
 
 def build_context(notes, task, current, scope, fields, questions=()):
     if not isinstance(notes,str) or not notes.strip() or len(notes)>18000:
