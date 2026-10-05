@@ -51,6 +51,23 @@ Workspace، OAuth client و MySQL host/port را از نصب واقعی بگیر
 ۸۱ به معنی پورت MySQL نیست. نام workspace از نشانی ورود PM یا تنظیمات نصب مشخص
 می‌شود؛ در این تغییر مقدار حدسی برای نصب شما ذخیره نشده است.
 
+## پیش‌نیاز شماره‌گذاری جلسه در دیتابیس Workspace
+
+Trigger آغاز فرم دعوت برای تولید `MTG_MeetingNo` به جدول
+`MTG_MEETING_SEQUENCE` در دیتابیس Workspace خود ProcessMaker وابسته است.
+این جدول داده عملیاتی شماره‌گذاری است و SQL Server نیست. اگر جدول وجود نداشته
+باشد، ProcessMaker اجرای BEFORE Trigger را با HTTP 400 رد می‌کند.
+
+مهاجرت idempotent آماده در مسیر زیر قرار دارد:
+
+`scripts/processmaker/ensure-mtg-meeting-sequence.sql`
+
+این فایل باید یک‌بار توسط حساب مدیریتی MySQL روی همان دیتابیس Workspace
+(برای نمونه `bitnami_pm`) اجرا شود. AVAN عمداً این DDL را با اتصال خواندنی خود
+اجرا نمی‌کند. پس از ایجاد جدول، حساب خواندنی مورد استفاده AVAN نیز باید حداقل
+مجوز `SELECT` روی `MTG_MEETING_SEQUENCE` داشته باشد تا preflight قبل از ساخت
+Case بتواند آماده‌بودن زیرساخت را تأیید کند.
+
 ## پذیرش عملکردی با سه حساب واقعی
 
 | مرحله | مسئول | رفتار و آزمون |
