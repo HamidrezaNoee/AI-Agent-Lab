@@ -185,6 +185,21 @@ def verified_scope(con, principal, source_id=None):
         if uid and users.get(uid, {}).get("active"):
             staff[uid] = user
 
+    # Keep the authoritative ProcessMaker identity while exposing the bound
+    # AVAN display identity as an additional alias for conversational matching.
+    # This lets a user say e.g. «مدیر فروش» while writes still use only the
+    # exact external ProcessMaker UID.
+    resolved_users = {}
+    for uid, person in users.items():
+        avan = staff.get(uid) or {}
+        resolved_users[uid] = {
+            **person,
+            "avan_name": str(avan.get("name") or "").strip()[:240],
+            "avan_username": str(avan.get("username") or "").strip()[:180],
+            "avan_department": str(avan.get("department_name") or "").strip()[:240],
+        }
+    users = resolved_users
+
     from .production_license import entitlement, ProductionLicenseDenied
     try:
         licensed = entitlement(
