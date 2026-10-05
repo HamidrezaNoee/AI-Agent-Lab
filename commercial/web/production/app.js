@@ -667,7 +667,7 @@ function renderAnalysis(target,result,sourceId=null){
   }else add(d,el("p","",ref.title+(ref.action_no?" · اقدام "+ref.action_no:"")));
   add(evidence,d);
  }
- add(target,evidence,el("small","muted","زمان بررسی: "+result.as_of_utc));
+ add(target,evidence,el("small","muted","زمان بررسی: "+dateText(result.as_of_utc)));
 }
 async function renderMeetingCaseFlowGraph(target,sourceId,packId){
  target.replaceChildren();
