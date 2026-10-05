@@ -16,7 +16,7 @@ class Preferences(BaseModel):
 class ClientEvent(BaseModel):
  model_config=ConfigDict(extra="forbid")
  event:str=Field(min_length=1,max_length=80,pattern=r"^[A-Z0-9_\-]+$")
- detail:dict={}
+ detail:dict=Field(default_factory=dict)
 
 
 def _identity(value):
@@ -48,7 +48,20 @@ def register(app,authorized,csrf):
                   event:str|None=Query(None,max_length=80),
                   value=Depends(authorized)):
   principal,role=_identity(value)
-  return ux.logs(str(principal.tenant_id),principal.subject,role,limit=limit,event=event)
+  result=ux.logs(str(principal.tenant_id),principal.subject,role,limit=limit,event=event)
+  # Resolve opaque identity subjects to AVAN display names for admin support views.
+  names={}
+  try:
+   data=native_access.read()
+   for user in data.get("users",[]):
+    subject=str(user.get("subject") or "")
+    if subject:
+     names[subject]=user.get("name") or user.get("username") or subject
+  except Exception:
+   names={}
+  for item in result.get("logs",[]):
+   item["actor_name"]=names.get(item["actor_id"],"شما" if item["actor_id"]==principal.subject else item["actor_id"])
+  return result
 
  @app.post("/api/support/client-event")
  def client_event(body:ClientEvent,value=Depends(csrf)):
