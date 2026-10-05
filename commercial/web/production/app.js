@@ -811,9 +811,24 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    add(quick,approve,link("↩ نیاز به اصلاح",()=>{notes.value="نیاز به اصلاح: ";notes.focus();autosize()},"button secondary"));
    add(composer,quick);
   }
-  if(isSession&&!missing.length){
+  if(isSession&&!missing.length&&d.status==="draft"){
    const start=link("ایجاد گام اول و ارسال به رئیس",()=>sendTurn("بله، ایجاد و ارسال کن").catch(e=>toast(e.message)),"button primary");start.disabled=!info.oauth_connected;add(composer,start);
    if(!info.oauth_connected)add(composer,note("پیش‌نویس کامل است؛ برای ایجاد پرونده و ارسال آن به کارتابل رئیس، ابتدا «اتصال حساب خودم» را فعال کنید."));
+  }
+  if(isSession&&d.status==="reconciliation_required"){
+   const warning=note("این دعوت قبلاً یک Case در ProcessMaker ساخته است، اما ادامه عملیات کامل نشده. برای جلوگیری از پرونده تکراری، AVAN Case جدید نمی‌سازد.",true);
+   add(composer,warning);
+   if(d.case_uid)add(composer,el("small","muted","شناسه پرونده موجود: "+d.case_uid));
+   if(d.last_error)add(composer,note("آخرین خطا: "+d.last_error,true));
+   const resume=link("ادامه همان پرونده و تطبیق اطلاعات",checked(async()=>{
+    resume.disabled=true;
+    try{
+     const result=await post(path+"/reconcile",{revision:d.revision,confirmed:true});
+     editor.dataset.editing="false";editor.replaceChildren(note("همان پرونده ProcessMaker تکمیل و برای رئیس جلسه ارسال شد."));
+     await load();
+    }finally{resume.disabled=!info.oauth_connected}
+   }),"button primary");
+   resume.disabled=!info.oauth_connected;add(composer,resume);
   }
 
   if((d.attachments||[]).length){
@@ -848,7 +863,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    add(evidence,link("دریافت اسناد پرونده",checked(async()=>{const docs=await post(path+"/documents"+query);list.replaceChildren();for(const doc of docs.documents)add(list,link(doc.app_doc_filename+" · نسخه "+doc.app_doc_version,checked(async()=>{if(dirty)throw Error("ابتدا اصلاحات را ذخیره کنید.");await post(path+"/evidence"+query,{revision:d.revision,doc_id:doc.app_doc_uid,version:Number(doc.app_doc_version)});await open(t,false)})));if(!docs.documents.length)add(list,note("سندی با مجوز فعلی در دسترس نیست؛ نبود سند به معنی تکمیل اقدام نیست."))})),list,
     link("پیشنهاد دبیر براساس گزارش و اسناد",checked(async()=>{const result=await post(path+"/advice"+query);advice.replaceChildren(el("p","",result.summary),note("پیشنهاد برای تصمیم شما: "+result.proposal),el("small","muted","تعداد اسناد خوانده‌شده: "+result.document_count));for(const q of result.quotes)add(advice,el("blockquote","",q));for(const q of result.missing)add(advice,note(q));})),advice);add(p,evidence);
   }
-  if(d.status==="reconciliation_required")add(p,note("نتیجه عملیات نامشخص است؛ پرونده را در ProcessMaker بررسی کنید. ارسال خودکار تکرار نمی‌شود.",true));
+  if(!isSession&&d.status==="reconciliation_required")add(p,note("نتیجه عملیات نامشخص است؛ پرونده را در ProcessMaker بررسی کنید. ارسال خودکار تکرار نمی‌شود.",true));
   add(editor,p);editor.scrollIntoView({behavior:"smooth"});
  }
  await load();let busy=false;const timer=setInterval(async()=>{if(busy||!m.isConnected)return;busy=true;try{await load()}catch{}finally{busy=false}},60000);app.cleanup.push(()=>clearInterval(timer));
