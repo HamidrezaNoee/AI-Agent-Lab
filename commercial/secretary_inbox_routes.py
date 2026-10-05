@@ -185,20 +185,44 @@ def register(app,authorized,csrf):
    raise
  @app.post(base+'/tasks/{case_uid}/{index}/attachment')
  async def task_attachment(source_id:str,case_uid:str,index:int,pack_id:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
-  text,meta=await read_upload(request)
-  s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
-  prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط را استخراج کن.\n\n'+text
-  def model_run():
-   with run_slot((str(p.tenant_id),p.subject)):
-    row=runtime.draft(s,p.subject,t)
-    if row['revision']!=revision:raise RevisionConflict()
-    vals,questions=runtime.extract(prompt,t,row['values'],s,questions=row.get('questions',[]))
-   return access(value,source_id,lambda con,s,p:response(
-    s,p,(fresh:=runtime.task(con,s,case_uid,index,pack_id)),
-    runtime.update(s,p.subject,fresh,revision,vals,questions,turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)))
-  try:return guard_model(model_run)
-  except RevisionConflict:raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
-  except ValueError as exc:raise HTTPException(422,str(exc))
+  request_id=header_request_id(request);p=value[2]
+  operation_start(p,request_id,'secretary_task_attachment',{'case_uid':case_uid,'source_id':source_id})
+  try:
+   text,meta=await read_upload(request)
+   s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id))
+   prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط را استخراج کن.\n\n'+text
+   def model_run():
+    with run_slot((str(p.tenant_id),p.subject)):
+     row=runtime.draft(s,p.subject,t)
+     if row['revision']!=revision:raise RevisionConflict()
+     operation_active(p,request_id)
+     vals,questions=runtime.extract(prompt,t,row['values'],s,questions=row.get('questions',[]))
+     operation_active(p,request_id)
+    def commit(con,fresh_scope,p2):
+     operation_active(p,request_id)
+     fresh=runtime.task(con,fresh_scope,case_uid,index,pack_id)
+     updated=runtime.update(fresh_scope,p2.subject,fresh,revision,vals,questions,
+      turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)
+     return response(fresh_scope,p2,fresh,updated)
+    return access(value,source_id,commit)
+   result=guard_model(model_run)
+   operation_finish(p,request_id,'completed',{'case_uid':case_uid,'filename':meta.get('name'),'result':'attachment_processed'})
+   return result
+  except ux.OperationCancelled as exc:
+   operation_finish(p,request_id,'cancelled',{'case_uid':case_uid})
+   raise HTTPException(409,str(exc))
+  except HTTPException as exc:
+   operation_finish(p,request_id,'failed',{'case_uid':case_uid,'status':exc.status_code,'error':str(exc.detail)})
+   raise
+  except RevisionConflict:
+   operation_finish(p,request_id,'failed',{'case_uid':case_uid,'error':'revision_conflict'})
+   raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
+  except ValueError as exc:
+   operation_finish(p,request_id,'failed',{'case_uid':case_uid,'error':str(exc)})
+   raise HTTPException(422,str(exc))
+  except Exception as exc:
+   operation_finish(p,request_id,'failed',{'case_uid':case_uid,'error_type':type(exc).__name__})
+   raise
 
  @app.post(base+'/tasks/{case_uid}/{index}/submit')
  def send_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
@@ -261,42 +285,92 @@ def register(app,authorized,csrf):
  @app.post(base+'/sessions/{identifier}/turn')
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
   principal=value[2]
-  def snapshot(con,s,p):
-   row,t=runtime.session_load(s,p.subject,identifier)
-   if row['revision']!=body.revision:raise RevisionConflict()
-   return s,row,t
-  # Never hold a ProcessMaker MySQL transaction open while waiting on the
-  # external model. Take an authorized snapshot, close it, then revalidate.
-  s,row,t=access(value,source_id,snapshot)
-  with run_slot((str(principal.tenant_id),principal.subject)):
-   vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
-  def commit(con,fresh_scope,p):
-   current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
-   if current['revision']!=body.revision:raise RevisionConflict()
-   updated=runtime.session_update(fresh_scope,p.subject,identifier,body.revision,vals,questions,turn_text=body.text,reply=reply)
-   assistant=runtime.assistant_state(updated['values'],fresh_task,fresh_scope,updated.get('questions',[]))
-   if intent=='update' and body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
-    sent=runtime.session_send(fresh_scope,p.subject,identifier,updated['revision'])
-    return {'advanced':True,'status':sent['status'],'case_uid':sent.get('case_uid'),'assistant':{
-     'stage':'invitation','summary':runtime.assistant_state(sent['values'],fresh_task,fresh_scope,[])['summary'],
-     'missing':[],'can_submit':False,
-     'message':'گام اول فرایند ایجاد شد و دعوت‌نامه برای بررسی رئیس جلسه ارسال شد.'
-    }}
-   return session_response(fresh_scope,p,updated,fresh_task)
-  return access(value,source_id,commit)
+  operation_start(principal,body.request_id,'secretary_session_turn',{'session_id':identifier,'source_id':source_id})
+  try:
+   def snapshot(con,s,p):
+    row,t=runtime.session_load(s,p.subject,identifier)
+    if row['revision']!=body.revision:raise RevisionConflict()
+    return s,row,t
+   s,row,t=access(value,source_id,snapshot)
+   with run_slot((str(principal.tenant_id),principal.subject)):
+    operation_active(principal,body.request_id)
+    vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
+    operation_active(principal,body.request_id)
+   def commit(con,fresh_scope,p):
+    operation_active(principal,body.request_id)
+    current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
+    if current['revision']!=body.revision:raise RevisionConflict()
+    updated=runtime.session_update(fresh_scope,p.subject,identifier,body.revision,vals,questions,turn_text=body.text,reply=reply)
+    assistant=runtime.assistant_state(updated['values'],fresh_task,fresh_scope,updated.get('questions',[]))
+    operation_active(principal,body.request_id)
+    if intent=='update' and body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
+     sent=runtime.session_send(fresh_scope,p.subject,identifier,updated['revision'])
+     return {'advanced':True,'status':sent['status'],'case_uid':sent.get('case_uid'),'assistant':{
+      'stage':'invitation','summary':runtime.assistant_state(sent['values'],fresh_task,fresh_scope,[])['summary'],
+      'missing':[],'can_submit':False,
+      'message':'گام اول فرایند ایجاد شد و دعوت‌نامه برای بررسی رئیس جلسه ارسال شد.'
+     }}
+    return session_response(fresh_scope,p,updated,fresh_task)
+   result=access(value,source_id,commit)
+   operation_finish(principal,body.request_id,'completed',{'session_id':identifier,'result':'updated'})
+   return result
+  except ux.OperationCancelled as exc:
+   operation_finish(principal,body.request_id,'cancelled',{'session_id':identifier})
+   raise HTTPException(409,str(exc))
+  except HTTPException as exc:
+   operation_finish(principal,body.request_id,'failed',{'session_id':identifier,'status':exc.status_code,'error':str(exc.detail)})
+   raise
+  except RevisionConflict:
+   operation_finish(principal,body.request_id,'failed',{'session_id':identifier,'error':'revision_conflict'})
+   raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
+  except ValueError as exc:
+   operation_finish(principal,body.request_id,'failed',{'session_id':identifier,'error':str(exc)})
+   raise HTTPException(422,str(exc))
+  except Exception as exc:
+   operation_finish(principal,body.request_id,'failed',{'session_id':identifier,'error_type':type(exc).__name__})
+   raise
+
  @app.post(base+'/sessions/{identifier}/attachment')
  async def session_attachment(source_id:str,identifier:str,request:Request,revision:int=Query(...,ge=1),value=Depends(csrf)):
-  text,meta=await read_upload(request);principal=value[2]
-  prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط با دعوت‌نامه را استخراج کن.\n\n'+text
-  def run(con,s,p):
-   row,t=runtime.session_load(s,p.subject,identifier)
-   if row['revision']!=revision:raise RevisionConflict()
-   with run_slot((str(principal.tenant_id),p.subject)):
+  request_id=header_request_id(request);principal=value[2]
+  operation_start(principal,request_id,'secretary_session_attachment',{'session_id':identifier,'source_id':source_id})
+  try:
+   text,meta=await read_upload(request)
+   prompt='فایل «'+meta['name']+'» به عنوان داده کاربر ارائه شده است. فقط اطلاعات صریح مرتبط با دعوت‌نامه را استخراج کن.\n\n'+text
+   def snapshot(con,s,p):
+    row,t=runtime.session_load(s,p.subject,identifier)
+    if row['revision']!=revision:raise RevisionConflict()
+    return s,row,t
+   s,row,t=access(value,source_id,snapshot)
+   with run_slot((str(principal.tenant_id),principal.subject)):
+    operation_active(principal,request_id)
     vals,questions=runtime.extract(prompt,t,row['values'],s,questions=row.get('questions',[]))
-   return access(value,source_id,lambda con,s,p:session_response(
-    s,p,(runtime.session_update(s,p.subject,identifier,revision,vals,questions,
-      turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)),runtime.session_load(s,p.subject,identifier)[1]))
-  return access(value,source_id,run)
+    operation_active(principal,request_id)
+   def commit(con,fresh_scope,p):
+    operation_active(principal,request_id)
+    current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
+    if current['revision']!=revision:raise RevisionConflict()
+    updated=runtime.session_update(fresh_scope,p.subject,identifier,revision,vals,questions,
+     turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)
+    return session_response(fresh_scope,p,updated,fresh_task)
+   result=access(value,source_id,commit)
+   operation_finish(principal,request_id,'completed',{'session_id':identifier,'filename':meta.get('name'),'result':'attachment_processed'})
+   return result
+  except ux.OperationCancelled as exc:
+   operation_finish(principal,request_id,'cancelled',{'session_id':identifier})
+   raise HTTPException(409,str(exc))
+  except HTTPException as exc:
+   operation_finish(principal,request_id,'failed',{'session_id':identifier,'status':exc.status_code,'error':str(exc.detail)})
+   raise
+  except RevisionConflict:
+   operation_finish(principal,request_id,'failed',{'session_id':identifier,'error':'revision_conflict'})
+   raise HTTPException(409,'پیش‌نویس تغییر کرده است.')
+  except ValueError as exc:
+   operation_finish(principal,request_id,'failed',{'session_id':identifier,'error':str(exc)})
+   raise HTTPException(422,str(exc))
+  except Exception as exc:
+   operation_finish(principal,request_id,'failed',{'session_id':identifier,'error_type':type(exc).__name__})
+   raise
 
  @app.post(base+'/sessions/{identifier}/speech')
  def session_speech(source_id:str,identifier:str,part:int=0,value=Depends(csrf)):
