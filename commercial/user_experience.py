@@ -103,30 +103,46 @@ def logs(tenant_id,actor,role,*,limit=200,event=None):
     return {"scope":"tenant" if admin else "self","logs":result,"limit":limit}
 
 
-def _operation_key(tenant_id,actor,request_id):
-    return user_key("operation:"+str(request_id),_scope(tenant_id),str(actor))
+def _operations_key(tenant_id,actor):
+    return user_key("operations",_scope(tenant_id),str(actor))
+
+
+def _prune_operations(rows,limit=50):
+    if not isinstance(rows,dict):return {}
+    ordered=sorted(
+        ((str(key),value) for key,value in rows.items() if isinstance(value,dict)),
+        key=lambda item:str(item[1].get("updated_at") or item[1].get("started_at") or ""),
+        reverse=True,
+    )
+    return dict(ordered[:limit])
 
 
 def start_operation(tenant_id,actor,request_id,kind,detail=None):
     if not request_id:return
     now=datetime.now(timezone.utc).isoformat()
-    key=_operation_key(tenant_id,actor,request_id)
+    key=_operations_key(tenant_id,actor)
     with agent_storage.transaction() as tx:
-        row=tx.get(key,{},lock=True)
-        if row.get("state")=="cancelled":
+        rows=tx.get(key,{},lock=True)
+        if not isinstance(rows,dict):rows={}
+        previous=rows.get(str(request_id),{})
+        if previous.get("state")=="cancelled":
             raise OperationCancelled("پردازش توسط کاربر متوقف شده است.")
-        tx.put(key,{"state":"running","kind":str(kind)[:80],"started_at":now,"updated_at":now})
+        rows[str(request_id)]={"state":"running","kind":str(kind)[:80],"started_at":now,"updated_at":now}
+        tx.put(key,_prune_operations(rows))
         tx.audit(str(tenant_id),str(actor),"SECRETARY_PROCESSING_STARTED",{
             "request_id":request_id,"kind":kind,**_clean_detail(detail or {})
         })
 
 
 def cancel_operation(tenant_id,actor,request_id):
-    now=datetime.now(timezone.utc).isoformat();key=_operation_key(tenant_id,actor,request_id)
+    now=datetime.now(timezone.utc).isoformat();key=_operations_key(tenant_id,actor)
     with agent_storage.transaction() as tx:
-        row=tx.get(key,{},lock=True)
+        rows=tx.get(key,{},lock=True)
+        if not isinstance(rows,dict):rows={}
+        row=rows.get(str(request_id),{})
         row={**row,"state":"cancelled","updated_at":now}
-        tx.put(key,row)
+        rows[str(request_id)]=row
+        tx.put(key,_prune_operations(rows))
         tx.audit(str(tenant_id),str(actor),"SECRETARY_PROCESSING_CANCELLED",{
             "request_id":request_id,"kind":row.get("kind","secretary")
         })
@@ -136,24 +152,31 @@ def cancel_operation(tenant_id,actor,request_id):
 def ensure_active(tenant_id,actor,request_id):
     if not request_id:return
     with agent_storage.transaction() as tx:
-        row=tx.get(_operation_key(tenant_id,actor,request_id),{})
+        rows=tx.get(_operations_key(tenant_id,actor),{})
+    row=rows.get(str(request_id),{}) if isinstance(rows,dict) else {}
     if row.get("state")=="cancelled":
         raise OperationCancelled("پردازش توسط کاربر متوقف شد؛ هیچ تغییری از این پاسخ ثبت نشد.")
 
 
 def finish_operation(tenant_id,actor,request_id,state="completed",detail=None):
     if not request_id:return
-    key=_operation_key(tenant_id,actor,request_id);now=datetime.now(timezone.utc).isoformat()
+    key=_operations_key(tenant_id,actor);now=datetime.now(timezone.utc).isoformat()
     with agent_storage.transaction() as tx:
-        row=tx.get(key,{},lock=True)
+        rows=tx.get(key,{},lock=True)
+        if not isinstance(rows,dict):rows={}
+        row=rows.get(str(request_id),{})
         # Cancellation wins over late model completion.
         final_state="cancelled" if row.get("state")=="cancelled" else state
-        tx.put(key,{**row,"state":final_state,"updated_at":now})
-        event={
-            "completed":"SECRETARY_PROCESSING_COMPLETED",
-            "failed":"SECRETARY_PROCESSING_FAILED",
-            "cancelled":"SECRETARY_PROCESSING_CANCELLED",
-        }.get(final_state,"SECRETARY_PROCESSING_FINISHED")
-        tx.audit(str(tenant_id),str(actor),event,{
-            "request_id":request_id,"kind":row.get("kind","secretary"),**_clean_detail(detail or {})
-        })
+        rows[str(request_id)]={**row,"state":final_state,"updated_at":now}
+        tx.put(key,_prune_operations(rows))
+        # cancel_operation already writes the authoritative cancellation audit.
+        if not (final_state=="cancelled" and row.get("state")=="cancelled"):
+            event={
+                "completed":"SECRETARY_PROCESSING_COMPLETED",
+                "failed":"SECRETARY_PROCESSING_FAILED",
+                "cancelled":"SECRETARY_PROCESSING_CANCELLED",
+            }.get(final_state,"SECRETARY_PROCESSING_FINISHED")
+            tx.audit(str(tenant_id),str(actor),event,{
+                "request_id":request_id,"kind":row.get("kind","secretary"),**_clean_detail(detail or {})
+            })
+
