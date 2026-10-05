@@ -97,6 +97,9 @@ def test_usernames_reach_model_even_when_display_names_are_persian(pack):
  data=ctx.build_context(notes,task(pack,'invitation'),{},scope,{})
  assert {v['username'] for v in data['directory'].values()}==set(names)
  assert data['calendar']['timezone']=='Asia/Tehran'
+ assert data['calendar']['display_calendar'] in ('jalali','gregorian')
+ from datetime import date
+ assert (date.fromisoformat(data['calendar']['gregorian_tomorrow'])-date.fromisoformat(data['calendar']['gregorian_today'])).days==1
  from commercial.secretary_workflow import jalali_instant
  assert (jalali_instant(data['calendar']['jalali_tomorrow'],'00:00')-jalali_instant(data['calendar']['jalali_today'],'00:00')).days==1
 
