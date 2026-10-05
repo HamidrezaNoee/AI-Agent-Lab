@@ -197,7 +197,7 @@ def _load_candidates(con,scope,args,person_uid,pack):
  if end:
   where.append("a.APP_CREATE_DATE<%s");params.append(end)
  rows=query(con,
-  "SELECT a.APP_UID,a.APP_NUMBER,a.APP_STATUS,a.APP_DATA,a.APP_CREATE_DATE,a.APP_UPDATE_DATE,a.APP_FINISH_DATE,a.APP_INIT_USER "
+  "SELECT a.APP_UID,a.APP_NUMBER,a.APP_STATUS,a.APP_DATA,a.APP_CREATE_DATE,a.APP_FINISH_DATE,a.APP_INIT_USER "
   "FROM APPLICATION a WHERE "+" AND ".join(where)+" ORDER BY a.APP_NUMBER DESC LIMIT "+str(MAX_SCAN+1),
   params)
  truncated=len(rows)>MAX_SCAN
@@ -229,7 +229,7 @@ def load(con,scope,args:FlowGraphQuery):
  for start in range(0,len(child_ids),150):
   chunk=child_ids[start:start+150]
   child_rows.extend(query(con,
-   "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE,APP_UPDATE_DATE,APP_FINISH_DATE,APP_INIT_USER "
+   "SELECT APP_UID,APP_NUMBER,APP_STATUS,APP_DATA,APP_CREATE_DATE,APP_FINISH_DATE,APP_INIT_USER "
    "FROM APPLICATION WHERE PRO_UID=%s AND APP_UID IN ("+",".join("%s" for _ in chunk)+")",
    (pack["action"]["process_uid"],*chunk)))
  child_by_uid={str(r[0]):r for r in child_rows}
@@ -308,8 +308,7 @@ def load(con,scope,args:FlowGraphQuery):
    "nodes":_nodes(current,completed),
    "actions":action_counts,
    "created_at":str(parent[4] or ""),
-   "updated_at":str(parent[5] or ""),
-   "finished_at":str(parent[6] or ""),
+   "finished_at":str(parent[5] or ""),
    "meeting_date":text(data.get("MTG_persiandate_MeetingStartDateTime") or data.get("MTG_MeetingStartDateTime")),
   }
   rows.append(item)
