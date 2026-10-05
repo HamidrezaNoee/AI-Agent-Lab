@@ -863,7 +863,20 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    add(evidence,link("دریافت اسناد پرونده",checked(async()=>{const docs=await post(path+"/documents"+query);list.replaceChildren();for(const doc of docs.documents)add(list,link(doc.app_doc_filename+" · نسخه "+doc.app_doc_version,checked(async()=>{if(dirty)throw Error("ابتدا اصلاحات را ذخیره کنید.");await post(path+"/evidence"+query,{revision:d.revision,doc_id:doc.app_doc_uid,version:Number(doc.app_doc_version)});await open(t,false)})));if(!docs.documents.length)add(list,note("سندی با مجوز فعلی در دسترس نیست؛ نبود سند به معنی تکمیل اقدام نیست."))})),list,
     link("پیشنهاد دبیر براساس گزارش و اسناد",checked(async()=>{const result=await post(path+"/advice"+query);advice.replaceChildren(el("p","",result.summary),note("پیشنهاد برای تصمیم شما: "+result.proposal),el("small","muted","تعداد اسناد خوانده‌شده: "+result.document_count));for(const q of result.quotes)add(advice,el("blockquote","",q));for(const q of result.missing)add(advice,note(q));})),advice);add(p,evidence);
   }
-  if(!isSession&&d.status==="reconciliation_required")add(p,note("نتیجه عملیات نامشخص است؛ پرونده را در ProcessMaker بررسی کنید. ارسال خودکار تکرار نمی‌شود.",true));
+  if(!isSession&&d.status==="reconciliation_required"){
+   const recovery=card("ادامه همان پرونده","ثبت فرم و Triggerهای این وظیفه انجام شده‌اند اما انتقال مرحله کامل نشده است. AVAN برای جلوگیری از اجرای دوباره Triggerها فقط Route همین پرونده را تکرار می‌کند.");
+   if(d.last_error)add(recovery,note("آخرین خطا: "+d.last_error,true));
+   const routeOnly=link("ادامه Route همین پرونده",checked(async()=>{
+    routeOnly.disabled=true;
+    try{
+     await post(path+"/reconcile-route"+query,{revision:d.revision,confirmed:true});
+     editor.dataset.editing="false";
+     editor.replaceChildren(note("همان پرونده بدون اجرای دوباره Triggerها به مرحله بعد ارسال شد."));
+     await load();
+    }finally{routeOnly.disabled=!info.oauth_connected}
+   }),"button primary");
+   routeOnly.disabled=!info.oauth_connected;add(recovery,routeOnly);add(p,recovery);
+  }
   add(editor,p);editor.scrollIntoView({behavior:"smooth"});
  }
  await load();let busy=false;const timer=setInterval(async()=>{if(busy||!m.isConnected)return;busy=true;try{await load()}catch{}finally{busy=false}},60000);app.cleanup.push(()=>clearInterval(timer));
