@@ -531,6 +531,88 @@ async function init(){
 }
 document.addEventListener("DOMContentLoaded",init);
 
+async function userSettingsPage(){
+ const m=root();heading(m,"تنظیمات من","این تنظیمات فقط برای حساب شما ذخیره می‌شود و روی کاربران دیگر اثری ندارد.");
+ let prefs;
+ try{prefs=await request("/api/user/preferences",{audit:false})}catch(e){add(m,note(errorDescription(e),true));return}
+ app.preferences={...app.preferences,...prefs};
+ const panel=card("صوت و گفت‌وگو با دبیر هوشمند","رفتار صوتی دبیر را برای حساب خودتان تعیین کنید.");
+ const form=el("div","user-preferences-grid");
+ function toggle(key,title,description){
+  const row=el("label","user-preference-row"),input=el("input"),copy=el("span","user-preference-copy");
+  input.type="checkbox";input.checked=!!app.preferences[key];input.dataset.preference=key;
+  add(copy,el("strong","",title),el("small","muted",description));add(row,input,copy);return {row,input};
+ }
+ const autoplay=toggle("secretary_auto_play_voice","پخش خودکار صدای دبیر","به‌صورت پیش‌فرض خاموش است. اگر روشن شود، بعد از پاسخ دبیر صوت پاسخ نیز خودکار پخش می‌شود.");
+ const transcribe=toggle("voice_auto_transcribe","تبدیل خودکار ویس به متن","پس از پایان ضبط یا انتخاب فایل صوتی، تبدیل به متن بدون زدن دکمه جداگانه انجام شود.");
+ const autosend=toggle("voice_auto_send","ارسال خودکار متن ویس","بعد از تبدیل ویس به متن، متن بدون بازبینی دستی برای دبیر ارسال شود.");
+ const sync=()=>{autosend.input.disabled=!transcribe.input.checked;if(!transcribe.input.checked)autosend.input.checked=false};
+ transcribe.input.addEventListener("change",sync);sync();
+ add(form,autoplay.row,transcribe.row,autosend.row);
+ const status=el("div","preference-save-status");
+ const save=link("ذخیره تنظیمات من",async()=>{
+  save.disabled=true;status.replaceChildren();
+  try{
+   const body={
+    secretary_auto_play_voice:autoplay.input.checked,
+    voice_auto_transcribe:transcribe.input.checked,
+    voice_auto_send:transcribe.input.checked&&autosend.input.checked
+   };
+   const saved=await request("/api/user/preferences",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+   app.preferences={...app.preferences,...saved};
+   status.replaceChildren(note("تنظیمات شخصی شما ذخیره شد."));
+  }catch(e){status.replaceChildren(note(errorDescription(e),true))}
+  finally{save.disabled=false}
+ },"button primary");
+ add(panel,form,save,status);add(m,panel);
+ const info=card("رفتار پیش‌فرض","برای جلوگیری از ارسال یا پخش ناخواسته، پخش خودکار پاسخ و ارسال خودکار ویس به‌صورت پیش‌فرض خاموش هستند.");
+ add(info,el("p","muted","دکمه «شنیدن» همیشه برای پخش دستی پاسخ دبیر در دسترس می‌ماند. اگر تبدیل خودکار ویس را خاموش کنید، پس از ضبط دکمه «تبدیل به متن» نمایش داده می‌شود."));
+ add(m,info);
+}
+
+async function supportLogsPage(){
+ const m=root();heading(m,"لاگ‌های پشتیبانی","خطاها و عملیات قابل پیگیری AVAN. کاربران لاگ خودشان و مدیر سیستم لاگ تمام کاربران سازمان را می‌بیند.");
+ const panel=card("رویدادهای اخیر","محتوای پیام‌ها، رمزها و توکن‌ها در این لاگ ثبت نمی‌شوند.");
+ const controls=el("div","support-log-controls"),limit=el("select"),event=el("select"),out=el("div","support-log-output");
+ for(const [v,t] of [["100","۱۰۰ رویداد"],["250","۲۵۰ رویداد"],["500","۵۰۰ رویداد"]]){const o=el("option","",t);o.value=v;add(limit,o)}limit.value="250";
+ add(event,el("option","","همه رویدادها"));
+ const known=[
+  ["API_ERROR","خطاهای API"],["CLIENT_NETWORK_ERROR","خطای ارتباط"],["CLIENT_REQUEST_ABORTED","پردازش متوقف‌شده"],
+  ["SECRETARY_PROCESSING_STARTED","شروع پردازش دبیر"],["SECRETARY_PROCESSING_COMPLETED","پایان پردازش دبیر"],
+  ["SECRETARY_PROCESSING_FAILED","خطای پردازش دبیر"],["SECRETARY_PROCESSING_CANCELLED","توقف پردازش دبیر"],
+  ["API_ACTION","عملیات کاربر"],["NAVIGATE","جابجایی صفحات"],["USER_PREFERENCES_CHANGED","تغییر تنظیمات"]
+ ];
+ for(const [v,t] of known){const o=el("option","",t);o.value=v;add(event,o)}
+ async function load(){
+  out.replaceChildren(note("در حال دریافت لاگ‌ها..."));
+  try{
+   const q=new URLSearchParams({limit:limit.value});if(event.value)q.set("event",event.value);
+   const data=await request("/api/support/logs?"+q.toString(),{audit:false});
+   out.replaceChildren();
+   const scope=el("div","support-log-scope",data.scope==="tenant"?"نمای مدیر سیستم: تمام کاربران سازمان":"نمای شخصی: فقط رویدادهای حساب شما");
+   add(out,scope);
+   const rows=el("div","support-log-list");
+   if(!(data.logs||[]).length)add(rows,note("لاگی مطابق فیلتر فعلی وجود ندارد."));
+   const labels=Object.fromEntries(known);
+   for(const item of data.logs||[]){
+    const row=el("article","support-log-row"),head=el("div","support-log-row-head"),copy=el("div");
+    add(copy,el("strong","",labels[item.event_code]||item.event_code),
+     el("small","muted",dateText(item.happened_at)+" · "+(item.actor_id===app.user?.subject?"شما":item.actor_id)));
+    const severity=/FAILED|ERROR|NETWORK/.test(item.event_code)?"error":/CANCELLED|ABORTED/.test(item.event_code)?"warning":"ok";
+    add(head,copy,el("span","support-log-status "+severity,item.event_code));add(row,head);
+    const detail=item.detail||{},summary=[detail.message||detail.error,detail.path,detail.stage,detail.result].filter(Boolean).join(" · ");
+    if(summary)add(row,el("p","",summary));
+    const details=el("details","support-log-detail");add(details,el("summary","","جزئیات فنی"),el("pre","",JSON.stringify(detail,null,2)),el("small","muted","شناسه رویداد: "+item.id));add(row,details);add(rows,row);
+   }
+   add(out,rows);
+  }catch(e){out.replaceChildren(note(errorDescription(e),true))}
+ }
+ const refresh=link("↻ تازه‌سازی",load,"button secondary");
+ add(controls,add(el("label","field"),el("span","","تعداد"),limit),add(el("label","field"),el("span","","نوع رویداد"),event),refresh);
+ event.addEventListener("change",load);limit.addEventListener("change",load);
+ add(panel,controls,out);add(m,panel);await load();
+}
+
 async function boundSourceOverview(){
  const source=(app.user?.bpms_sources||[]).find(x=>x.source_id===app.selectedSourceId);
  const m=root();
