@@ -176,3 +176,18 @@ def test_implicit_row_refers_to_current_missing_presenter(pack,monkeypatch):
  monkeypatch.setattr(r,'extract',lambda *a,**kw:pytest.fail('Model should not be needed'))
  _,_,reply,intent=r.converse('موضوع ردیف چیه؟',task(pack,'invitation'),values,S)
  assert 'ردیف 3' in reply and 'نیازمندی‌های واحد بازرگانی' in reply and intent=='question'
+
+
+
+def test_bound_avan_display_name_can_resolve_processmaker_identity(pack):
+ scope=copy.deepcopy(S)
+ uid='d'*32
+ scope['directory']={
+  uid:{'active':True,'name':'Sales Manager','username':'mgr.sales',
+       'avan_name':'مدیر فروش','avan_username':'mgr.sales','unit':'فروش'}
+ }
+ data=ctx.build_context('ردیف چهار را مدیر فروش بگذار',task(pack,'invitation'),{},scope,{})
+ assert uid in data['directory']
+ assert data['directory'][uid]['avan_name']=='مدیر فروش'
+ value,questions=r.resolve_extracted_people('MTG_ChairUserUID','مدیر فروش',{},scope['directory'])
+ assert value==uid and questions==[]
