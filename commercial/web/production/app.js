@@ -272,6 +272,8 @@ function setupUser(user){
  $("pm-nav").hidden=!workspaceNavigation||(user.bpms_sources||[]).length>0;
  $("platform-nav").hidden=!(user.is_godadmin&&user.platform_access!==false);
  $("admin-nav").hidden=!user.is_godadmin;
+ $("user-nav").hidden=!!user.bootstrap_mode;
+ $("support-nav").hidden=!!user.bootstrap_mode;
  const sourceNav=$("bound-source-nav"),sourceButtons=$("bound-source-buttons");
  sourceButtons.replaceChildren();
  const sourcePageButton=(source,page,label)=>{
