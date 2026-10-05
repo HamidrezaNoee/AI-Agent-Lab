@@ -76,7 +76,7 @@ def extract(text,stage,existing,directory,*,client=None,model=None):
     'Use only allowed PMX fields and grid columns. Unknown fields remain absent; ask specific Persian questions. '
     'Each assignment requires an EXACT source quote from the new notes. value_json is valid JSON. '
     'Match people only to a unique active supplied directory UID; ask if ambiguous. '
-    'Dates must be confirmed Jalali YYYY/MM/DD; do not guess calendar conversions. '
+    'PMX date fields use legacy Jalali YYYY/MM/DD storage. The user-facing calendar may be Jalali or Gregorian; convert an explicit unambiguous Gregorian date to PMX Jalali using Tehran context, and ask when ambiguous. '
     'Grid values are objects keyed by 1-based row numbers; preserve existing rows unless explicitly corrected. '
     'Never write approval fields. No actual operation has happened.'},
     {'role':'user','content':json.dumps({'notes':text,'stage':stage,'current':existing,
