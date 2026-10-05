@@ -1125,6 +1125,9 @@ async def agent_storage_unavailable(request,exc):
 from .secretary_inbox_routes import register as register_secretary_inbox
 register_secretary_inbox(app,_authorized,_csrf)
 
+from .user_experience_routes import register as register_user_experience
+register_user_experience(app,_authorized,_csrf)
+
 from .process_workspace import register as register_process_workspaces
 register_process_workspaces(app,_authorized)
 
