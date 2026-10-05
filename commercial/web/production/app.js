@@ -339,6 +339,15 @@ for(const eventName of ["pointerdown","keydown","touchstart"]){
  document.addEventListener(eventName,recordActivity,{passive:true});
 }
 window.addEventListener("storage",event=>{if(event.key==="avan-logout"&&app.user)sessionExpired()});
+window.addEventListener("error",event=>{
+ if(!app.user)return;
+ void clientAudit("CLIENT_UI_ERROR",{page:app.page,message:String(event.message||"خطای رابط کاربری"),error_type:"window_error"});
+});
+window.addEventListener("unhandledrejection",event=>{
+ if(!app.user)return;
+ const reason=event.reason;
+ void clientAudit("CLIENT_UI_ERROR",{page:app.page,message:String(reason?.message||reason||"خطای Promise"),error_type:"unhandled_rejection"});
+});
 window.addEventListener("message",event=>{
  if(event.origin!==window.location.origin||event.data?.type!=="avan-ui-settings-changed")return;
  const calendar=event.data.calendar==="gregorian"?"gregorian":"jalali";
@@ -577,7 +586,7 @@ async function supportLogsPage(){
  for(const [v,t] of [["100","۱۰۰ رویداد"],["250","۲۵۰ رویداد"],["500","۵۰۰ رویداد"]]){const o=el("option","",t);o.value=v;add(limit,o)}limit.value="250";
  add(event,el("option","","همه رویدادها"));
  const known=[
-  ["API_ERROR","خطاهای API"],["CLIENT_NETWORK_ERROR","خطای ارتباط"],["CLIENT_REQUEST_ABORTED","پردازش متوقف‌شده"],
+  ["API_ERROR","خطاهای API"],["CLIENT_NETWORK_ERROR","خطای ارتباط"],["CLIENT_UI_ERROR","خطای رابط کاربری"],["CLIENT_REQUEST_ABORTED","پردازش متوقف‌شده"],
   ["SECRETARY_PROCESSING_STARTED","شروع پردازش دبیر"],["SECRETARY_PROCESSING_COMPLETED","پایان پردازش دبیر"],
   ["SECRETARY_PROCESSING_FAILED","خطای پردازش دبیر"],["SECRETARY_PROCESSING_CANCELLED","توقف پردازش دبیر"],
   ["API_ACTION","عملیات کاربر"],["NAVIGATE","جابجایی صفحات"],["USER_PREFERENCES_CHANGED","تغییر تنظیمات"]
@@ -597,7 +606,7 @@ async function supportLogsPage(){
    for(const item of data.logs||[]){
     const row=el("article","support-log-row"),head=el("div","support-log-row-head"),copy=el("div");
     add(copy,el("strong","",labels[item.event_code]||item.event_code),
-     el("small","muted",dateText(item.happened_at)+" · "+(item.actor_id===app.user?.subject?"شما":item.actor_id)));
+     el("small","muted",dateText(item.happened_at)+" · "+(item.actor_id===app.user?.subject?"شما":(item.actor_name||item.actor_id))));
     const severity=/FAILED|ERROR|NETWORK/.test(item.event_code)?"error":/CANCELLED|ABORTED/.test(item.event_code)?"warning":"ok";
     add(head,copy,el("span","support-log-status "+severity,item.event_code));add(row,head);
     const detail=item.detail||{},summary=[detail.message||detail.error,detail.path,detail.stage,detail.result].filter(Boolean).join(" · ");
@@ -1701,31 +1710,84 @@ async function showMeeting(id){
  }catch(e){toast(e.message)}
 }
 function attachVoiceInput(target,input,platform=false,sourceId=null,onTranscript=null,compact=false){
- const wrap=el("div","voice-bar"+(compact?" compact":"")),status=el("span","muted");let recorder=null,stream=null,timer=null,discard=false,busy=false;
- const cleanup=()=>{discard=true;if(timer)clearTimeout(timer);if(recorder?.state==="recording")recorder.stop();stream?.getTracks().forEach(t=>t.stop())};app.cleanup.push(cleanup);
+ const wrap=el("div","voice-bar"+(compact?" compact":"")),status=el("span","muted");
+ let recorder=null,stream=null,timer=null,discard=false,busy=false,pendingBlob=null;
+ const manualConvert=link("تبدیل به متن",async()=>{
+  if(!pendingBlob||busy)return;
+  const blob=pendingBlob;pendingBlob=null;manualConvert.hidden=true;await convert(blob);
+ },"button secondary voice-convert");
+ manualConvert.hidden=true;
+ const cleanup=()=>{
+  discard=true;pendingBlob=null;manualConvert.hidden=true;
+  if(timer)clearTimeout(timer);
+  if(recorder?.state==="recording")recorder.stop();
+  stream?.getTracks().forEach(t=>t.stop());
+ };app.cleanup.push(cleanup);
+ function readyForTranscription(blob){
+  if(discard||!blob)return;
+  if(app.preferences.voice_auto_transcribe){
+   void convert(blob);return;
+  }
+  pendingBlob=blob;manualConvert.hidden=false;
+  status.textContent="صوت آماده است؛ برای تبدیل به متن، «تبدیل به متن» را بزنید.";
+ }
  async function convert(blob){
-  if(busy||discard)return;if(blob.size>8*1024*1024){status.textContent="حداکثر حجم صوت ۸ مگابایت است.";return}busy=true;button.disabled=true;upload.disabled=true;status.textContent="در حال تبدیل صوت؛ سپس متن را بازبینی کنید...";
-  try{const endpoint=platform?"/api/platform/voice/transcribe":sourceApi(sourceId,"/voice/transcribe");
-   const r=await request(endpoint,{method:"POST",headers:{"Content-Type":blob.type||"audio/mpeg"},body:blob});if(!input.isConnected)return;
-   if(r.text.length>input.maxLength){status.textContent="متن از ظرفیت این کادر بیشتر است؛ فایل کوتاه‌تری انتخاب کنید.";return}input.value=r.text;input.dispatchEvent(new Event("input",{bubbles:true}));status.textContent="متن آماده است؛ قبل از ارسال بازبینی کنید.";
+  if(busy||discard)return;
+  if(blob.size>8*1024*1024){status.textContent="حداکثر حجم صوت ۸ مگابایت است.";return}
+  busy=true;button.disabled=true;upload.disabled=true;manualConvert.disabled=true;
+  status.textContent="در حال تبدیل صوت به متن...";
+  try{
+   const endpoint=platform?"/api/platform/voice/transcribe":sourceApi(sourceId,"/voice/transcribe");
+   const r=await request(endpoint,{method:"POST",headers:{"Content-Type":blob.type||"audio/mpeg"},body:blob});
+   if(!input.isConnected)return;
+   if(r.text.length>input.maxLength){status.textContent="متن از ظرفیت این کادر بیشتر است؛ فایل کوتاه‌تری انتخاب کنید.";return}
+   input.value=r.text;input.dispatchEvent(new Event("input",{bubbles:true}));
+   status.textContent=app.preferences.voice_auto_send&&onTranscript
+    ?"متن آماده شد و طبق تنظیم حساب در حال ارسال است..."
+    :"متن آماده است؛ قبل از ارسال بازبینی کنید.";
    if(onTranscript)await onTranscript(r.text);
-  }catch(e){status.textContent=e.message}finally{busy=false;button.disabled=false;upload.disabled=false}
+  }catch(e){
+   status.textContent="تبدیل صوت انجام نشد: "+errorDescription(e);
+  }finally{
+   busy=false;button.disabled=false;upload.disabled=false;manualConvert.disabled=false;upload.value="";
+  }
  }
  const button=link(compact?"ضبط":"ضبط سؤال / یادداشت",async()=>{
   if(recorder?.state==="recording"){recorder.stop();return}
-  if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){status.textContent="ضبط به HTTPS یا localhost نیاز دارد؛ می‌توانید فایل صوت انتخاب کنید.";return}
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:true});if(discard){stream.getTracks().forEach(t=>t.stop());return}
-   const mime=["audio/webm;codecs=opus","audio/mp4"].find(x=>MediaRecorder.isTypeSupported(x));if(!mime)throw Error("قالب ضبط مرورگر پشتیبانی نمی‌شود؛ فایل صوت انتخاب کنید.");
-   recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-   recorder.onstop=()=>{clearTimeout(timer);stream.getTracks().forEach(t=>t.stop());button.textContent=compact?"ضبط":"ضبط سؤال / یادداشت";if(!discard)convert(new Blob(chunks,{type:mime.split(";")[0]}))};
-   recorder.start();button.textContent=compact?"■":"پایان ضبط و تبدیل";status.textContent="در حال ضبط؛ حداکثر ۹۰ ثانیه";timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop()},90000);
-  }catch(e){stream?.getTracks().forEach(t=>t.stop());status.textContent=e.message}
+  if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){
+   status.textContent="ضبط به HTTPS یا localhost نیاز دارد؛ می‌توانید فایل صوت انتخاب کنید.";return
+  }
+  try{
+   stream=await navigator.mediaDevices.getUserMedia({audio:true});
+   if(discard){stream.getTracks().forEach(t=>t.stop());return}
+   const mime=["audio/webm;codecs=opus","audio/mp4"].find(x=>MediaRecorder.isTypeSupported(x));
+   if(!mime)throw Error("قالب ضبط مرورگر پشتیبانی نمی‌شود؛ فایل صوت انتخاب کنید.");
+   recorder=new MediaRecorder(stream,{mimeType:mime});const chunks=[];
+   recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+   recorder.onstop=()=>{
+    clearTimeout(timer);stream?.getTracks().forEach(t=>t.stop());
+    button.textContent=compact?"ضبط":"ضبط سؤال / یادداشت";
+    if(!discard)readyForTranscription(new Blob(chunks,{type:mime.split(";")[0]}));
+   };
+   recorder.start();button.textContent=compact?"■":"پایان ضبط";
+   status.textContent="در حال ضبط؛ حداکثر ۹۰ ثانیه";
+   timer=setTimeout(()=>{if(recorder.state==="recording")recorder.stop()},90000);
+  }catch(e){stream?.getTracks().forEach(t=>t.stop());status.textContent=errorDescription(e)}
  });
- const upload=el("input");upload.type="file";upload.accept="audio/webm,audio/ogg,audio/wav,audio/mpeg,audio/mp4,.m4a";upload.setAttribute("aria-label","انتخاب فایل صوت برای تبدیل به متن");upload.addEventListener("change",()=>{if(upload.files[0])convert(upload.files[0])});
+ const upload=el("input");upload.type="file";
+ upload.accept="audio/webm,audio/ogg,audio/wav,audio/mpeg,audio/mp4,.m4a";
+ upload.setAttribute("aria-label","انتخاب فایل صوت برای تبدیل به متن");
+ upload.addEventListener("change",()=>{if(upload.files[0])readyForTranscription(upload.files[0])});
  if(compact){
-  upload.className="secretary-hidden-input";button.classList.add("icon-button");button.title="ضبط صوت";status.classList.add("voice-compact-status");
-  add(wrap,button,upload,status);
- }else add(wrap,button,upload,el("small","muted","برای تبدیل، صوت انتخابی به سرویس هوش مصنوعی ارسال می‌شود."),status);
+  upload.className="secretary-hidden-input";button.classList.add("icon-button");button.title="ضبط صوت";
+  status.classList.add("voice-compact-status");add(wrap,button,upload,manualConvert,status);
+ }else{
+  add(wrap,button,upload,manualConvert,
+   el("small","muted",app.preferences.voice_auto_transcribe
+    ?"پس از ضبط، صوت طبق تنظیم حساب شما خودکار به متن تبدیل می‌شود."
+    :"پس از ضبط، تبدیل به متن فقط با تأیید شما انجام می‌شود."),
+   status);
+ }
  add(target,wrap);
 }
 function attachSpeech(target,result,sourceId=null){
