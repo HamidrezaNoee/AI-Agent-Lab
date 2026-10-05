@@ -317,7 +317,13 @@ def _history(scope,case_uid,child_ids,by_case,by_task):
     "delegated_at":str(d[6] or ""),
     "finished_at":str(d[5] or ""),
    })
- return sorted(events,key=lambda x:(x["delegated_at"],x["index"]))[-40:]
+ ordered=sorted(events,key=lambda x:(x["delegated_at"],x["index"]))
+ # Keep every parent meeting transition so early stage entry times never
+ # disappear when a meeting owns many parallel action cases. Bound only the
+ # child-action tail to keep list payloads predictable.
+ parent=[x for x in ordered if x["case_uid"]==case_uid]
+ child=[x for x in ordered if x["case_uid"]!=case_uid][-80:]
+ return sorted([*parent,*child],key=lambda x:(x["delegated_at"],x["index"]))[-120:]
 
 
 def _unique_people(items):
