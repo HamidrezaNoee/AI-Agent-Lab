@@ -473,9 +473,11 @@ def resolve_extracted_people(field,value,spec,directory):
   if text in active:return text
   uid_matches=[uid for uid in active if uid.lower()==text.lower()]
   if len(uid_matches)==1:return uid_matches[0]
-  matches=[uid for uid,p in active.items() if p.get('username') and str(p['username']).casefold()==text.casefold()]
+  matches=[uid for uid,p in active.items()
+           if any(str(p.get(k) or '').casefold()==text.casefold() for k in ('username','avan_username'))]
   if not matches:
-   matches=[uid for uid,p in active.items() if p.get('name') and person_text(p['name'])==person_text(text)]
+   matches=[uid for uid,p in active.items()
+            if any(p.get(k) and person_text(p[k])==person_text(text) for k in ('name','avan_name'))]
   if len(matches)==1:return matches[0]
   reason='چند حساب مطابق دارد' if matches else 'در کاربران فعال این اتصال پیدا نشد'
   questions.append(str(label)+': «'+text[:100]+'» '+reason+'؛ شخص درست را در فرم انتخاب کنید.')
