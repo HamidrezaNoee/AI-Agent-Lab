@@ -28,6 +28,17 @@ def normalize(values):
  return str(values)
 
 def process_for(pack,stage):return pack['action' if stage.startswith('action_') else 'meeting']['process_uid']
+def _meeting_sequence_prerequisite(scope):
+ from .user_bpms_bindings import processmaker_profile
+ from .processmaker_store import open_production
+ try:
+  profile=processmaker_profile(scope['source_id'])
+  with open_production(profile['mysql']) as con:
+   query(con,'SELECT MEETING_NO FROM MTG_MEETING_SEQUENCE LIMIT 1')
+ except Exception as exc:
+  raise ValueError('زیرساخت شماره‌گذاری جلسات ProcessMaker آماده نیست؛ جدول MTG_MEETING_SEQUENCE باید در دیتابیس Workspace وجود داشته باشد و اتصال خواندنی AVAN روی آن SELECT داشته باشد.') from exc
+ return True
+
 def task_key(scope,case,index):return 'secretary_task:'+hashlib.sha256(json.dumps([str(scope['tenant_id']),scope['source_id'],case,int(index)]).encode()).hexdigest()
 
 def task(con,scope,case,index,pack_id):
@@ -618,7 +629,7 @@ def prepare(task,scope,actor):
  try:
   if pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])!=task['index']:raise RevisionConflict()
   for trigger in task['pack']['stages'][task['stage']]['before']:
-   pm.call('PUT',f"/cases/{task['case_uid']}/execute-trigger/{trigger}")
+   pm.execute_trigger(task['case_uid'],trigger,operation='اجرای Trigger قبل از فرم')
  finally:pm.close()
 
 
@@ -695,6 +706,7 @@ def session_send(scope,actor,identifier,revision,*,pm=None):
  validate(row['values'],task,scope)
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
  if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
+ _meeting_sequence_prerequisite(scope)
  owned=pm is None
  if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],'invitation'),bearer=token(scope,actor))
  key=source_user_key('secretary_sessions',scope,actor)
@@ -725,6 +737,7 @@ def session_reconcile(scope,actor,identifier,revision,*,pm=None):
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
  if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
  if not row.get('case_uid'):raise ValueError('پرونده ProcessMaker برای تطبیق ثبت نشده است.')
+ _meeting_sequence_prerequisite(scope)
  owned=pm is None
  if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],'invitation'),bearer=token(scope,actor))
  key=source_user_key('secretary_sessions',scope,actor)
