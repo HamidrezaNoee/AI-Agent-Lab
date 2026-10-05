@@ -1,5 +1,5 @@
 "use strict";
-const app={processChoices:{},processManifests:{},secretaryTimer:null,user:null,csrf:null,page:"overview",selectedSourceId:null,cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,cleanup:[]};
+const app={processChoices:{},processManifests:{},secretaryTimer:null,user:null,csrf:null,page:"overview",selectedSourceId:null,cursor:null,meetings:[],questions:[],sending:false,pendingQuestion:null,monitorTimer:null,idleTimer:null,lastHeartbeat:0,newConversation:true,conversationId:null,voiceEnabled:false,calendar:"jalali",cleanup:[]};
 const $=id=>document.getElementById(id);
 function el(tag,klass,text){const n=document.createElement(tag);if(klass)n.className=klass;if(text!==undefined)n.textContent=String(text);return n}
 function add(parent,...children){for(const x of children.flat())if(x!==undefined&&x!==null)parent.append(x);return parent}
@@ -9,6 +9,128 @@ function note(text,error=false){return el("div","notice"+(error?" error":""),tex
 function heading(container,title,description){add(container,add(el("div","page-head"),el("h1","",title),el("p","",description)))}
 function root(){const m=$("main");m.replaceChildren();return m}
 function fmt(value){return new Intl.NumberFormat("fa-IR").format(value)}
+function calendarMode(){return app.calendar==="gregorian"?"gregorian":"jalali"}
+function calendarName(){return calendarMode()==="jalali"?"شمسی":"میلادی"}
+function calendarLocale(latin=false){
+ const calendar=calendarMode()==="jalali"?"persian":"gregory";
+ return "fa-IR-u-ca-"+calendar+(latin?"-nu-latn":"");
+}
+function parseDateValue(value){
+ if(!value)return null;
+ const raw=String(value).trim();
+ if(/^\d{4}-\d{2}-\d{2}$/.test(raw)){
+  const [year,month,day]=raw.split("-").map(Number);
+  const result=new Date(year,month-1,day,12,0,0,0);
+  return Number.isNaN(result.getTime())?null:result;
+ }
+ const normalized=/^\d{4}-\d{2}-\d{2} /.test(raw)?raw.replace(" ","T"):raw;
+ const result=new Date(normalized);
+ return Number.isNaN(result.getTime())?null:result;
+}
+function isoDate(value){
+ const d=value instanceof Date?value:parseDateValue(value);
+ if(!d)return "";
+ return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+}
+function calendarParts(value){
+ const d=value instanceof Date?value:parseDateValue(value);
+ if(!d)return null;
+ const out={};
+ for(const part of new Intl.DateTimeFormat(calendarLocale(true),{year:"numeric",month:"numeric",day:"numeric"}).formatToParts(d)){
+  if(part.type==="year"||part.type==="month"||part.type==="day")out[part.type]=Number(part.value);
+ }
+ return out;
+}
+function dateOnlyText(value){
+ if(!value)return "ثبت نشده";
+ const d=parseDateValue(value);
+ if(!d)return String(value);
+ return new Intl.DateTimeFormat(calendarLocale(),{year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
+}
+function dateText(value){
+ if(!value)return "ثبت نشده";
+ const raw=String(value),d=parseDateValue(raw);
+ if(!d)return raw;
+ const hasTime=/T|\s\d{1,2}:\d{2}/.test(raw);
+ const options=hasTime
+  ?{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Tehran"}
+  :{dateStyle:"medium"};
+ return new Intl.DateTimeFormat(calendarLocale(),options).format(d);
+}
+function firstCalendarMonthDate(anchor){
+ let cursor=new Date(anchor.getFullYear(),anchor.getMonth(),anchor.getDate(),12,0,0,0);
+ for(let i=0;i<35;i++){
+  const parts=calendarParts(cursor);
+  if(parts?.day===1)return cursor;
+  cursor.setDate(cursor.getDate()-1);
+ }
+ return cursor;
+}
+function shiftCalendarMonth(anchor,delta){
+ const first=firstCalendarMonthDate(anchor);
+ if(delta>0){first.setDate(first.getDate()+32);return firstCalendarMonthDate(first)}
+ first.setDate(first.getDate()-1);return firstCalendarMonthDate(first);
+}
+function monthTitle(anchor){
+ return new Intl.DateTimeFormat(calendarLocale(),{year:"numeric",month:"long"}).format(anchor);
+}
+function dateControl(initial=""){
+ const control=el("div","avan-date-picker"),canonical=el("input","avan-date-canonical"),
+  display=el("input","avan-date-display"),toggle=el("button","avan-date-toggle","▦"),
+  popup=el("div","avan-date-popover");
+ canonical.type="hidden";
+ canonical.value=/^\d{4}-\d{2}-\d{2}/.test(String(initial||""))?String(initial).slice(0,10):"";
+ display.type="text";display.readOnly=true;display.autocomplete="off";
+ display.placeholder=calendarMode()==="jalali"?"انتخاب تاریخ شمسی":"انتخاب تاریخ میلادی";
+ toggle.type="button";toggle.setAttribute("aria-label","باز کردن انتخابگر تاریخ "+calendarName());
+ popup.hidden=true;popup.setAttribute("role","dialog");popup.setAttribute("aria-label","انتخاب تاریخ "+calendarName());
+ let anchor=parseDateValue(canonical.value)||new Date();
+ const sync=()=>{display.value=canonical.value?dateOnlyText(canonical.value):""};
+ const set=value=>{
+  canonical.value=value?String(value).slice(0,10):"";
+  anchor=parseDateValue(canonical.value)||new Date();
+  sync();popup.hidden=true;
+  canonical.dispatchEvent(new Event("input",{bubbles:true}));
+  canonical.dispatchEvent(new Event("change",{bubbles:true}));
+ };
+ const render=()=>{
+  popup.replaceChildren();
+  const head=el("div","avan-date-head"),prev=el("button","avan-date-nav","‹"),
+   title=el("strong","",monthTitle(anchor)),next=el("button","avan-date-nav","›");
+  prev.type=next.type="button";prev.setAttribute("aria-label","ماه قبل");next.setAttribute("aria-label","ماه بعد");
+  prev.addEventListener("click",()=>{anchor=shiftCalendarMonth(anchor,-1);render()});
+  next.addEventListener("click",()=>{anchor=shiftCalendarMonth(anchor,1);render()});
+  add(head,prev,title,next);
+  const weekdays=el("div","avan-date-weekdays");
+  for(const name of ["ش","ی","د","س","چ","پ","ج"])add(weekdays,el("span","",name));
+  const grid=el("div","avan-date-grid"),first=firstCalendarMonthDate(anchor),month=calendarParts(first);
+  const offset=(first.getDay()+1)%7;
+  const start=new Date(first);start.setDate(first.getDate()-offset);
+  const today=isoDate(new Date());
+  for(let i=0;i<42;i++){
+   const day=new Date(start);day.setDate(start.getDate()+i);
+   const parts=calendarParts(day),value=isoDate(day),button=el("button","avan-date-day",fmt(parts?.day??""));
+   button.type="button";
+   if(parts?.year!==month?.year||parts?.month!==month?.month)button.classList.add("is-outside");
+   if(value===today)button.classList.add("is-today");
+   if(value===canonical.value)button.classList.add("is-selected");
+   button.setAttribute("aria-label",dateOnlyText(value));
+   button.addEventListener("click",()=>set(value));add(grid,button);
+  }
+  const foot=el("div","avan-date-foot"),todayButton=el("button","avan-date-today","امروز"),clearButton=el("button","avan-date-clear","پاک کردن");
+  todayButton.type=clearButton.type="button";
+  todayButton.addEventListener("click",()=>set(isoDate(new Date())));
+  clearButton.addEventListener("click",()=>set(""));
+  add(foot,todayButton,clearButton);add(popup,head,weekdays,grid,foot);
+ };
+ const open=()=>{anchor=parseDateValue(canonical.value)||new Date();render();popup.hidden=!popup.hidden};
+ toggle.addEventListener("click",open);display.addEventListener("click",open);
+ display.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();open()}});
+ const outside=event=>{if(!control.contains(event.target))popup.hidden=true};
+ document.addEventListener("pointerdown",outside);app.cleanup.push(()=>document.removeEventListener("pointerdown",outside));
+ add(control,canonical,display,toggle,popup);sync();
+ return {control,input:canonical,display,set};
+}
 function toast(text){const t=$("toast");t.textContent=text;t.hidden=false}
 function sourceApi(sourceId,path){
  return sourceId?("/api/sources/"+encodeURIComponent(sourceId)+path):("/api"+path);
@@ -137,6 +259,11 @@ for(const eventName of ["pointerdown","keydown","touchstart"]){
  document.addEventListener(eventName,recordActivity,{passive:true});
 }
 window.addEventListener("storage",event=>{if(event.key==="avan-logout"&&app.user)sessionExpired()});
+window.addEventListener("message",event=>{
+ if(event.origin!==window.location.origin||event.data?.type!=="avan-ui-settings-changed")return;
+ const calendar=event.data.calendar==="gregorian"?"gregorian":"jalali";
+ if(calendar!==app.calendar){app.calendar=calendar;window.location.reload()}
+});
 function select(page){
  const platformPage=page.startsWith("platform-");
  const adminPage=page==="system-management";
@@ -214,7 +341,7 @@ async function overview(){
 function meetingRow(meeting){
  const row=el("div","meeting-row"),details=el("div");
  add(details,el("strong","",meeting.title),el("small","",meeting.meeting_no+" · "+meeting.meeting_status+
-  " · "+(meeting.meeting_date_utc||"تاریخ ثبت نشده")));
+  " · "+dateText(meeting.meeting_date_utc)));
  add(row,details,link("نمایش جزئیات",()=>showMeeting(meeting.meeting_id)),link("تحلیل اقدامات",()=>{
   app.pendingQuestion="اقدامات جلسه شماره "+meeting.meeting_no+" در چه وضعیتی هستند؟";
   select("assistant");
@@ -297,7 +424,9 @@ async function askQuestion(question,sourceId=null){
 }
 async function init(){
  try{
-  const user=await request("/api/me");setupUser(user);
+  const user=await request("/api/me");
+  try{const ui=await request("/api/ui-config");app.calendar=ui.calendar==="gregorian"?"gregorian":"jalali"}catch(_){app.calendar="jalali"}
+  setupUser(user);
   const workspaceNavigation=(user.bpms_sources||[]).length>0;
   if(user.bootstrap_mode){select("system-management");return}
   if(workspaceNavigation){app.selectedSourceId=user.bpms_sources[0].source_id;select("source-overview");return}
@@ -348,7 +477,7 @@ async function boundSourceOverview(){
    for(const meeting of page.meetings||[]){
     const row=el("div","meeting-row"),details=el("div");
     add(details,el("strong","",meeting.title),
-     el("small","",meeting.meeting_no+" · "+meeting.meeting_status+" · "+(meeting.meeting_date_utc||"تاریخ ثبت نشده")));
+     el("small","",meeting.meeting_no+" · "+meeting.meeting_status+" · "+dateText(meeting.meeting_date_utc)));
     add(row,details,link("نمایش جزئیات",()=>showSourceMeeting(source.source_id,meeting.meeting_id)));
     add(recent,row);
    }
@@ -380,7 +509,7 @@ async function boundSourceMeetings(){
    loaded++;
    const row=el("div","meeting-row"),details=el("div");
    add(details,el("strong","",meeting.title),
-    el("small","",meeting.meeting_no+" · "+meeting.meeting_status+" · "+(meeting.meeting_date_utc||"تاریخ ثبت نشده")));
+    el("small","",meeting.meeting_no+" · "+meeting.meeting_status+" · "+dateText(meeting.meeting_date_utc)));
    add(row,details,link("نمایش جزئیات",()=>showSourceMeeting(source.source_id,meeting.meeting_id)));
    add(panel,row);
   }
@@ -566,17 +695,17 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
 
  const filters=el("div","meeting-flow-filters");
  const search=el("input");search.placeholder="جستجوی شماره پرونده، شماره جلسه یا عنوان";search.setAttribute("aria-label","جستجوی پرونده یا جلسه");
- const person=el("select"),process=el("select"),period=el("select"),from=el("input"),to=el("input"),role=el("select"),status=el("select"),stage=el("select"),owner=el("select"),unit=el("select"),actionScope=el("select"),sort=el("select");
- from.type="date";to.type="date";
+ const person=el("select"),process=el("select"),period=el("select"),fromDate=dateControl(),toDate=dateControl(),from=fromDate.input,to=toDate.input,role=el("select"),status=el("select"),stage=el("select"),owner=el("select"),unit=el("select"),actionScope=el("select"),sort=el("select");
  const processOption=el("option","","مدیریت جلسات + اقدامات مصوب");processOption.value="meeting_v2";add(process,processOption);process.disabled=true;
- for(const [control,label] of [[person,"شخص"],[process,"فرایند"],[period,"بازه زمانی"],[from,"از تاریخ"],[to,"تا تاریخ"],[role,"نقش"],[status,"وضعیت"],[stage,"مرحله فعلی"],[owner,"مسئول فعلی"],[unit,"واحد سازمانی"],[actionScope,"نوع جریان"],[sort,"مرتب‌سازی"]])control.setAttribute("aria-label",label);
+ for(const [control,label] of [[person,"شخص"],[process,"فرایند"],[period,"بازه زمانی"],[role,"نقش"],[status,"وضعیت"],[stage,"مرحله فعلی"],[owner,"مسئول فعلی"],[unit,"واحد سازمانی"],[actionScope,"نوع جریان"],[sort,"مرتب‌سازی"]])control.setAttribute("aria-label",label);
+ fromDate.display.setAttribute("aria-label","از تاریخ "+calendarName());toDate.display.setAttribute("aria-label","تا تاریخ "+calendarName());
  for(const [v,t] of [["90d","۹۰ روز گذشته"],["30d","۳۰ روز گذشته"],["365d","یک سال گذشته"],["all","همه زمان‌ها"],["custom","بازه دلخواه"]]){const o=el("option","",t);o.value=v;add(period,o)}
  for(const [v,t] of [["","همه"],["with_actions","دارای اقدام"],["without_actions","بدون اقدام"]]){const o=el("option","",t);o.value=v;add(actionScope,o)}
  for(const [v,t] of [["newest","جدیدترین"],["oldest","قدیمی‌ترین"],["waiting","منتظر اقدام اول"],["stage","مرحله فرایند"],["progress_desc","بیشترین پیشرفت"],["progress_asc","کمترین پیشرفت"]]){const o=el("option","",t);o.value=v;add(sort,o)}
  const field=(label,control,kind="")=>add(el("label","meeting-flow-filter "+kind),el("span","",label),control);
  add(filters,
   field("جستجو",search,"is-search"),field("شخص",person),field("فرایند",process),
-  field("بازه زمانی",period),field("از تاریخ",from,"is-date"),field("تا تاریخ",to,"is-date"),
+  field("بازه زمانی",period),field("از تاریخ "+calendarName(),fromDate.control,"is-date"),field("تا تاریخ "+calendarName(),toDate.control,"is-date"),
   field("نقش در پرونده",role),field("وضعیت",status),field("مرحله فعلی",stage),
   field("مسئول فعلی",owner),field("واحد سازمانی",unit),field("نوع جریان",actionScope),field("مرتب‌سازی",sort)
  );
@@ -605,7 +734,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   for(const [key,b] of perspectiveButtons)b.setAttribute("aria-pressed",String(key===activePerspective));
  }
  function resetFilters(){
-  search.value="";period.value="90d";from.value="";to.value="";role.value="";status.value="";stage.value="";owner.value="";unit.value="";actionScope.value="";sort.value="newest";waitingOnly=false;activePerspective="all";syncPerspective();
+  search.value="";period.value="90d";fromDate.set("");toDate.set("");role.value="";status.value="";stage.value="";owner.value="";unit.value="";actionScope.value="";sort.value="newest";waitingOnly=false;activePerspective="all";syncPerspective();
  }
  function applyPerspective(key){
   resetFilters();activePerspective=key;
@@ -666,7 +795,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   add(overview,el("strong","","خلاصه پرونده"),
    el("p","","شماره پرونده: "+fmt(row.case_number)),
    el("p","","شماره جلسه: "+row.meeting_no),
-   el("p","","تاریخ جلسه: "+(row.meeting_date||"ثبت نشده")),
+   el("p","","تاریخ جلسه: "+dateOnlyText(row.meeting_date)),
    el("p","","پیشرفت: "+fmt(row.progress_percent)+"٪"));
   const ownersBox=el("div","meeting-flow-detail-card");
   add(ownersBox,el("strong","","مسئولان فعلی"));
@@ -677,7 +806,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   if(!(row.history||[]).length)add(history,el("p","muted","تاریخچه قابل نمایش نیست."));
   for(const item of row.history||[]){
    const line=el("div","meeting-flow-history-row "+item.state);
-   add(line,el("i"),add(el("div"),el("b","",item.stage_title),el("small","",miniPerson(item.owner)+(item.delegated_at?" · "+item.delegated_at:""))));
+   add(line,el("i"),add(el("div"),el("b","",item.stage_title),el("small","",miniPerson(item.owner)+(item.delegated_at?" · "+dateText(item.delegated_at):""))));
    add(history,line);
   }
   add(wrap,overview,ownersBox,history);add(d,wrap);return d;
@@ -685,7 +814,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
  function graphRow(row){
   const article=el("article","meeting-flow-case");
   const top=el("div","meeting-flow-case-head"),title=el("div","meeting-flow-case-heading");
-  add(title,el("span","meeting-flow-case-kicker","پرونده "+fmt(row.case_number)+" · جلسه "+row.meeting_no),el("strong","meeting-flow-case-title",row.title),el("small","muted",(row.meeting_date?"تاریخ "+row.meeting_date+" · ":"")+"آخرین مرحله: "+row.current_stage_title));
+  add(title,el("span","meeting-flow-case-kicker","پرونده "+fmt(row.case_number)+" · جلسه "+row.meeting_no),el("strong","meeting-flow-case-title",row.title),el("small","muted",(row.meeting_date?"تاریخ "+dateOnlyText(row.meeting_date)+" · ":"")+"آخرین مرحله: "+row.current_stage_title));
   const state=badge(row.status_label,"status-"+row.status);add(top,title,state);
 
   const meta=el("div","meeting-flow-meta");
@@ -819,7 +948,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     add(tile,meta,el("h4","",t.title));
     const b=link("مشاهده و انجام وظیفه",checked(()=>open(t,!!info.oauth_connected)),"button secondary");b.dataset.caseUid=t.case_uid;b.disabled=!t.available;
     add(tile,b);
-    if(!t.available)add(tile,el("small","muted",t.reminder_at?"زمان فعال‌شدن: "+t.reminder_at:"زمان پایش هنوز تکمیل نشده است."));
+    if(!t.available)add(tile,el("small","muted",t.reminder_at?"زمان فعال‌شدن: "+dateText(t.reminder_at):"زمان پایش هنوز تکمیل نشده است."));
     add(grid,tile);
    }add(taskArea,grid);
    if(info.truncated)add(taskArea,note("نمایش به ۲۰۰ وظیفه محدود است؛ تعدادها مربوط به همین فهرست‌اند."));
@@ -1104,7 +1233,12 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
  await load();let busy=false;const timer=setInterval(async()=>{if(busy||!m.isConnected)return;busy=true;try{await load()}catch{}finally{busy=false}},60000);app.cleanup.push(()=>clearInterval(timer));
 }
 function inputField(label,value,type="text"){
- const wrap=el("label","field"),input=el(type==="textarea"?"textarea":"input");
+ const wrap=el("label","field");
+ if(type==="date"){
+  const picker=dateControl(value);picker.display.setAttribute("aria-label",label);picker.input.setAttribute("aria-label",label);
+  add(wrap,el("span","",label),picker.control);return {wrap,input:picker.input,picker};
+ }
+ const input=el(type==="textarea"?"textarea":"input");
  if(type!=="textarea")input.type=type;input.value=value??"";input.setAttribute("aria-label",label);add(wrap,el("span","",label),input);return {wrap,input};
 }
 function renderDraft(target,draft,sourceId=null){
@@ -1115,7 +1249,7 @@ function renderDraft(target,draft,sourceId=null){
  function changed(){dirty=true;approve.disabled=true;out.replaceChildren(note("تغییرات ذخیره نشده‌اند؛ ابتدا ذخیره کنید."))}
  function actionEditor(a){
   const item=card("اقدام پیشنهادی"),fields={};
-  for(const [key,label,type] of [["description","شرح اقدام","textarea"],["source_quote","عبارت مستند از متن اولیه","textarea"],["suggested_role","سمت پیشنهادی","text"],["owner_reason","دلیل انتخاب مسئول","text"],["proposed_due_date","موعد میلادی","date"],["due_reason","دلیل موعد پیشنهادی","text"]]){
+  for(const [key,label,type] of [["description","شرح اقدام","textarea"],["source_quote","عبارت مستند از متن اولیه","textarea"],["suggested_role","سمت پیشنهادی","text"],["owner_reason","دلیل انتخاب مسئول","text"],["proposed_due_date","موعد "+calendarName(),"date"],["due_reason","دلیل موعد پیشنهادی","text"]]){
    const f=inputField(label,a[key],type);fields[key]=f.input;add(item,f.wrap);
   }
   const owner=el("select"),priority=el("select");owner.setAttribute("aria-label","مسئول اقدام");priority.setAttribute("aria-label","اولویت اقدام");
@@ -1178,7 +1312,6 @@ async function monitorPage(sourceId=null){
  async function subscribe(enabled){try{await request(monitorBase+"/subscribe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled,interval_seconds:Number(interval.input.value)*60})});out.replaceChildren(note(enabled?"پایش پس‌زمینه فعال شد.":"پایش متوقف شد."));await refresh()}catch(e){out.replaceChildren(note(e.message,true))}}
  hide.addEventListener("change",refresh);add(control,interval.wrap,link("فعال‌سازی پایش",()=>subscribe(true),"button primary"),link("توقف پایش",()=>subscribe(false)),link("بررسی اکنون",refresh),filter,state,out);add(m,control,results);await refresh();
 }
-function dateText(value){if(!value)return "ثبت نشده";const d=new Date(value);return Number.isNaN(d.getTime())?String(value):new Intl.DateTimeFormat("fa-IR",{dateStyle:"medium",timeStyle:"short"}).format(d)}
 function downloadJson(data,name){const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json;charset=utf-8"}));const a=el("a");a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 async function showMeeting(id){
  try{const meeting=await request("/api/meetings/"+id);cleanMedia();if(app.monitorTimer)clearTimeout(app.monitorTimer);app.page="detail";
@@ -1241,7 +1374,7 @@ async function reportsPage(sourceId=null){
  const reportBase=sourceApi(sourceId,"/reports/actions");
  const panel=card("فیلتر گزارش"),filters=el("div","report-filters"),result=el("div"),controls={};let offset=0,lastQuery=null;
  for(const [key,label,options] of [["status","وضعیت",[["all","همه"],["open","باز"],["closed","بسته‌شده"],["overdue","تأخیردار"],["due_soon","موعد نزدیک"]]],
-  ["period","بازه",[["all","همه زمان‌ها"],["this_month","ماه جاری شمسی"],["last_month","ماه قبل شمسی"],["last_30_days","۳۰ روز گذشته"],["last_7_days","۷ روز گذشته"]]],
+  ["period","بازه",[["all","همه زمان‌ها"],["this_month","ماه جاری "+calendarName()],["last_month","ماه قبل "+calendarName()],["last_30_days","۳۰ روز گذشته"],["last_7_days","۷ روز گذشته"]]],
   ["date_field","مبنای تاریخ",[["meeting","تاریخ جلسه"],["due","موعد اقدام"]]],
   ["group_by","مقایسه",[["unit","واحد"],["owner","مسئول"],["meeting","جلسه"],["none","بدون گروه‌بندی"]]]]){
   const select=el("select"),labelEl=el("label");select.setAttribute("aria-label",label);for(const [v,t] of options){const option=el("option","",t);option.value=v;add(select,option)}controls[key]=select;add(labelEl,el("span","",label),select);add(filters,labelEl)
@@ -1275,8 +1408,8 @@ async function biPage(sourceId=null){
  const panel=card("دامنه گزارش","فقط پرونده‌هایی که در دامنه مجاز شما هستند محاسبه می‌شوند."),controls=el("div","report-filters"),out=el("div");
  const process=el("select"),period=el("select");process.setAttribute("aria-label","فرایند BI");period.setAttribute("aria-label","بازه BI");
  const all=el("option","","همه فرایندها");all.value="";add(process,all);
- for(const [v,t] of [["last_30_days","۳۰ روز گذشته"],["this_month","ماه جاری شمسی"],["last_month","ماه قبل"],["all","همه زمان‌ها"]]){const o=el("option","",t);o.value=v;add(period,o)}
- const from=inputField("از تاریخ میلادی (اختیاری)","","date"),to=inputField("تا تاریخ میلادی (غیرشامل)","","date");
+ for(const [v,t] of [["last_30_days","۳۰ روز گذشته"],["this_month","ماه جاری "+calendarName()],["last_month","ماه قبل"],["all","همه زمان‌ها"]]){const o=el("option","",t);o.value=v;add(period,o)}
+ const from=inputField("از تاریخ "+calendarName()+" (اختیاری)","","date"),to=inputField("تا تاریخ "+calendarName()+" (غیرشامل)","","date");
  add(controls,add(el("label"),el("span","","فرایند"),process),add(el("label"),el("span","","بازه"),period),from.wrap,to.wrap);
  let offset=0,known=new Set();const query=()=>({process_uid:process.value||null,period:period.value,start:from.input.value||null,end:to.input.value||null,offset,limit:30});
  function table(headers,rows){const t=el("table"),h=el("tr");headers.forEach(x=>add(h,el("th","",x)));add(t,h);for(const values of rows){const r=el("tr");values.forEach(x=>add(r,el("td","",x==null?"—":x)));add(t,r)}return add(el("div","table-scroll"),t)}
@@ -1285,7 +1418,7 @@ async function biPage(sourceId=null){
   for(const p of r.processes){if(known.has(p.process_uid))continue;known.add(p.process_uid);const o=el("option","",p.title);o.value=p.process_uid;add(process,o)}
   const metrics=el("div","stats");for(const [key,label] of [["cases","کل پرونده"],["open_cases","پرونده باز"],["completed_cases","تکمیل‌شده"],["open_tasks","وظیفه باز"],["overdue_tasks","وظیفه تأخیردار"],["median_cycle_hours","میانه چرخه (ساعت)"]])add(metrics,add(el("div","stat"),el("span","",label),el("strong","",r.metrics[key]==null?"نامشخص":fmt(r.metrics[key]))));add(out,metrics);
   if(!r.coverage_complete)add(out,note("بیش از ۲۰هزار پرونده در دامنه وجود دارد؛ دوره را محدود کنید. آمار حاضر فقط زیرمجموعه بازیابی‌شده است.",true));
-  const charts=el("div","bi-charts");add(charts,bars("وضعیت پرونده‌ها",Object.entries(r.statuses).map(([k,v])=>[statusName(k),v])),bars("پرونده‌های ایجادشده در ماه شمسی",r.monthly.map(x=>[x.month,x.count])));add(out,charts);
+  const charts=el("div","bi-charts");add(charts,bars("وضعیت پرونده‌ها",Object.entries(r.statuses).map(([k,v])=>[statusName(k),v])),bars("پرونده‌های ایجادشده در ماه "+calendarName(),r.monthly.map(x=>[x.month,x.count])));add(out,charts);
   const p=card("عملکرد فرایندها");add(p,table(["فرایند","کل","باز","تکمیل","وظیفه تأخیردار","میانگین چرخه ساعت"],r.processes.map(x=>[x.title,fmt(x.total),fmt(x.open),fmt(x.completed),fmt(x.overdue_tasks),x.average_cycle_hours==null?null:fmt(x.average_cycle_hours)])));add(out,p);
   const bottleneck=card("مراحل نیازمند بررسی","زمان انتظار از تخصیص تا شروع، و زمان کار از شروع تا پایان وظیفه محاسبه می‌شود.");add(bottleneck,table(["مرحله","باز","تأخیر","انتظار (ساعت)","کار (ساعت)"],r.tasks.map(x=>[x.title,fmt(x.open),fmt(x.overdue),x.average_wait_hours,x.average_work_hours])));add(out,bottleneck);
   const people=card("حجم کار مسئولان");add(people,table(["مسئول","واحد","کار باز","تأخیر"],r.owners.map(x=>[x.name,x.unit,fmt(x.open),fmt(x.overdue)])));add(out,people);
