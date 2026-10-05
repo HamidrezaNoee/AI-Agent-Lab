@@ -452,3 +452,52 @@ def test_conversational_reply_is_persisted_in_history(store,pack):
  assert updated['reply']==reply
  assert updated['history'][-1]['text']==reply
  assert updated['values']==row['values']
+
+
+
+def test_native_case_values_reads_application_app_data_from_fresh_readonly_mysql(monkeypatch):
+ from commercial import processmaker_store,user_bpms_bindings
+ payload={'MTG_MeetingNo':'MTG-1405-1001','MTG_FRMTG001_FormDate':'1405/07/15','MTG_MeetingTitle':'جلسه AVAN'}
+ seen=[]
+ monkeypatch.setattr(user_bpms_bindings,'processmaker_profile',lambda source_id:{'mysql':{'database':'bitnami_pm'}})
+ @contextmanager
+ def opened(config):
+  seen.append(('open',config['database']))
+  yield object()
+ monkeypatch.setattr(processmaker_store,'open_production',opened)
+ def fake_query(con,sql,args=()):
+  seen.append(('query',sql,args))
+  return [(phpserialize.dumps(payload),)]
+ monkeypatch.setattr(r,'query',fake_query)
+ result=r._native_case_values(S,'a'*32)
+ assert result['MTG_MeetingNo']=='MTG-1405-1001'
+ assert result['MTG_MeetingTitle']=='جلسه AVAN'
+ assert seen[0]==('open','bitnami_pm')
+ assert 'FROM APPLICATION' in seen[1][1]
+ assert seen[1][2]==('a'*32,)
+
+
+def test_live_session_path_can_use_readonly_native_reader_instead_of_rest_variables(pack,store,monkeypatch):
+ draft=r.session_create(S,'actor',pack['id'])
+ values=copy.deepcopy(V);values.pop('MTG_MeetingNo',None)
+ values['MTG_Agenda']['1'].update(MTG_AgendaPresenterUID='c'*32,MTG_AgendaPlannedMinutes='20')
+ draft=r.session_update(S,'actor',draft['id'],draft['revision'],values)
+ monkeypatch.setattr(r,'_meeting_sequence_prerequisite',lambda scope:True)
+ monkeypatch.setattr(r,'token',lambda scope,actor:'personal')
+ monkeypatch.setattr(r,'_native_case_values',lambda scope,case:{
+  'MTG_MeetingNo':'MTG-1405-1002','MTG_FRMTG001_FormDate':'1405/07/15'
+ })
+ calls=[]
+ class LivePM:
+  def __init__(self,*a,**kw):pass
+  def create_for(self,task,payload):calls.append(('create',payload['MTG_MeetingTitle']));return 'a'*32
+  def assigned(self,*a):return 1
+  def set_variables(self,*a,**kw):calls.append(('set',))
+  def execute_trigger(self,*a,**kw):calls.append(('trigger',))
+  def variables(self,*a):raise AssertionError('live path must not GET variables through REST')
+  def submit_stage(self,case,stage,person,payload,index):calls.append(('submit',payload['MTG_MeetingNo']))
+  def close(self):pass
+ monkeypatch.setattr(r,'PM',LivePM)
+ result=r.session_send(S,'actor',draft['id'],draft['revision'])
+ assert result['status']=='awaiting_invitation_approval'
+ assert ('submit','MTG-1405-1002') in calls
