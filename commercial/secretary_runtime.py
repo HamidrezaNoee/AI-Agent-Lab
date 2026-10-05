@@ -706,9 +706,10 @@ def session_send(scope,actor,identifier,revision,*,pm=None):
  validate(row['values'],task,scope)
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
  if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
- _meeting_sequence_prerequisite(scope)
  owned=pm is None
- if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],'invitation'),bearer=token(scope,actor))
+ if owned:
+  _meeting_sequence_prerequisite(scope)
+  pm=PM(scope['source_id'],process_uid=process_for(task['pack'],'invitation'),bearer=token(scope,actor))
  key=source_user_key('secretary_sessions',scope,actor)
  def save_row(row):
   with agent_storage.transaction() as tx:
@@ -737,9 +738,10 @@ def session_reconcile(scope,actor,identifier,revision,*,pm=None):
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
  if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
  if not row.get('case_uid'):raise ValueError('پرونده ProcessMaker برای تطبیق ثبت نشده است.')
- _meeting_sequence_prerequisite(scope)
  owned=pm is None
- if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],'invitation'),bearer=token(scope,actor))
+ if owned:
+  _meeting_sequence_prerequisite(scope)
+  pm=PM(scope['source_id'],process_uid=process_for(task['pack'],'invitation'),bearer=token(scope,actor))
  key=source_user_key('secretary_sessions',scope,actor)
  def save_row(row):
   with agent_storage.transaction() as tx:
