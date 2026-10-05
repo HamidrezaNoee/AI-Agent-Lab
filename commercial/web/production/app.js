@@ -542,25 +542,58 @@ function renderAnalysis(target,result,sourceId=null){
 }
 async function renderMeetingCaseFlowGraph(target,sourceId,packId){
  target.replaceChildren();
- const shell=el("section","meeting-flow-report");
+ const shell=el("section","meeting-flow-report meeting-flow-report-v2");
  const head=el("div","meeting-flow-head");
- add(head,add(el("div"),el("span","secretary-eyebrow","دید فرایندی"),el("h3","","نقشه جریان پرونده‌ها"),el("p","muted","مسیر هر جلسه، نقش شما، مسئول فعلی و میزان پیشرفت را مثل تاریخچه یک جریان کاری دنبال کنید.")));
+ const headCopy=el("div","meeting-flow-head-copy");
+ add(headCopy,el("span","secretary-eyebrow","دید فرایندی"),el("h3","","گراف جریان پرونده‌ها"),el("p","muted","هر پرونده را از دعوت تا اختتام دنبال کنید؛ شاخه‌های اقدامات موازی مثل Branchهای Git از مسیر جلسه جدا و دوباره Merge می‌شوند."));
+ const legend=el("div","meeting-flow-legend");
+ for(const [kind,label] of [["done","انجام‌شده"],["current","مرحله جاری"],["future","مرحله آینده"],["branch","اقدام موازی"]])add(legend,add(el("span","meeting-flow-legend-item"),el("i","legend-dot "+kind),el("span","",label)));
+ add(head,headCopy,legend);add(shell,head);
+
+ const perspectives=el("div","meeting-flow-perspectives");
+ add(perspectives,el("span","meeting-flow-perspective-title","نمای سریع"));
+ const perspectiveDefs=[
+  ["all","همه پرونده‌ها"],
+  ["waiting","منتظر اقدام"],
+  ["secretary","در نقش دبیر"],
+  ["chair","در نقش رئیس"],
+  ["action_owner","اقدام‌های من"],
+  ["completed","تکمیل‌شده"],
+  ["with_actions","دارای اقدام"]
+ ];
+ const perspectiveButtons=[];
+ let waitingOnly=false,activePerspective="all";
+
  const filters=el("div","meeting-flow-filters");
- const search=el("input");search.placeholder="جستجوی پرونده / عنوان جلسه";search.setAttribute("aria-label","جستجوی پرونده یا جلسه");
- const person=el("select"),period=el("select"),role=el("select"),status=el("select"),stage=el("select"),owner=el("select"),unit=el("select");
- for(const [control,label] of [[person,"شخص"],[period,"بازه زمانی"],[role,"نقش"],[status,"وضعیت"],[stage,"مرحله فعلی"],[owner,"مسئول فعلی"],[unit,"واحد سازمانی"]])control.setAttribute("aria-label",label);
- for(const [v,t] of [["90d","۹۰ روز گذشته"],["30d","۳۰ روز گذشته"],["365d","یک سال گذشته"],["all","همه زمان‌ها"]]){const o=el("option","",t);o.value=v;add(period,o)}
- const field=(label,control)=>add(el("label","meeting-flow-filter"),el("span","",label),control);
- add(filters,field("جستجو",search),field("شخص",person),field("بازه زمانی",period),field("نقش در پرونده",role),field("وضعیت",status),field("مرحله فعلی",stage),field("مسئول فعلی",owner),field("واحد سازمانی",unit));
- const actions=el("div","meeting-flow-actions"),refresh=link("↻ به‌روزرسانی",()=>loadGraph(true),"button secondary");
- add(actions,refresh);add(shell,head,filters,actions);
+ const search=el("input");search.placeholder="جستجوی شماره پرونده، شماره جلسه یا عنوان";search.setAttribute("aria-label","جستجوی پرونده یا جلسه");
+ const person=el("select"),process=el("select"),period=el("select"),from=el("input"),to=el("input"),role=el("select"),status=el("select"),stage=el("select"),owner=el("select"),unit=el("select"),actionScope=el("select"),sort=el("select");
+ from.type="date";to.type="date";
+ const processOption=el("option","","مدیریت جلسات + اقدامات مصوب");processOption.value="meeting_v2";add(process,processOption);process.disabled=true;
+ for(const [control,label] of [[person,"شخص"],[process,"فرایند"],[period,"بازه زمانی"],[from,"از تاریخ"],[to,"تا تاریخ"],[role,"نقش"],[status,"وضعیت"],[stage,"مرحله فعلی"],[owner,"مسئول فعلی"],[unit,"واحد سازمانی"],[actionScope,"نوع جریان"],[sort,"مرتب‌سازی"]])control.setAttribute("aria-label",label);
+ for(const [v,t] of [["90d","۹۰ روز گذشته"],["30d","۳۰ روز گذشته"],["365d","یک سال گذشته"],["all","همه زمان‌ها"],["custom","بازه دلخواه"]]){const o=el("option","",t);o.value=v;add(period,o)}
+ for(const [v,t] of [["","همه"],["with_actions","دارای اقدام"],["without_actions","بدون اقدام"]]){const o=el("option","",t);o.value=v;add(actionScope,o)}
+ for(const [v,t] of [["newest","جدیدترین"],["oldest","قدیمی‌ترین"],["waiting","منتظر اقدام اول"],["stage","مرحله فرایند"],["progress_desc","بیشترین پیشرفت"],["progress_asc","کمترین پیشرفت"]]){const o=el("option","",t);o.value=v;add(sort,o)}
+ const field=(label,control,kind="")=>add(el("label","meeting-flow-filter "+kind),el("span","",label),control);
+ add(filters,
+  field("جستجو",search,"is-search"),field("شخص",person),field("فرایند",process),
+  field("بازه زمانی",period),field("از تاریخ",from,"is-date"),field("تا تاریخ",to,"is-date"),
+  field("نقش در پرونده",role),field("وضعیت",status),field("مرحله فعلی",stage),
+  field("مسئول فعلی",owner),field("واحد سازمانی",unit),field("نوع جریان",actionScope),field("مرتب‌سازی",sort)
+ );
+
+ const actionBar=el("div","meeting-flow-actions");
+ const refresh=link("↻ به‌روزرسانی",()=>loadGraph(true),"button secondary");
+ const reset=link("پاک‌کردن فیلترها",()=>{resetFilters();loadGraph(true)},"button secondary");
+ add(actionBar,reset,refresh);add(shell,perspectives,filters,actionBar);
  const body=el("div","meeting-flow-body");add(shell,body);add(target,shell);
+
  let offset=0,loading=false,loadedOptions=false;
  const addAll=(select,label="همه")=>{const o=el("option","",label);o.value="";add(select,o)};
  addAll(role);addAll(status);addAll(stage);addAll(owner);addAll(unit);
+
  function refill(select,items,valueKey="value",labelKey="label",allLabel="همه"){
   const previous=select.value;select.replaceChildren();addAll(select,allLabel);
-  for(const item of items||[]){const o=el("option","",item[labelKey]||item.name||item[valueKey]);o.value=item[valueKey]||item.uid||item;add(select,o)}
+  for(const item of items||[]){const o=el("option","",item[labelKey]||item.name||item[valueKey]||item);o.value=item[valueKey]||item.uid||item;add(select,o)}
   if([...select.options].some(o=>o.value===previous))select.value=previous;
  }
  function personOptions(items,current){
@@ -568,32 +601,116 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   for(const item of items||[]){const o=el("option","",(item.name||item.username||item.uid)+(item.username?" · "+item.username:""));o.value=item.uid;add(person,o)}
   if([...person.options].some(o=>o.value===previous))person.value=previous;
  }
- const payload=()=>({
-  pack_id:packId,person_uid:person.value||null,q:search.value.trim(),
-  status:status.value||"all",stage:stage.value||"all",role:role.value||"all",
-  owner_uid:owner.value||null,unit:unit.value||null,period:period.value,
-  offset,limit:30
- });
+ function syncPerspective(){
+  for(const [key,b] of perspectiveButtons)b.setAttribute("aria-pressed",String(key===activePerspective));
+ }
+ function resetFilters(){
+  search.value="";period.value="90d";from.value="";to.value="";role.value="";status.value="";stage.value="";owner.value="";unit.value="";actionScope.value="";sort.value="newest";waitingOnly=false;activePerspective="all";syncPerspective();
+ }
+ function applyPerspective(key){
+  resetFilters();activePerspective=key;
+  if(key==="waiting"){waitingOnly=true;sort.value="waiting"}
+  else if(key==="secretary")role.value="secretary";
+  else if(key==="chair")role.value="chair";
+  else if(key==="action_owner")role.value="action_owner";
+  else if(key==="completed")status.value="completed";
+  else if(key==="with_actions")actionScope.value="with_actions";
+  syncPerspective();loadGraph(true);
+ }
+ for(const [key,label] of perspectiveDefs){const b=link(label,()=>applyPerspective(key),"meeting-flow-perspective");b.setAttribute("aria-pressed",String(key==="all"));perspectiveButtons.push([key,b]);add(perspectives,b)}
+
+ const payload=()=>{
+  const custom=period.value==="custom"&&from.value&&to.value;
+  return {
+   pack_id:packId,person_uid:person.value||null,q:search.value.trim(),
+   status:status.value||"all",stage:stage.value||"all",role:role.value||"all",
+   owner_uid:owner.value||null,unit:unit.value||null,action_scope:actionScope.value||"all",
+   waiting_only:waitingOnly,sort:sort.value||"newest",period:period.value,
+   start:custom?from.value:null,end:custom?to.value:null,offset,limit:30
+  };
+ };
+
  function badge(text,kind=""){return el("span","meeting-flow-chip "+kind,text)}
+ function miniPerson(p){return p?(p.name+(p.username?" · "+p.username:"")):"نامشخص"}
+ function actionBranches(row){
+  const branches=row.action_branches||[];
+  if(!branches.length)return null;
+  const box=el("section","case-branches");
+  const title=el("div","case-branches-head");
+  add(title,el("strong","","شاخه‌های اقدامات"),el("small","muted",fmt(branches.length)+" اقدام موازی از صورت‌جلسه منشعب شده است"));add(box,title);
+  const lanes=el("div","case-branch-list");
+  for(const branch of branches){
+   const lane=el("article","case-branch "+branch.state);
+   const connector=el("div","case-branch-connector"),dot=el("span","case-branch-dot");
+   add(connector,dot);
+   const content=el("div","case-branch-content"),top=el("div","case-branch-title");
+   add(top,el("strong","","اقدام "+branch.action_no+" · "+branch.title),badge(branch.stage_label,"branch-state "+branch.state));
+   const ownerText=branch.current_owner?miniPerson(branch.current_owner):branch.owner?miniPerson(branch.owner):"مسئول ثبت نشده";
+   const details=el("div","case-branch-meta");
+   add(details,badge("مسئول: "+ownerText),branch.case_number?badge("پرونده اقدام: "+fmt(branch.case_number)):"");
+   const mini=el("div","case-branch-track");
+   const execution=el("span","branch-mini-node "+(branch.state==="pending"?"future":"done"),"اجرای اقدام");
+   const reviewState=branch.state==="closed"?"done":branch.state==="review"?"current":"future";
+   const review=el("span","branch-mini-node "+reviewState,"بررسی اقدام");
+   add(mini,execution,review);
+   const progress=el("div","case-branch-progress"),fill=el("span");fill.style.width=Math.max(0,Math.min(100,branch.progress_percent||0))+"%";add(progress,fill);
+   add(content,top,details,mini,progress);add(lane,connector,content);add(lanes,lane);
+  }
+  add(box,lanes,el("div","case-branch-merge", "شاخه‌ها پس از بسته‌شدن همه اقدامات به «پایش و اختتام» برمی‌گردند."));return box;
+ }
+ function historyDetails(row){
+  const d=el("details","meeting-flow-details"),summary=el("summary","","جزئیات جریان پرونده");
+  add(d,summary);
+  const wrap=el("div","meeting-flow-details-grid");
+  const overview=el("div","meeting-flow-detail-card");
+  add(overview,el("strong","","خلاصه پرونده"),
+   el("p","","شماره پرونده: "+fmt(row.case_number)),
+   el("p","","شماره جلسه: "+row.meeting_no),
+   el("p","","تاریخ جلسه: "+(row.meeting_date||"ثبت نشده")),
+   el("p","","پیشرفت: "+fmt(row.progress_percent)+"٪"));
+  const ownersBox=el("div","meeting-flow-detail-card");
+  add(ownersBox,el("strong","","مسئولان فعلی"));
+  if(!(row.current_owners||[]).length)add(ownersBox,el("p","muted","وظیفه باز با مسئول مشخص وجود ندارد."));
+  for(const p of row.current_owners||[])add(ownersBox,el("p","",miniPerson(p)+" · "+(p.unit||"واحد ثبت نشده")));
+  const history=el("div","meeting-flow-detail-card meeting-flow-history");
+  add(history,el("strong","","تاریخچه Taskها"));
+  if(!(row.history||[]).length)add(history,el("p","muted","تاریخچه قابل نمایش نیست."));
+  for(const item of row.history||[]){
+   const line=el("div","meeting-flow-history-row "+item.state);
+   add(line,el("i"),add(el("div"),el("b","",item.stage_title),el("small","",miniPerson(item.owner)+(item.delegated_at?" · "+item.delegated_at:""))));
+   add(history,line);
+  }
+  add(wrap,overview,ownersBox,history);add(d,wrap);return d;
+ }
  function graphRow(row){
   const article=el("article","meeting-flow-case");
-  const top=el("div","meeting-flow-case-head"),title=el("div");
-  add(title,el("strong","meeting-flow-case-title",row.title),el("small","muted","پرونده "+fmt(row.case_number)+" · جلسه "+row.meeting_no+(row.meeting_date?" · "+row.meeting_date:"")));
+  const top=el("div","meeting-flow-case-head"),title=el("div","meeting-flow-case-heading");
+  add(title,el("span","meeting-flow-case-kicker","پرونده "+fmt(row.case_number)+" · جلسه "+row.meeting_no),el("strong","meeting-flow-case-title",row.title),el("small","muted",(row.meeting_date?"تاریخ "+row.meeting_date+" · ":"")+"آخرین مرحله: "+row.current_stage_title));
   const state=badge(row.status_label,"status-"+row.status);add(top,title,state);
+
   const meta=el("div","meeting-flow-meta");
-  add(meta,badge("نقش: "+(row.my_role_label||"مشارکت")),badge("مرحله: "+row.current_stage_title,"current"),badge("مسئول: "+row.current_owner_label));
+  add(meta,badge("نقش: "+(row.my_role_label||"مشارکت")),badge("مرحله جاری: "+row.current_stage_title,"current"),badge("الان دست: "+row.current_owner_label,"owner"));
   if(row.actions?.total)add(meta,badge("اقدام‌ها: "+fmt(row.actions.total)+" · باز "+fmt(row.actions.open+row.actions.review)+" · بسته "+fmt(row.actions.closed),"actions"));
-  const rail=el("div","case-git-graph");rail.setAttribute("aria-label","مسیر پیشرفت پرونده "+row.case_number);
+
+  const graphShell=el("div","meeting-flow-graph-shell"),rail=el("div","case-git-graph");rail.setAttribute("aria-label","مسیر پیشرفت پرونده "+row.case_number);
   for(const node of row.nodes||[]){
    const n=el("div","case-git-node "+node.state);n.title=node.title+" · "+node.role;
    const dot=el("span","case-git-dot"),label=el("span","case-git-label",node.title),roleText=el("small","",node.role);
    add(n,dot,label,roleText);add(rail,n);
   }
-  const progress=el("div","meeting-flow-progress"),bar=el("div","meeting-flow-progress-bar"),fill=el("span");fill.style.width=Math.max(0,Math.min(100,row.progress_percent||0))+"%";add(bar,fill);add(progress,bar,el("strong","",fmt(row.progress_percent)+"٪"));
-  add(article,top,meta,rail,progress);return article;
+  add(graphShell,rail);
+  const branches=actionBranches(row);if(branches)add(graphShell,branches);
+
+  const progress=el("div","meeting-flow-progress");
+  const label=el("div","meeting-flow-progress-label");add(label,el("span","","پیشرفت پرونده"),el("strong","",fmt(row.progress_percent)+"٪"));
+  const bar=el("div","meeting-flow-progress-bar"),fill=el("span");fill.style.width=Math.max(0,Math.min(100,row.progress_percent||0))+"%";add(bar,fill);add(progress,label,bar);
+  add(article,top,meta,graphShell,progress,historyDetails(row));return article;
  }
- async function loadGraph(reset=false){
-  if(loading)return;if(reset)offset=0;loading=true;refresh.disabled=true;body.replaceChildren(note("در حال ساخت نقشه جریان پرونده‌ها..."));
+
+ async function loadGraph(resetPage=false){
+  if(loading)return;
+  if(period.value==="custom"&&((from.value&&!to.value)||(!from.value&&to.value))){toast("برای بازه دلخواه، تاریخ شروع و پایان را با هم انتخاب کنید.");return}
+  if(resetPage)offset=0;loading=true;refresh.disabled=true;body.replaceChildren(note("در حال ساخت گراف واقعی پرونده‌ها و شاخه‌های اقدام..."));
   try{
    const r=await request(sourceApi(sourceId,"/secretary/flow-graph"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload())});
    if(!body.isConnected)return;
@@ -605,13 +722,23 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
    refill(owner,r.filters?.owners,"uid","name");refill(unit,r.filters?.units);
    body.replaceChildren();
    const stats=el("div","meeting-flow-kpis");
-   for(const [value,label] of [[r.summary.total_cases,"کل پرونده‌ها"],[r.summary.active_cases,"فعال"],[r.summary.completed_cases,"تکمیل‌شده"],[r.summary.waiting_my_action,"منتظر اقدام شخص"],[r.summary.average_progress+"٪","میانگین پیشرفت"]]){
-    add(stats,add(el("div","meeting-flow-kpi"),el("span","",label),el("strong","",typeof value==="number"?fmt(value):value)));
+   const statDefs=[
+    [r.summary.total_cases,"کل پرونده‌های این نما","⌘","total"],
+    [r.summary.active_cases,"فعال","●","active"],
+    [r.summary.completed_cases,"تکمیل‌شده","✓","completed"],
+    [r.summary.waiting_my_action,"منتظر اقدام شخص","!","waiting"],
+    [r.summary.average_progress+"٪","میانگین پیشرفت","↗","progress"]
+   ];
+   for(const [value,label,icon,kind] of statDefs){
+    const box=el("div","meeting-flow-kpi "+kind),ico=el("span","meeting-flow-kpi-icon",icon),copy=el("div");
+    add(copy,el("span","",label),el("strong","",typeof value==="number"?fmt(value):value));add(box,ico,copy);add(stats,box);
    }add(body,stats);
-   const who=el("div","meeting-flow-scope","نمایش برای "+(r.person?.name||r.person?.username||"کاربر انتخاب‌شده"));add(body,who);
-   if(r.truncated)add(body,note("بیش از ۱۰۰۰ پرونده در بازه وجود دارد؛ برای گزارش دقیق‌تر بازه یا فیلترها را محدود کنید.",true));
+   const context=el("div","meeting-flow-context");
+   add(context,el("span","meeting-flow-scope","نمایش برای "+(r.person?.name||r.person?.username||"کاربر انتخاب‌شده")),el("span","muted",fmt(r.total)+" پرونده مطابق فیلترها"));
+   add(body,context);
+   if(r.truncated)add(body,note("بیش از ۱۰۰۰ پرونده در دامنه اولیه وجود دارد؛ برای پوشش کامل بازه را محدود کنید.",true));
    const list=el("div","meeting-flow-list");
-   if(!(r.rows||[]).length)add(list,el("div","secretary-empty","پرونده‌ای با فیلترهای انتخاب‌شده پیدا نشد."));
+   if(!(r.rows||[]).length)add(list,el("div","secretary-empty","پرونده‌ای با این زاویه دید پیدا نشد. فیلترها یا نمای سریع را تغییر دهید."));
    for(const row of r.rows||[])add(list,graphRow(row));
    add(body,list);
    const pager=el("div","meeting-flow-pager");
@@ -621,8 +748,13 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   }catch(e){body.replaceChildren(note(e.message,true))}
   finally{loading=false;refresh.disabled=false}
  }
- let timer=null;search.addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(()=>loadGraph(true),350)});
- for(const control of [person,period,role,status,stage,owner,unit])control.addEventListener("change",()=>{if(control===person){loadedOptions=false}loadGraph(true)});
+
+ let timer=null;
+ search.addEventListener("input",()=>{activePerspective="all";syncPerspective();clearTimeout(timer);timer=setTimeout(()=>loadGraph(true),350)});
+ person.addEventListener("change",()=>{loadedOptions=false;activePerspective="all";waitingOnly=false;syncPerspective();loadGraph(true)});
+ period.addEventListener("change",()=>{if(period.value!=="custom"){from.value="";to.value=""}activePerspective="all";syncPerspective();loadGraph(true)});
+ for(const control of [role,status,stage,owner,unit,actionScope,sort])control.addEventListener("change",()=>{activePerspective="all";waitingOnly=false;syncPerspective();loadGraph(true)});
+ for(const control of [from,to])control.addEventListener("change",()=>{period.value="custom";activePerspective="all";syncPerspective();if(from.value&&to.value)loadGraph(true)});
  await loadGraph(true);
 }
 
