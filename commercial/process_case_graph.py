@@ -49,6 +49,7 @@ class FlowGraphQuery(BaseModel):
  owner_uid:str|None=Field(None,pattern=r"^[a-fA-F0-9]{32}$")
  unit:str|None=Field(None,max_length=160)
  action_scope:Literal["all","with_actions","without_actions"]="all"
+ waiting_only:bool=False
  sort:Literal["newest","oldest","progress_desc","progress_asc","stage","waiting"]="newest"
  period:Literal["all","30d","90d","365d","custom"]="90d"
  start:date|None=None
@@ -407,6 +408,7 @@ def load(con,scope,args:FlowGraphQuery):
   if args.unit and args.unit not in {o["unit"] for o in item["current_owners"]}:return False
   if args.action_scope=="with_actions" and not item["actions"]["total"]:return False
   if args.action_scope=="without_actions" and item["actions"]["total"]:return False
+  if args.waiting_only and person_uid not in {o["uid"] for o in item["current_owners"]}:return False
   return True
  filtered=[x for x in rows if keep(x)]
  if args.sort=="oldest":filtered.sort(key=lambda x:(x["created_at"],str(x["case_number"])))
