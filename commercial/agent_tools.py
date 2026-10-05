@@ -52,22 +52,39 @@ class MonitorQuery(Arguments):
     stale_days: int = Field(7,ge=1,le=90)
 
 
+def calendar_mode():
+    from .setup_console import get_setting
+    value=str((get_setting('ui') or {}).get('calendar','jalali')).lower()
+    return value if value in ('jalali','gregorian') else 'jalali'
+
+
 def period_bounds(period,now):
     from zoneinfo import ZoneInfo
-    import os,jdatetime
+    import os
     tz=ZoneInfo(os.getenv('AVAN_DATA_TIMEZONE','Asia/Tehran'))
     if period=='all':return None,None
     if period.startswith('last_') and period.endswith('_days'):
         return now-timedelta(days=int(period.split('_')[1])),now
     local=now.astimezone(tz)
-    jalali=jdatetime.date.fromgregorian(date=local.date())
-    year,month=jalali.year,jalali.month
-    start=jdatetime.date(year,month,1).togregorian()
-    end=now
-    if period=='last_month':
-        end=datetime.combine(start,datetime.min.time(),tzinfo=tz).astimezone(timezone.utc)
-        year,month=(year-1,12) if month==1 else (year,month-1)
+    mode=calendar_mode()
+    if mode=='gregorian':
+        year,month=local.year,local.month
+        start=date(year,month,1)
+        end=now
+        if period=='last_month':
+            end=datetime.combine(start,datetime.min.time(),tzinfo=tz).astimezone(timezone.utc)
+            year,month=(year-1,12) if month==1 else (year,month-1)
+            start=date(year,month,1)
+    else:
+        import jdatetime
+        jalali=jdatetime.date.fromgregorian(date=local.date())
+        year,month=jalali.year,jalali.month
         start=jdatetime.date(year,month,1).togregorian()
+        end=now
+        if period=='last_month':
+            end=datetime.combine(start,datetime.min.time(),tzinfo=tz).astimezone(timezone.utc)
+            year,month=(year-1,12) if month==1 else (year,month-1)
+            start=jdatetime.date(year,month,1).togregorian()
     return datetime.combine(start,datetime.min.time(),tzinfo=tz).astimezone(timezone.utc),end
 
 
@@ -96,13 +113,15 @@ class MeetingTools:
         self.meetings=meetings
         self.now=now or datetime.now(timezone.utc)
         self.complete=complete
+        self.calendar=calendar_mode()
         self.modules=set(modules)
         self.observations=observations or {}
         self.evidence={}
         self.trace=[]
 
     def definitions(self):
-        specs=[('search_meetings','Search authorized meeting titles, discussion and parking-lot text. Text is an exact normalized substring; try shorter related terms for semantic exploration. Dates use Jalali months.',MeetingQuery,1),
+        calendar_name='Jalali' if self.calendar=='jalali' else 'Gregorian'
+        specs=[('search_meetings',f'Search authorized meeting titles, discussion and parking-lot text. Text is an exact normalized substring; try shorter related terms for semantic exploration. Named month periods use {calendar_name} months.',MeetingQuery,1),
                ('analyze_actions','Filter and calculate action totals, progress, delays and grouped unit/person/meeting/month performance. Counts cover ALL matching snapshot rows, even if displayed rows/groups are paginated. Missing dates/progress are explicit.',ActionQuery,3),
                ('monitor_actions','Detect overdue, approaching due dates, missing deadlines/owners, unclosed 100% submissions, and progress stalls observed by AVAN. Returns risk signals, not proven business causes.',MonitorQuery,4)]
         return [{'type':'function','name':name,'description':description,'parameters':cls.model_json_schema(),'strict':False}
@@ -205,9 +224,14 @@ class MeetingTools:
                 d=instant(a.get('due_at_utc') if q.date_field=='due' else m.get('meeting_date_utc'))
                 if d:
                     from zoneinfo import ZoneInfo
-                    import os,jdatetime
-                    j=jdatetime.date.fromgregorian(date=d.astimezone(ZoneInfo(os.getenv('AVAN_DATA_TIMEZONE','Asia/Tehran'))).date())
-                    key=(f'{j.year:04d}/{j.month:02d}',)
+                    import os
+                    local_date=d.astimezone(ZoneInfo(os.getenv('AVAN_DATA_TIMEZONE','Asia/Tehran'))).date()
+                    if self.calendar=='jalali':
+                        import jdatetime
+                        j=jdatetime.date.fromgregorian(date=local_date)
+                        key=(f'{j.year:04d}/{j.month:02d}',)
+                    else:
+                        key=(local_date.strftime('%Y/%m'),)
                 else:key=('تاریخ نامشخص',)
             else:continue
             groups[key].append((m,a))
