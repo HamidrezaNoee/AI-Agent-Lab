@@ -1,7 +1,7 @@
 """Bounded analytical tools over a freshly authorized snapshot. No SQL execution."""
 from __future__ import annotations
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 import re
 from pydantic import BaseModel, ConfigDict, Field
