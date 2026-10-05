@@ -106,3 +106,21 @@ def test_processmaker_rejection_names_exact_failed_operation():
  finally:pm.close()
  assert 'اجرای Trigger قبل از فرم' in exc.value.detail
  assert 'HTTP 403' in exc.value.detail
+
+
+
+def test_route_case_serializes_del_index_as_string_for_processmaker_33():
+ captured={}
+ def transport(request):
+  captured['method']=request.method
+  captured['path']=request.url.path
+  captured['json']=__import__('json').loads(request.content.decode())
+  return httpx.Response(200,json={})
+ pm=PM.__new__(PM);pm.base='https://pm.test/api/1.0/workflow';pm.process_uid='p'*32
+ pm.client=httpx.Client(transport=httpx.MockTransport(transport))
+ try:
+  pm.route('a'*32,1)
+ finally:pm.close()
+ assert captured['method']=='PUT'
+ assert captured['path'].endswith('/route-case')
+ assert captured['json']=={'del_index':'1'}
