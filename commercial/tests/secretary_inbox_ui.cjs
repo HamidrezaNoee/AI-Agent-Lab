@@ -16,22 +16,40 @@ w.fetch=async(url,options={})=>{
   rows:[{case_uid:caseid,case_number:100,meeting_no:'MTG-100',title:'جلسه تست',status:'active',status_label:'فعال',
    current_stage:'invitation_approval',current_stage_title:'تأیید دعوت‌نامه',current_owners:[{uid:'u2',name:'مدیرعامل',unit:'مدیریت'}],
    current_owner_label:'مدیرعامل',my_roles:['secretary'],my_role_label:'دبیر',progress_percent:29,
+   meeting_roles:{secretary:{uid:'u1',name:'مدیر سیستم',username:'administrator'},chair:{uid:'u2',name:'مدیرعامل',username:'ceo'}},
    nodes:[
-    {key:'invitation',title:'دعوت جلسه',role:'دبیر',index:1,state:'done'},
-    {key:'invitation_approval',title:'تأیید دعوت‌نامه',role:'رئیس جلسه',index:2,state:'current'},
-    {key:'minutes',title:'ثبت صورت‌جلسه',role:'دبیر',index:3,state:'future'},
-    {key:'minutes_approval',title:'تأیید صورت‌جلسه',role:'رئیس جلسه',index:4,state:'future'},
-    {key:'action_execution',title:'اجرای اقدام',role:'اقدام‌کننده',index:5,state:'future'},
-    {key:'action_review',title:'بررسی اقدام',role:'دبیر',index:6,state:'future'},
-    {key:'monitoring',title:'پایش و اختتام',role:'دبیر',index:7,state:'future'}],
+    {key:'invitation',title:'دعوت جلسه',role:'دبیر',index:1,state:'done',entered_at:'2026-10-05 09:00:00',finished_at:'2026-10-05 09:05:00',people:[{uid:'u1',name:'مدیر سیستم',username:'administrator'}]},
+    {key:'invitation_approval',title:'تأیید دعوت‌نامه',role:'رئیس جلسه',index:2,state:'current',entered_at:'2026-10-05 09:05:00',people:[{uid:'u2',name:'مدیرعامل',username:'ceo'}]},
+    {key:'minutes',title:'ثبت صورت‌جلسه',role:'دبیر',index:3,state:'future',people:[]},
+    {key:'minutes_approval',title:'تأیید صورت‌جلسه',role:'رئیس جلسه',index:4,state:'future',people:[]},
+    {key:'action_execution',title:'اجرای اقدام',role:'اقدام‌کننده',index:5,state:'future',people:[]},
+    {key:'action_review',title:'بررسی اقدام',role:'دبیر',index:6,state:'future',people:[]},
+    {key:'monitoring',title:'پایش و اختتام',role:'دبیر',index:7,state:'future',people:[]}],
    actions:{total:1,open:1,review:0,closed:0},
+   topology:{split_after:'minutes_approval',merge_before:'monitoring',branch_count:1,all_branches_closed:false},
    action_branches:[{action_no:'A-01',title:'پیگیری قرارداد',case_uid:'c'.repeat(32),case_number:900,
     owner:{uid:'u2',name:'مدیرعامل',username:'ceo',unit:'مدیریت'},current_owner:{uid:'u2',name:'مدیرعامل',username:'ceo',unit:'مدیریت'},
-    stage:'action_execution',stage_label:'اجرای اقدام',state:'execution',progress_percent:60}],
+    stage:'action_execution',stage_label:'اجرای اقدام',state:'execution',progress_percent:60,
+    nodes:[
+     {key:'action_execution',title:'اجرای اقدام',role:'اقدام‌کننده',state:'current',entered_at:'2026-10-05 11:00:00',people:[{uid:'u2',name:'مدیرعامل',username:'ceo'}]},
+     {key:'action_review',title:'بررسی اقدام',role:'دبیر',state:'future',people:[]}
+    ]}],
    history:[{case_uid:caseid,index:1,stage:'invitation',stage_title:'دعوت جلسه',owner:{name:'مدیر سیستم',username:'administrator'},state:'done',delegated_at:'2026-10-05 09:00:00'}]}],
   filters:{people:[{uid:'u1',name:'مدیر سیستم',username:'administrator'}],owners:[{uid:'u2',name:'مدیرعامل'}],units:['مدیریت'],
    roles:[{value:'secretary',label:'دبیر'}],stages:[{value:'invitation_approval',label:'تأیید دعوت‌نامه'}],statuses:[{value:'active',label:'فعال'}]},
   total:1,offset:0,limit:30,has_more:false,truncated:false
+ };
+ else if(url.endsWith('/flow-graph/'+caseid+'/snapshot'))data={
+  case_uid:caseid,case_number:100,status:'active',status_label:'فعال',
+  meeting:{meeting_no:'MTG-100',title:'جلسه تست',objective:'بررسی توسعه',location:'اتاق جلسه',meeting_date:'1405/07/13',start_time:'10:00',created_at:'2026-10-05 09:00:00',discussion:'جمع‌بندی تست'},
+  secretary:{uid:'u1',name:'مدیر سیستم',username:'administrator'},chair:{uid:'u2',name:'مدیرعامل',username:'ceo'},
+  participants:[{person:{uid:'u2',name:'مدیرعامل',username:'ceo'},details:[]}],
+  agenda:[{index:1,title:'بررسی قرارداد',presenter:{uid:'u2',name:'مدیرعامل',username:'ceo'},minutes:'15',details:[]}],
+  decisions:[{index:1,number:'D-01',text:'قرارداد پیگیری شود',details:[]}],
+  actions:[{action_no:'A-01',title:'پیگیری قرارداد',stage_label:'اجرای اقدام',state:'execution',progress_percent:60,current_owner:{uid:'u2',name:'مدیرعامل',username:'ceo'},due_date:'1405/07/20',latest_fields:[{key:'MTGA_ProgressPercent',value:'60'}]}],
+  stages:[{key:'invitation',title:'دعوت جلسه',role:'دبیر',fields:[{key:'MTG_MeetingTitle',label:'عنوان جلسه',value:'جلسه تست'}],actions:[]},
+          {key:'action_execution',title:'اجرای اقدام',role:'اقدام‌کننده',fields:[],actions:[{action_no:'A-01',title:'پیگیری قرارداد',fields:[{key:'MTGA_ProgressPercent',label:'درصد پیشرفت',value:'60'}]}]}],
+  stage_history:[{stage:'invitation',stage_title:'دعوت جلسه',owner:{name:'مدیر سیستم',username:'administrator'},state:'done',delegated_at:'2026-10-05 09:00:00',finished_at:'2026-10-05 09:05:00'}]
  };
  else if(url.endsWith('/tasks/open')||url.endsWith('/tasks/load'))data=view();
  else if(url.includes('/turn?')){const body=JSON.parse(options.body);assert.equal(body.revision,row.revision);if(failTurn){failTurn=false;return {ok:false,status:503,json:async()=>({detail:'سرویس هوش مصنوعی در زمان مقرر پاسخ نداد؛ دوباره تلاش کنید.'})}}row={...row,revision:row.revision+1,history:[...row.history,{role:'user',text:body.text},{role:'assistant',text:'پیام شما بررسی شد.'}]};data={...view(),assistant:{message:'پیام شما بررسی شد.',summary:'',missing:view().missing},draft:structuredClone(row)}}
@@ -45,13 +63,25 @@ w.eval(code+'\nwindow.testAVAN={app,secretaryPage,cleanMedia};');w.testAVAN.app.
 const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
 (async()=>{
  await w.testAVAN.secretaryPage(source);await tick();
- assert(w.document.body.textContent.includes('نقشه جریان پرونده‌ها'));
- assert.equal(w.document.querySelectorAll('.case-git-node').length,7);
- assert(w.document.body.textContent.includes('مدیرعامل'));
- assert(w.document.body.textContent.includes('شاخه‌های اقدامات'));
- assert.equal(w.document.querySelectorAll('.case-branch').length,1);
- assert(w.document.body.textContent.includes('نمای سریع'));
- assert(w.document.querySelector('[aria-label="مرتب‌سازی"]'));
+  assert(w.document.body.textContent.includes('نقشه جریان پرونده‌ها'));
+  assert.equal(w.document.querySelectorAll('.case-git-node').length,5);
+  assert.equal(w.document.querySelectorAll('.branch-mini-node').length,2);
+  assert.equal(w.document.querySelectorAll('.meeting-flow-tooltip').length,7);
+  assert(w.document.body.textContent.includes('مدیرعامل'));
+  assert(w.document.body.textContent.includes('شاخه‌های موازی اقدامات'));
+  assert(w.document.body.textContent.includes('انشعاب اقدامات'));
+  assert(w.document.body.textContent.includes('ادغام پس از بسته‌شدن شاخه‌ها'));
+  assert.equal(w.document.querySelectorAll('.case-branch').length,1);
+  assert(w.document.body.textContent.includes('زمان ورود:'));
+  assert(w.document.body.textContent.includes('رئیس جلسه: مدیرعامل'));
+  assert(w.document.body.textContent.includes('نمای سریع'));
+  w.document.querySelector('.case-git-node.current').click();await tick();
+  assert(w.document.querySelector('.meeting-flow-snapshot-overlay'));
+  assert(w.document.body.textContent.includes('آخرین وضعیت تجمیعی پرونده'));
+  assert(w.document.body.textContent.includes('آخرین اطلاعات جمع‌شده در تمام مراحل'));
+  assert(w.document.body.textContent.includes('قرارداد پیگیری شود'));
+  w.document.querySelector('.flow-snapshot-close').click();await tick();
+  assert(!w.document.querySelector('.meeting-flow-snapshot-overlay'));
  const buttons=()=>Array.from(w.document.querySelectorAll('button'));
  const steps=Array.from(w.document.querySelectorAll('.secretary-step'));
  assert.equal(steps.length,7);
