@@ -52,18 +52,25 @@ def test_owner_uid_distinguishes_identical_names_and_filters_normalize_persian_d
     assert tools.search(MeetingQuery(text='مجوز'))['total']==2
 
 
-def test_date_windows_missing_values_and_jalali_year_boundary():
+def test_date_windows_missing_values_and_selected_calendar_month_boundaries():
     tools=MeetingTools(records(),now=NOW)
     assert tools.actions(ActionQuery(status='due_soon'))['metrics']['total']==1
     r=tools.actions(ActionQuery(start='2026-09-20T00:00:00Z',end='2026-09-21T00:00:00Z'))
     assert r['metrics']['total']==1
     assert tools.actions(ActionQuery(date_field='due',period='last_30_days'))['excluded_missing_date']==1
     now=datetime(2026,3,25,tzinfo=timezone.utc)
-    start,end=period_bounds('last_month',now)
     import jdatetime
     from zoneinfo import ZoneInfo
-    assert jdatetime.date.fromgregorian(date=start.astimezone(ZoneInfo('Asia/Tehran')).date()).month==12
+    tehran=ZoneInfo('Asia/Tehran')
+    with patch('commercial.agent_tools.calendar_mode',return_value='jalali'):
+        start,end=period_bounds('last_month',now)
+    assert jdatetime.date.fromgregorian(date=start.astimezone(tehran).date()).month==12
     assert start<end<now
+    with patch('commercial.agent_tools.calendar_mode',return_value='gregorian'):
+        gstart,gend=period_bounds('last_month',now)
+    assert gstart.astimezone(tehran).date()==date(2026,2,1)
+    assert gend.astimezone(tehran).date()==date(2026,3,1)
+    assert gstart<gend<now
 
 
 @pytest.mark.parametrize('args',[{'sql':'SELECT *'},{'tenant_id':'x'},{'limit':99},{'offset':-1},{'group_by':'password'}])
@@ -203,6 +210,12 @@ def test_draft_and_monitor_encrypted_actor_tenant_bound_idempotent_approval(stat
     changed=records();changed[0]['actions'][0]['progress_percent']=50
     updated=agent_state.observe(SCOPE,'actor',changed,NOW+timedelta(days=9),True)
     assert updated['M:1:A:1']['changed_at']!=first['M:1:A:1']['changed_at']
+
+
+def test_global_calendar_setting_defaults_jalali_and_can_switch(state_dir):
+    assert setup.get_setting('ui')=={'calendar':'jalali'}
+    setup.put_setting('ui',{'calendar':'gregorian'})
+    assert web.ui_config()=={'calendar':'gregorian'}
 
 
 def test_ai_settings_masking_and_no_environment_fallback(state_dir):
