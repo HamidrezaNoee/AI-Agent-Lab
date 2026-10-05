@@ -50,3 +50,15 @@ and counts from the current user/source/pack inbox. Native task cards, compact
 OAuth settings, editor stage indicator and mobile layout. Browser fixtures cover
 counts/filtering/native task opening and return; they are not live PM acceptance.
 Preserve latest voice, schema parsing, conservative retry and grid-merge fixes.
+
+## Persian extraction — 2026-10-05
+
+Directory shortlist now matches Persian name tokens (Arabic/Persian letter,
+diacritic and half-space normalization), retains all ambiguous candidates and
+includes organizational unit without email. Existing 80-person/48k limits remain.
+Prompt distinguishes chair, secretary, participants and agenda and consumes prior
+clarification questions. Explicit additive participant/agenda requests merge by
+identity, preserving existing rows even when the model reuses row 1; explicit edits
+retain existing row semantics. No fuzzy identity assignment or live model change.
+Validate with test_secretary_ai_context.py; production-model linguistic accuracy
+and live PM acceptance still require organization-specific examples.

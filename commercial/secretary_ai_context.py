@@ -1,6 +1,7 @@
 """Bound model input by stage; never send an entire directory or case history."""
 import json
 import re
+import unicodedata
 
 MAX_CONTEXT_CHARS = 48000
 MAX_PEOPLE = 80
@@ -13,7 +14,19 @@ def compact(value):
     return value
 
 def normalize(value):
-    return str(value).translate(str.maketrans({'ي':'ی','ك':'ک','\u200c':' '})).casefold().strip()
+    text = unicodedata.normalize('NFKC', str(value))
+    text = text.translate(str.maketrans({'ي':'ی','ى':'ی','ك':'ک','آ':'ا','أ':'ا','إ':'ا','ـ':'','\u200c':' '}))
+    text = ''.join(c for c in text if not unicodedata.combining(c))
+    return ' '.join(re.findall(r'[^\W_]+', text.casefold()))
+
+def name_matches(name, text):
+    """Token boundaries prevent Ali matching Alireza; surname fragments remain candidates."""
+    tokens = normalize(name).split()
+    ignored = {'اقای', 'اقا', 'خانم', 'دکتر', 'مهندس'}
+    tokens = [t for t in tokens if t not in ignored]
+    words = set(normalize(text).split())
+    return any(len(t) > 2 and t in words and re.search(r'[؀-ۿ]', t) for t in tokens)
+
 
 def build_context(notes, task, current, scope, fields, questions=()):
     if not isinstance(notes,str) or not notes.strip() or len(notes)>18000:
@@ -32,14 +45,15 @@ def build_context(notes, task, current, scope, fields, questions=()):
         name=normalize(person.get('name',''))
         if uid in referenced:
             people[uid]={'name':person.get('name','')}
-        elif name and len(name)>2 and name in text:
+        elif name and ((' '+name+' ') in (' '+text+' ') or name_matches(name, notes)):
             candidates.append((uid,person.get('name','')))
     if len(people)+len(candidates)>MAX_PEOPLE:
         raise ValueError('افراد این درخواست زیاد هستند؛ اطلاعات را در چند بخش وارد کنید.')
     people.update({uid:{'name':name} for uid,name in candidates})
-    # Small directories are useful for ambiguous names. Larger ones require exact
-    # identification rather than sending every employee email/department to AI.
-    active={k:{'name':v.get('name','')} for k,v in scope['directory'].items() if v.get('active')}
+    for uid in people:
+        people[uid]['unit']=scope['directory'][uid].get('unit','')
+    # Include every matching candidate; never resolve ambiguous names by directory order.
+    active={k:{'name':v.get('name',''),'unit':v.get('unit','')} for k,v in scope['directory'].items() if v.get('active')}
     if len(active)<=MAX_PEOPLE:
         people=active
     payload={'notes':notes,'stage':task['stage'],'current':current,

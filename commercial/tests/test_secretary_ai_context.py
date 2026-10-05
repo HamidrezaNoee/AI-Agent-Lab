@@ -51,3 +51,38 @@ def test_empty_evidence_cannot_authorize_assignment(pack):
  client=SimpleNamespace(responses=SimpleNamespace(create=lambda **kw:SimpleNamespace(status='completed',output_text=json.dumps({'assignments':[{'field':'MTGA_ProgressPercent','value_json':'"100"','quote':' '}],'questions':[]}))))
  with pytest.raises(r.AgentInvalid):
   r.extract('گزارش',task(pack,'action_execution'),{'MTGA_SubmissionType':'ProgressUpdate'},S,client=client,model='test')
+
+
+def test_persian_surnames_in_large_directory_keep_all_candidates(pack):
+ scope=copy.deepcopy(S)
+ scope['directory']={f'{i:032x}':{'active':True,'name':f'Employee {i}'} for i in range(200)}
+ scope['directory'].update({
+  'a'*32:{'active':True,'name':'علی کاویانی','unit':'مالی'},
+  'b'*32:{'active':True,'name':'رضا کاویانی','unit':'فروش'},
+  'c'*32:{'active':True,'name':'حسین سلطانی‌زاده'},
+  'd'*32:{'active':False,'name':'کاویانی'},
+ })
+ data=ctx.build_context('آقای كاوياني رئیس، سلطانی زاده دبیر',task(pack,'invitation'),{},scope,{})
+ assert set(data['directory'])=={'a'*32,'b'*32,'c'*32}
+ assert data['directory']['a'*32]['unit']=='مالی'
+
+@pytest.mark.parametrize('name,text,expected',[
+ ('علی رضایی','علیرضا دبیر است',False),
+ ('عَلِي كاوياني','کاویانی رئیس است',True),
+ ('حسین سلطانی‌زاده','سلطانی زاده حاضر باشد',True),
+ ('مهندس رضا احمدی','مهندس دبیر باشد',False),
+])
+def test_name_matching_uses_normalized_tokens(name,text,expected):
+ assert bool(ctx.name_matches(name,text)) is expected
+
+
+@pytest.mark.parametrize('field,identity',[
+ ('MTG_Participants','MTG_ParticipantUserUID'),
+ ('MTG_Agenda','MTG_AgendaTitle'),
+])
+def test_explicit_addition_does_not_overwrite_existing_rows(field,identity):
+ old={'1':{identity:'existing','detail':'keep'}}
+ result=r._merge_assignment(field,old,{'1':{identity:'new'}},'این مورد را اضافه کن')
+ assert result=={'1':{identity:'existing','detail':'keep'},'2':{identity:'new'}}
+ assert old=={'1':{identity:'existing','detail':'keep'}}
+ assert r._merge_assignment(field,result,{'1':{identity:'new'}},'اضافه کن')==result
