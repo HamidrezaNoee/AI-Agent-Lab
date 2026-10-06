@@ -6,7 +6,7 @@ exists. It never invents identities or business facts.
 """
 from __future__ import annotations
 import copy,re
-from datetime import datetime,timezone
+from datetime import datetime,timedelta,timezone
 
 AFFIRMATIVE={
     "بله","بلی","آره","اره","بله همان است","بله همونه","همان است","همونه",
@@ -155,6 +155,7 @@ def propose_identity_confirmation(reply,current,gaps,directory):
     candidates=_mentioned_people(raw,directory)
     if len(candidates)!=1:return None
     uid=candidates[0]
+    now=datetime.now(timezone.utc)
     return {
         "version":1,
         "kind":"set_identity",
@@ -162,7 +163,9 @@ def propose_identity_confirmation(reply,current,gaps,directory):
         "value":uid,
         "display":person_display(uid,directory),
         "question":question,
-        "created_at":datetime.now(timezone.utc).isoformat(),
+        "expected_value":copy.deepcopy(get_path(current,path)),
+        "created_at":now.isoformat(),
+        "expires_at":(now+timedelta(hours=24)).isoformat(),
         "source":"assistant_confirmation",
     }
 
@@ -189,6 +192,29 @@ def resolve_pending(text,current,questions,pending,directory):
     path=str(pending.get("field_path") or "")
     value=str(pending.get("value") or "")
     if not path or not value:return None
+
+    # Never apply a proposal after its draft target changed or its confirmation
+    # window expired. This prevents stale conversational context overwriting a
+    # newer manual edit or a long-lived draft.
+    expires_at=str(pending.get("expires_at") or "")
+    if expires_at:
+        try:
+            if datetime.now(timezone.utc)>datetime.fromisoformat(expires_at):
+                return {
+                    "values":copy.deepcopy(current),"questions":list(questions),
+                    "pending_confirmation":None,"intent":"question",
+                    "reply":"پیشنهاد قبلی منقضی شده است؛ لطفاً انتخاب را دوباره مشخص کنید.",
+                    "resolution":"expired",
+                }
+        except ValueError:
+            return None
+    if "expected_value" in pending and get_path(current,path)!=pending.get("expected_value"):
+        return {
+            "values":copy.deepcopy(current),"questions":list(questions),
+            "pending_confirmation":None,"intent":"question",
+            "reply":"اطلاعات این مورد بعد از پیشنهاد قبلی تغییر کرده است؛ برای جلوگیری از بازنویسی، لطفاً انتخاب فعلی را دوباره مشخص کنید.",
+            "resolution":"stale_draft",
+        }
 
     raw=normalize_text(text)
     compact=_compact_confirmation_text(text)
