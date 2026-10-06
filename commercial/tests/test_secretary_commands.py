@@ -387,3 +387,21 @@ def test_minutes_gap_list_has_no_duplicate_end_date_or_time_questions(pack):
     assert fields.count("MTG_MeetingEndDateTime")==1
     assert fields.count("MTG_MeetingEndTime")==1
     assert fields.count("MTG_PlannedActionEndTime")==1
+
+
+def test_old_contradictory_history_uses_last_actual_end_question(pack, monkeypatch):
+    s,participants=scope()
+    values=minutes_values(participants)
+    values["MTG_MeetingHeld"]="Held"
+    values["MTG_MeetingEndTime"]=""
+    values["MTG_PlannedActionEndTime"]="17:00"
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("legacy history clock answer must not call LLM"))
+    history=[{"role":"assistant","text":
+        "ساعت پایان برنامه‌ریزی روی 17:00 تنظیم شد.\n\nبرای ادامه فقط این مورد را مشخص کنید:\nساعت پایان واقعی جلسه چه ساعتی بود؟"
+    }]
+    result,_,reply,_,_=runtime.converse(
+        "ساعت 15",task(pack,"minutes",minutes_native()),values,s,history=history
+    )
+    assert result["MTG_MeetingEndTime"]=="15:00"
+    assert result["MTG_PlannedActionEndTime"]=="17:00"
+    assert "ساعت پایان واقعی جلسه روی 15:00" in reply
