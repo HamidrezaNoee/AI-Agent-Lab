@@ -79,7 +79,10 @@ def run_slot(key):
     now=time.monotonic()
     token=object()
     with _LOCK:
-        if key in _ACTIVE or now-_LAST.get(key,-100)<2:raise AgentBusy('لطفاً پایان درخواست قبلی را منتظر بمانید.')
+        # Reject only genuinely concurrent work. The old two-second post-request
+        # cooldown caused ordinary secretary follow-up answers to receive a false
+        # 429 even after the previous request had already completed/failed.
+        if key in _ACTIVE:raise AgentBusy('درخواست قبلی هنوز در حال پردازش است؛ چند لحظه صبر کنید یا آن را متوقف کنید.')
         if not _CAPACITY.acquire(blocking=False):raise AgentBusy('ظرفیت تحلیل موقتاً تکمیل است؛ دوباره تلاش کنید.')
         _ACTIVE[key]=token
         _LAST[key]=now
