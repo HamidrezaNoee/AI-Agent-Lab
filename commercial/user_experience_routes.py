@@ -21,6 +21,7 @@ class ClientEvent(BaseModel):
 
 class SelfPasswordChange(BaseModel):
  model_config=ConfigDict(extra="forbid")
+ current:str=Field(default="",max_length=512)
  password:str=Field(min_length=16,max_length=128)
  confirmation:str=Field(min_length=16,max_length=128)
 
@@ -90,12 +91,22 @@ def register(app,authorized,csrf):
   if body.password!=body.confirmation:
    raise HTTPException(422,"تکرار رمز عبور با رمز جدید یکسان نیست.")
   from . import user_accounts
-  with user_accounts.directory() as service:
-   service.password(principal.subject,body.password,
-                    lambda:user_accounts.revoke_sessions(principal.subject))
+  if is_godadmin(principal):
+   from . import setup_console as setup
+   if not body.current:
+    raise HTTPException(422,"برای تغییر رمز GodAdmin، رمز فعلی لازم است.")
+   try:setup.change_password(body.current,body.password)
+   except setup.SetupError as exc:raise HTTPException(409,str(exc)) from exc
+   user_accounts.revoke_sessions(principal.subject)
+   provider="local_godadmin"
+  else:
+   with user_accounts.directory() as service:
+    service.password(principal.subject,body.password,
+                     lambda:user_accounts.revoke_sessions(principal.subject))
+   provider="keycloak"
   ux.audit(str(principal.tenant_id),principal.subject,"USER_PASSWORD_CHANGED",
-           {"result":"self_service"})
-  return {"updated":True,"signed_out":True}
+           {"result":"self_service","provider":provider})
+  return {"updated":True,"signed_out":True,"provider":provider}
 
  @app.post("/api/support/client-event")
  def client_event(body:ClientEvent,value=Depends(csrf)):
