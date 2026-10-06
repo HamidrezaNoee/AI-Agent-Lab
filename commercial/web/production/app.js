@@ -1462,8 +1462,13 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
   const query=isSession?"":"?pack_id="+encodeURIComponent(t.pack_id);
   const status=el("div"),controls=[],locked=d.status!=="draft"&&!(t.stage==="minutes"&&d.status==="reconciliation_required");let dirty=false;
-  let send;
-  function changed(){dirty=true;if(send)send.disabled=true;status.replaceChildren(note("تغییرات فرم ذخیره نشده‌اند؛ ابتدا ذخیره کنید."))}
+  let send,chatMinutesSend=null;
+  function changed(){
+   dirty=true;
+   if(send)send.disabled=true;
+   if(chatMinutesSend)chatMinutesSend.disabled=true;
+   status.replaceChildren(note("تغییرات فرم ذخیره نشده‌اند؛ ابتدا ذخیره کنید."));
+  }
   function workflowDateKey(key){
    return /DateTime|FormDate|persiandate|ActualDate/i.test(String(key||""));
   }
@@ -1665,7 +1670,8 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    refreshConversationMeta();
    dirty=false;
    status.replaceChildren();
-   if(send)send.disabled=locked||missing.length>0||!info.oauth_connected;
+   if(send)send.disabled=locked||(t.stage!=="minutes"&&missing.length>0)||!info.oauth_connected;
+   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||!info.oauth_connected;
    if(app.preferences.secretary_auto_play_voice)await detachedSpeech();
 
    // If the form is currently open, tell the user that its values changed
@@ -1779,6 +1785,25 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    const approveText=t.stage==="invitation_approval"?"دعوت‌نامه را تأیید می‌کنم":"صورت‌جلسه را تأیید می‌کنم";
    const approve=link("✓ تأیید و ارسال",()=>sendTurn(approveText).catch(e=>toast(e.message)),"button primary");approve.disabled=!info.oauth_connected;
    add(quick,approve,link("↩ نیاز به اصلاح",()=>{notes.value="نیاز به اصلاح: ";notes.focus();autosize()},"button secondary"));
+   add(composer,quick);
+  }
+  if(!isSession&&t.stage==="minutes"){
+   const quick=el("div","secretary-quick-actions secretary-minutes-submit");
+   chatMinutesSend=link("ارسال صورت‌جلسه به تأیید",checked(async()=>{
+    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
+    chatMinutesSend.disabled=true;
+    try{
+     await post(path+"/advance-minutes"+query,{revision:d.revision||1,confirmed:true});
+     editor.dataset.editing="false";
+     editor.replaceChildren(note("صورت‌جلسه با موفقیت به مرحله «تأیید صورت‌جلسه» ارسال شد."));
+     setTimeout(()=>load().catch(()=>{}),400);
+    }finally{
+     if(chatMinutesSend?.isConnected)chatMinutesSend.disabled=locked||dirty||!info.oauth_connected;
+    }
+   }),"button primary");
+   chatMinutesSend.disabled=locked||dirty||!info.oauth_connected;
+   add(quick,chatMinutesSend);
+   if(missing.length)add(quick,el("small","muted","کنترل نهایی الزامات هنگام ارسال توسط خود ProcessMaker انجام می‌شود."));
    add(composer,quick);
   }
   if(isSession&&!missing.length&&d.status==="draft"){
