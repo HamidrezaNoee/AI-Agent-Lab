@@ -507,7 +507,7 @@ def _model_failure(exc):
  return 'استخراج اطلاعات توسط مدل انجام نشد؛ دوباره تلاش کنید. کد فنی: AI-EXTRACT · '+safe+suffix
 
 
-def resolve_extracted_people(field,value,spec,directory):
+def resolve_extracted_people(field,value,spec,directory,evidence=""):
  """Resolve references locally within this BPMS; never accept a guessed identity."""
  from .secretary_ai_context import normalize as person_text
  questions=[]
@@ -515,7 +515,11 @@ def resolve_extracted_people(field,value,spec,directory):
   if raw in ('',None):return ''
   text=str(raw).strip()
   active={uid:p for uid,p in directory.items() if p.get('active')}
-  if text in active:return text
+  if text in active:
+   if evidence and text not in resolution.strict_identity_mentions(evidence,directory):
+    questions.append(str(label)+': عبارت «'+str(evidence)[:120]+'» این کاربر را به‌طور صریح مشخص نمی‌کند؛ نام/نام‌کاربری یا سمت دقیق را بگویید.')
+    return ''
+   return text
   uid_matches=[uid for uid in active if uid.lower()==text.lower()]
   if len(uid_matches)==1:return uid_matches[0]
   matches=[uid for uid,p in active.items()
@@ -680,7 +684,7 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None,with_
     for a in parsed.assignments:
      if a.field not in form(task) or not a.quote.strip() or not _evidence_in_notes(a.quote,notes):raise AgentInvalid('Invalid assignment evidence')
      val=normalize(json.loads(a.value_json))
-     val,issues=resolve_extracted_people(a.field,val,form(task)[a.field],scope['directory'])
+     val,issues=resolve_extracted_people(a.field,val,form(task)[a.field],scope['directory'],evidence=a.quote)
      identity_questions.extend(issues)
      values[a.field]=_merge_assignment(a.field,values.get(a.field),val,notes)
     validate(values,task,scope)
