@@ -650,8 +650,9 @@ def load(con,scope,args:FlowGraphQuery):
   if args.role!="all" and args.role not in item["my_roles"]:return False
   if args.owner_uid and args.owner_uid not in {o["uid"] for o in item["current_owners"]}:return False
   if args.unit and args.unit not in {o["unit"] for o in item["current_owners"]}:return False
-  if args.action_scope=="with_actions" and not item["actions"]["total"]:return False
-  if args.action_scope=="without_actions" and item["actions"]["total"]:return False
+  has_actions=bool(item["actions"].get("planned") or item["actions"].get("total"))
+  if args.action_scope=="with_actions" and not has_actions:return False
+  if args.action_scope=="without_actions" and has_actions:return False
   if args.waiting_only and person_uid not in {o["uid"] for o in item["current_owners"]}:return False
   return True
  filtered=[x for x in rows if keep(x)]
