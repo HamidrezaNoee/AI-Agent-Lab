@@ -273,11 +273,15 @@ def _person_label(uid, person):
 
 def _prune_questions(questions, values):
     result = []
-    held = values.get("MTG_MeetingHeld") == "Held"
+    status = values.get("MTG_MeetingHeld")
     for item in questions or ():
         text = str(item)
         normalized = resolution.normalize_text(text)
-        if held and "وضعیت تشکیل جلسه" in normalized:
+        if status in ("Held", "NotHeld") and "وضعیت تشکیل جلسه" in normalized:
+            continue
+        if status == "NotHeld" and values.get("MTG_NotHeldReason") and (
+            "علت عدم تشکیل" in normalized or "mtg_notheldreason" in text.casefold()
+        ):
             continue
         if values.get("MTG_Actions") and (
             "mtg_action" in text.casefold()
