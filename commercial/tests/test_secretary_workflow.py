@@ -164,3 +164,41 @@ def test_minutes_requires_actual_meeting_end_time_and_allows_writing_it():
  values['MTG_MeetingEndTime']='15:00'
  assert not any(x['field']=='MTG_MeetingEndTime' for x in f.missing(values,'minutes'))
  f.validate(values,'minutes',S['directory'])
+
+
+def test_minutes_requires_attendance_status_and_time_for_present_participants():
+ values={
+  'MTG_MeetingHeld':'Held',
+  'MTG_MeetingDiscussionSummary':'جمع‌بندی جلسه',
+  'MTG_MeetingEndDateTime':'1405/07/24',
+  'MTG_MeetingEndTime':'15:00',
+  'MTG_PlannedActionEndTime':'17:00',
+  'MTG_Participants':{
+   '1':{'MTG_ParticipantUserUID':'c'*32,'MTG_ParticipantPosition':'مدیر مجوزات'},
+   '2':{'MTG_ParticipantUserUID':'s'*32,'MTG_ParticipantPosition':'دبیر','MTG_AttendanceStatus':'Present'},
+  }
+ }
+ gaps=f.missing(values,'minutes')
+ assert any(x['field']=='MTG_Participants.1.MTG_AttendanceStatus' for x in gaps)
+ assert any(x['field']=='MTG_Participants.2.MTG_AttendanceTime' for x in gaps)
+ values['MTG_Participants']['1']['MTG_AttendanceStatus']='Excused'
+ values['MTG_Participants']['2']['MTG_AttendanceTime']='10:15'
+ gaps=f.missing(values,'minutes')
+ assert not any(x['field'].startswith('MTG_Participants.') for x in gaps)
+
+
+def test_minutes_rejects_invalid_present_time_and_time_for_absent_participant():
+ base={
+  'MTG_MeetingHeld':'Held',
+  'MTG_Participants':{'1':{
+   'MTG_ParticipantUserUID':'c'*32,
+   'MTG_AttendanceStatus':'Present',
+   'MTG_AttendanceTime':'25:90',
+  }}
+ }
+ with pytest.raises(ValueError,match='HH:mm'):
+  f.validate(copy.deepcopy(base),'minutes',S['directory'])
+ base['MTG_Participants']['1']['MTG_AttendanceStatus']='Absent'
+ base['MTG_Participants']['1']['MTG_AttendanceTime']='10:00'
+ with pytest.raises(ValueError,match='نباید'):
+  f.validate(base,'minutes',S['directory'])
