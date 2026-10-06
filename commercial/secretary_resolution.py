@@ -25,6 +25,9 @@ def normalize_text(value):
     text=text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩","01234567890123456789"))
     text=text.replace("'"," ")
     text=re.sub(r'[«»"\u060c,؟?!؛;:()\[\]{}]+'," ",text)
+    # Normalize human-typed dotted usernames: "mgr .licensing",
+    # "mgr. licensing" and "mgr . licensing" all become "mgr.licensing".
+    text=re.sub(r"(?<=[A-Za-z0-9_])\s*\.\s*(?=[A-Za-z0-9_])",".",text)
     # Preserve dots inside usernames such as mgr.sales, but drop sentence dots.
     text=re.sub(r"\.(?=\s|$)"," ",text)
     return re.sub(r"\s+"," ",text).strip()
@@ -110,7 +113,29 @@ def set_path(values,path,value):
     return result
 
 
-def _select_missing_uid_path(gaps,reply):
+def _row_reference(text):
+    normalized=normalize_text(text)
+    match=re.search(r"(?:اقدام|ردیف)\s*(?:a\s*-?\s*)?0*(\d+)\b",normalized)
+    if not match:
+        match=re.search(r"\ba\s*-?\s*0*(\d+)\b",normalized)
+    return str(int(match.group(1))) if match else None
+
+
+def _last_assistant_target(history):
+    """Return a unique row explicitly asked for in the latest assistant turn."""
+    for item in reversed(list(history or [])):
+        if not isinstance(item,dict) or item.get("role")!="assistant":continue
+        text=str(item.get("text") or "")
+        if not text:continue
+        row=_row_reference(text)
+        if row:return row
+        # Stop at the latest assistant message; older context must never silently
+        # redirect a new answer to a stale action row.
+        return None
+    return None
+
+
+def _select_missing_uid_path(gaps,reply,history=()):
     candidates=[]
     for item in gaps or []:
         field=str(item.get("field") or "")
@@ -119,17 +144,12 @@ def _select_missing_uid_path(gaps,reply):
     if not candidates:return None,None
     if len(candidates)==1:return candidates[0]
 
-    text=normalize_text(reply)
-    row=None
-    match=re.search(r"(?:اقدام|ردیف)\s*(\d+)",text)
-    if not match:
-        match=re.search(r"\ba\s*-?\s*0*(\d+)\b",text)
-    if match:row=str(int(match.group(1)))
+    row=_row_reference(reply) or _last_assistant_target(history)
     if row:
         matched=[item for item in candidates if ("."+row+".") in item[0]]
         if len(matched)==1:return matched[0]
-    # Multiple unresolved identity paths without a unique row reference are
-    # intentionally left unresolved. Never bind a confirmation to "the first".
+    # Multiple unresolved identity paths without an explicit current-row context
+    # are intentionally left unresolved. Never bind to "the first" gap.
     return None,None
 
 
@@ -146,7 +166,7 @@ def _mentioned_people(text,directory):
     return list(dict.fromkeys(found))
 
 
-def resolve_direct_identity(text,current,questions,gaps,directory):
+def resolve_direct_identity(text,current,questions,gaps,directory,history=()):
     """Resolve an explicit person answer for one unambiguous missing UID path.
 
     This intentionally rejects questions and negations; those continue through
@@ -158,7 +178,7 @@ def resolve_direct_identity(text,current,questions,gaps,directory):
     if "؟" in original or "?" in original:return None
     if any(token in raw for token in ("آیا","کیه","کی هست","چه کسی","کدام کاربر","کدوم کاربر","نیست","نباشد")):
         return None
-    path,question=_select_missing_uid_path(gaps,text)
+    path,question=_select_missing_uid_path(gaps,text,history)
     if not path:return None
     candidates=_mentioned_people(text,directory)
     if len(candidates)!=1:
