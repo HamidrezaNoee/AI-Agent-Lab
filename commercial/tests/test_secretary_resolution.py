@@ -416,3 +416,11 @@ def test_compact_persian_role_alias_is_exact_and_unique():
     }
     assert resolution.unique_person("مدیرمالی",directory)=="f"*32
     assert resolution.unique_person("مدیر مالی",directory)=="f"*32
+
+
+def test_manager_alias_strips_organizational_prefixes():
+    directory={
+        "f"*32:{"active":True,"username":"mgr.finance","unit":"امور مالی","position":""},
+        "x"*32:{"active":True,"username":"finance01","unit":"امور مالی","position":"کارشناس مالی"},
+    }
+    assert resolution.unique_person("مدیر مالی",directory)=="f"*32
