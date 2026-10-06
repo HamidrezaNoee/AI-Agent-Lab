@@ -592,7 +592,7 @@ async function userSettingsPage(){
  const security=card("امنیت و رمز عبور",isLocalGodAdmin?"رمز GodAdmin در مخزن امن محلی تغییر می‌کند؛ رمز فعلی برای چرخش لازم است.":"رمز در Keycloak تغییر می‌کند و هیچ رمز عبوری داخل AVAN ذخیره نمی‌شود.");security.classList.add("settings-card","settings-security-card");
  const securityInfo=el("div","settings-security-info");
  add(securityInfo,
-  add(el("div","settings-security-item"),el("span","","ارائه‌دهنده هویت"),el("strong","","Keycloak / OIDC")),
+  add(el("div","settings-security-item"),el("span","","ارائه‌دهنده هویت"),el("strong","",isLocalGodAdmin?"AVAN Local GodAdmin":"Keycloak / OIDC")),
   add(el("div","settings-security-item"),el("span","","حساب"),el("strong","",app.user?.username||app.user?.subject||"—")),
   add(el("div","settings-security-item"),el("span","","اثر تغییر رمز"),el("strong","","خروج از همه نشست‌ها"))
  );
