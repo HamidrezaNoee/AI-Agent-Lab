@@ -178,3 +178,26 @@ def test_snapshot_rejects_case_without_membership(monkeypatch):
  monkeypatch.setattr(g,"query",fake_query)
  with pytest.raises(ProductionAccessDenied):
   g.snapshot(object(),SCOPE,"f"*32,g.FlowSnapshotQuery(pack_id="a"*24))
+
+
+def test_planned_actions_do_not_create_visual_branches_before_child_cases(monkeypatch):
+ data={
+  "MTG_MeetingTitle":"جلسه قبل از ایجاد کیس اقدام",
+  "MTG_SecretaryUserUID":U1,"MTG_ChairUserUID":U2,
+  "MTG_Actions":{"1":{"MTG_ActionNo":"A-001","MTG_ActionDescription":"پیگیری مجوز","MTG_ActionOwnerUID":U2}},
+ }
+ parent=("f"*32,77,"TO_DO",phpserialize.dumps(data),"2026-10-05 10:00:00",None,U1)
+ monkeypatch.setattr(g,"_pack",lambda scope,pack_id:PACK)
+ def fake_query(con,sql,args=()):
+  if "FROM APPLICATION a WHERE" in sql:return [parent]
+  if "FROM APP_DELEGATION d" in sql:
+   return [("f"*32,4,"4"*32,U2,"OPEN",None,"2026-10-05 12:00:00","تأیید صورتجلسه")]
+  raise AssertionError(sql)
+ monkeypatch.setattr(g,"query",fake_query)
+ result=g.load(object(),{**SCOPE,"visible_uids":{U1,U2}},g.FlowGraphQuery(pack_id="a"*24,period="all"))
+ row=result["rows"][0]
+ assert row["actions"]["planned"]==1
+ assert row["actions"]["total"]==0
+ assert row["action_branches"]==[]
+ assert row["topology"]["branches_materialized"] is False
+ assert row["topology"]["branch_count"]==0
