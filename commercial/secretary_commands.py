@@ -243,8 +243,8 @@ def command_kind(text, stage="minutes", history=()):
         return "all_present"
     if _attendance_time_command(text):
         return "attendance_time"
-    if _planning_window_command(text,history):
-        return "planning_window"
+    # FR-MTG-003 keeps meeting/planning date-time fields locked from the
+    # approved invitation. Minutes conversation must not overwrite them.
     return None
 
 
