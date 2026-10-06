@@ -550,84 +550,144 @@ async function init(){
 document.addEventListener("DOMContentLoaded",init);
 
 async function userSettingsPage(){
- const m=root();heading(m,"تنظیمات من","این تنظیمات فقط برای حساب شما ذخیره می‌شود و روی کاربران دیگر اثری ندارد.");
+ const m=root();m.classList.add("user-settings-page");heading(m,"تنظیمات من","تنظیمات شخصی، امنیت حساب و رفتار دبیر هوشمند فقط برای حساب شما.");
  let prefs;
  try{prefs=await request("/api/user/preferences",{audit:false})}catch(e){add(m,note(errorDescription(e),true));return}
  app.preferences={...app.preferences,...prefs};
- const panel=card("صوت و گفت‌وگو با دبیر هوشمند","رفتار صوتی دبیر را برای حساب خودتان تعیین کنید.");
+
+ const identity=el("section","settings-identity-hero");
+ const avatar=el("span","settings-avatar",(app.user?.name||app.user?.username||"U").trim().slice(0,1));
+ const identityCopy=el("div","settings-identity-copy");
+ add(identityCopy,el("span","settings-kicker","حساب فعال"),el("h2","",app.user?.name||app.user?.username||"کاربر آوان"),
+  el("p","muted",(app.user?.username||"")+" · "+(app.user?.role||"User")));
+ const securityBadge=el("span","settings-security-badge","Keycloak · ورود سازمانی");
+ add(identity,avatar,identityCopy,securityBadge);add(m,identity);
+
+ const layout=el("div","settings-layout");
+ const panel=card("صوت و گفت‌وگو با دبیر هوشمند","رفتار مکالمه و صوت را برای حساب خودتان تنظیم کنید.");panel.classList.add("settings-card");
  const form=el("div","user-preferences-grid");
- function toggle(key,title,description){
-  const row=el("label","user-preference-row"),input=el("input"),copy=el("span","user-preference-copy");
+ function toggle(key,title,description,icon){
+  const row=el("label","user-preference-row"),input=el("input"),copy=el("span","user-preference-copy"),mark=el("span","preference-icon",icon);
   input.type="checkbox";input.checked=!!app.preferences[key];input.dataset.preference=key;
-  add(copy,el("strong","",title),el("small","muted",description));add(row,input,copy);return {row,input};
+  add(copy,el("strong","",title),el("small","muted",description));add(row,mark,copy,input);return {row,input};
  }
- const autoplay=toggle("secretary_auto_play_voice","پخش خودکار صدای دبیر","به‌صورت پیش‌فرض خاموش است. اگر روشن شود، بعد از پاسخ دبیر صوت پاسخ نیز خودکار پخش می‌شود.");
- const transcribe=toggle("voice_auto_transcribe","تبدیل خودکار ویس به متن","پس از پایان ضبط یا انتخاب فایل صوتی، تبدیل به متن بدون زدن دکمه جداگانه انجام شود.");
- const autosend=toggle("voice_auto_send","ارسال خودکار متن ویس","بعد از تبدیل ویس به متن، متن بدون بازبینی دستی برای دبیر ارسال شود.");
+ const autoplay=toggle("secretary_auto_play_voice","پخش خودکار صدای دبیر","پس از آماده شدن پاسخ، صوت به‌صورت خودکار پخش شود.","◉");
+ const transcribe=toggle("voice_auto_transcribe","تبدیل خودکار ویس به متن","بعد از ضبط یا انتخاب فایل صوتی، متن بدون مرحله اضافی آماده شود.","⌁");
+ const autosend=toggle("voice_auto_send","ارسال خودکار متن ویس","متن تبدیل‌شده بدون بازبینی دستی برای دبیر ارسال شود.","↑");
  const sync=()=>{autosend.input.disabled=!transcribe.input.checked;if(!transcribe.input.checked)autosend.input.checked=false};
  transcribe.input.addEventListener("change",sync);sync();
  add(form,autoplay.row,transcribe.row,autosend.row);
  const status=el("div","preference-save-status");
- const save=link("ذخیره تنظیمات من",async()=>{
+ const save=link("ذخیره تنظیمات گفتگو",async()=>{
   save.disabled=true;status.replaceChildren();
   try{
-   const body={
-    secretary_auto_play_voice:autoplay.input.checked,
-    voice_auto_transcribe:transcribe.input.checked,
-    voice_auto_send:transcribe.input.checked&&autosend.input.checked
-   };
+   const body={secretary_auto_play_voice:autoplay.input.checked,voice_auto_transcribe:transcribe.input.checked,voice_auto_send:transcribe.input.checked&&autosend.input.checked};
    const saved=await request("/api/user/preferences",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-   app.preferences={...app.preferences,...saved};
-   status.replaceChildren(note("تنظیمات شخصی شما ذخیره شد."));
-  }catch(e){status.replaceChildren(note(errorDescription(e),true))}
-  finally{save.disabled=false}
+   app.preferences={...app.preferences,...saved};status.replaceChildren(note("تنظیمات شخصی ذخیره شد."));
+  }catch(e){status.replaceChildren(note(errorDescription(e),true))}finally{save.disabled=false}
  },"button primary");
- add(panel,form,save,status);add(m,panel);
- const info=card("رفتار پیش‌فرض","برای جلوگیری از ارسال یا پخش ناخواسته، پخش خودکار پاسخ و ارسال خودکار ویس به‌صورت پیش‌فرض خاموش هستند.");
- add(info,el("p","muted","دکمه «شنیدن» همیشه برای پخش دستی پاسخ دبیر در دسترس می‌ماند. اگر تبدیل خودکار ویس را خاموش کنید، پس از ضبط دکمه «تبدیل به متن» نمایش داده می‌شود."));
- add(m,info);
+ add(panel,form,add(el("div","settings-card-actions"),save),status);
+
+ const security=card("امنیت و رمز عبور","رمز در Keycloak تغییر می‌کند و هیچ رمز عبوری داخل AVAN ذخیره نمی‌شود.");security.classList.add("settings-card","settings-security-card");
+ const securityInfo=el("div","settings-security-info");
+ add(securityInfo,
+  add(el("div","settings-security-item"),el("span","","ارائه‌دهنده هویت"),el("strong","","Keycloak / OIDC")),
+  add(el("div","settings-security-item"),el("span","","حساب"),el("strong","",app.user?.username||app.user?.subject||"—")),
+  add(el("div","settings-security-item"),el("span","","اثر تغییر رمز"),el("strong","","خروج از همه نشست‌ها"))
+ );
+ const passwordGrid=el("div","settings-password-grid");
+ const p1=inputField("رمز جدید (حداقل ۱۶ نویسه)","","password"),p2=inputField("تکرار رمز جدید","","password");
+ p1.input.autocomplete="new-password";p2.input.autocomplete="new-password";
+ const meter=el("div","password-strength"),meterFill=el("span"),meterText=el("small","muted","قدرت رمز: —");add(meter,meterFill);
+ function passwordScore(){
+  const v=p1.input.value||"";let n=0;
+  if(v.length>=16)n++;if(/[a-z]/i.test(v)&&/\d/.test(v))n++;if(/[^A-Za-z0-9]/.test(v))n++;if(v.length>=24)n++;
+  meterFill.style.width=(n*25)+"%";meter.dataset.score=String(n);meterText.textContent="قدرت رمز: "+(["—","حداقلی","متوسط","خوب","قوی"][n]||"—");
+ }
+ p1.input.addEventListener("input",passwordScore);
+ add(passwordGrid,p1.wrap,p2.wrap);const pwOut=el("div","settings-password-status");
+ const changePassword=link("تغییر رمز و خروج از نشست‌ها",async()=>{
+  pwOut.replaceChildren();
+  if((p1.input.value||"").length<16){pwOut.replaceChildren(note("رمز جدید باید حداقل ۱۶ نویسه باشد.",true));return}
+  if(p1.input.value!==p2.input.value){pwOut.replaceChildren(note("تکرار رمز با رمز جدید یکسان نیست.",true));return}
+  changePassword.disabled=true;
+  try{
+   await request("/api/user/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:p1.input.value,confirmation:p2.input.value})});
+   p1.input.value="";p2.input.value="";passwordScore();pwOut.replaceChildren(note("رمز تغییر کرد. برای امنیت، همه نشست‌ها پایان یافت؛ در حال انتقال به ورود..."));
+   setTimeout(()=>window.location.assign("/auth/login"),900);
+  }catch(e){pwOut.replaceChildren(note(errorDescription(e),true));changePassword.disabled=false}
+ },"button primary");
+ add(security,securityInfo,passwordGrid,meter,meterText,add(el("div","settings-card-actions"),changePassword),pwOut);
+ add(layout,panel,security);add(m,layout);
 }
 
 async function supportLogsPage(){
- const m=root();heading(m,"لاگ‌های پشتیبانی","خطاها و عملیات قابل پیگیری AVAN. کاربران لاگ خودشان و مدیر سیستم لاگ تمام کاربران سازمان را می‌بیند.");
- const panel=card("رویدادهای اخیر","محتوای پیام‌ها، رمزها و توکن‌ها در این لاگ ثبت نمی‌شوند.");
- const controls=el("div","support-log-controls"),limit=el("select"),event=el("select"),out=el("div","support-log-output");
+ const m=root();m.classList.add("support-logs-page");heading(m,"لاگ‌های پشتیبانی","رویدادها را بر اساس کاربر، فرایند، اتصال BPMS، پرونده و مرحله پیدا کنید؛ محتوای پیام، رمز و Token لاگ نمی‌شود.");
+ const panel=card("رویدادهای عملیاتی","فیلترها روی لاگ‌های مجاز همین حساب/سازمان اعمال می‌شوند.");panel.classList.add("support-log-panel");
+ const controls=el("div","support-log-controls");
+ const limit=el("select"),event=el("select"),actor=el("select"),source=el("select"),process=el("select"),stage=el("select");
+ const caseUid=el("input"),requestId=el("input"),search=el("input"),out=el("div","support-log-output");
  for(const [v,t] of [["100","۱۰۰ رویداد"],["250","۲۵۰ رویداد"],["500","۵۰۰ رویداد"]]){const o=el("option","",t);o.value=v;add(limit,o)}limit.value="250";
- add(event,el("option","","همه رویدادها"));
  const known=[
   ["API_ERROR","خطاهای API"],["CLIENT_NETWORK_ERROR","خطای ارتباط"],["CLIENT_UI_ERROR","خطای رابط کاربری"],["CLIENT_REQUEST_ABORTED","پردازش متوقف‌شده"],
-  ["SECRETARY_PROCESSING_STARTED","شروع پردازش دبیر"],["SECRETARY_PROCESSING_COMPLETED","پایان پردازش دبیر"],["SECRETARY_CONFIRMATION_RESOLVED","تأیید قطعی توسط Resolver"],
-  ["SECRETARY_PROCESSING_FAILED","خطای پردازش دبیر"],["SECRETARY_PROCESSING_CANCELLED","توقف پردازش دبیر"],
-  ["API_ACTION","عملیات کاربر"],["NAVIGATE","جابجایی صفحات"],["USER_PREFERENCES_CHANGED","تغییر تنظیمات"]
+  ["SECRETARY_PROCESSING_STARTED","شروع پردازش دبیر"],["SECRETARY_PROCESSING_COMPLETED","پایان پردازش دبیر"],["SECRETARY_CONFIRMATION_RESOLVED","تأیید قطعی Resolver"],
+  ["SECRETARY_AGENTIC_COMMAND_EXECUTED","اجرای فرمان هوشمند دبیر"],["SECRETARY_PROCESSING_FAILED","خطای پردازش دبیر"],["SECRETARY_PROCESSING_CANCELLED","توقف پردازش دبیر"],
+  ["USER_PASSWORD_CHANGED","تغییر رمز حساب"],["API_ACTION","عملیات کاربر"],["NAVIGATE","جابجایی صفحات"],["USER_PREFERENCES_CHANGED","تغییر تنظیمات"]
  ];
- for(const [v,t] of known){const o=el("option","",t);o.value=v;add(event,o)}
+ function option(select,value,label){const o=el("option","",label);o.value=value;add(select,o)}
+ option(event,"","همه رویدادها");for(const [v,t] of known)option(event,v,t);
+ option(actor,"","همه کاربران");option(source,"","همه اتصال‌ها");option(process,"","همه فرایندها");option(stage,"","همه مراحل");
+ caseUid.placeholder="Case UID";requestId.placeholder="Request ID";search.placeholder="جستجو در رویداد، خطا، مسیر یا شناسه...";
+ function refill(select,items,empty,labelOf=x=>x){
+  const keep=select.value;select.replaceChildren();option(select,"",empty);
+  for(const item of items||[]){const value=typeof item==="object"?item.id:item;option(select,value,labelOf(item))}
+  if(Array.from(select.options).some(o=>o.value===keep))select.value=keep;
+ }
+ let filterOptionsLoaded=false;
  async function load(){
   out.replaceChildren(note("در حال دریافت لاگ‌ها..."));
   try{
-   const q=new URLSearchParams({limit:limit.value});if(event.value)q.set("event",event.value);
+   const q=new URLSearchParams({limit:limit.value});
+   for(const [key,control] of [["event",event],["actor_id",actor],["source_id",source],["process_uid",process],["stage",stage],["case_uid",caseUid],["request_id",requestId],["q",search]])if(control.value.trim())q.set(key,control.value.trim());
    const data=await request("/api/support/logs?"+q.toString(),{audit:false});
+   if(!filterOptionsLoaded){
+    refill(actor,data.filters?.actors,"همه کاربران",x=>x.name||x.id);
+    refill(source,data.filters?.sources,"همه اتصال‌ها");
+    refill(process,data.filters?.processes,"همه فرایندها");
+    refill(stage,data.filters?.stages,"همه مراحل");
+    filterOptionsLoaded=true;
+   }
    out.replaceChildren();
-   const scope=el("div","support-log-scope",data.scope==="tenant"?"نمای مدیر سیستم: تمام کاربران سازمان":"نمای شخصی: فقط رویدادهای حساب شما");
-   add(out,scope);
-   const rows=el("div","support-log-list");
+   const head=el("div","support-log-result-head");
+   add(head,el("span","support-log-scope",data.scope==="tenant"?"نمای مدیر سیستم · تمام کاربران مجاز":"نمای شخصی · فقط رویدادهای شما"),
+       el("span","muted",fmt((data.logs||[]).length)+" رویداد در این صفحه"));
+   add(out,head);if(data.truncated)add(out,note("پنجره لاگ بسیار بزرگ است؛ برای نتیجه دقیق‌تر فیلتر کاربر/فرایند/پرونده را محدود کنید.",true));
+   const rows=el("div","support-log-list"),labels=Object.fromEntries(known);
    if(!(data.logs||[]).length)add(rows,note("لاگی مطابق فیلتر فعلی وجود ندارد."));
-   const labels=Object.fromEntries(known);
    for(const item of data.logs||[]){
-    const row=el("article","support-log-row"),head=el("div","support-log-row-head"),copy=el("div");
+    const detail=item.detail||{},row=el("article","support-log-row"),headRow=el("div","support-log-row-head"),copy=el("div");
     add(copy,el("strong","",labels[item.event_code]||item.event_code),
-     el("small","muted",dateText(item.happened_at)+" · "+(item.actor_id===app.user?.subject?"شما":(item.actor_name||item.actor_id))));
+      el("small","muted",dateText(item.happened_at)+" · "+(item.actor_id===app.user?.subject?"شما":(item.actor_name||item.actor_id))));
     const severity=/FAILED|ERROR|NETWORK/.test(item.event_code)?"error":/CANCELLED|ABORTED/.test(item.event_code)?"warning":"ok";
-    add(head,copy,el("span","support-log-status "+severity,item.event_code));add(row,head);
-    const detail=item.detail||{},summary=[detail.message||detail.error,detail.path,detail.stage,detail.result].filter(Boolean).join(" · ");
-    if(summary)add(row,el("p","",summary));
+    add(headRow,copy,el("span","support-log-status "+severity,item.event_code));add(row,headRow);
+    const chips=el("div","support-log-chips");
+    for(const [label,value] of [["اتصال",detail.source_id],["فرایند",detail.process_uid||detail.pack_id],["پرونده",detail.case_uid],["مرحله",detail.stage],["Request",detail.request_id]])if(value)add(chips,el("span","support-log-chip",label+": "+value));
+    if(chips.childNodes.length)add(row,chips);
+    const summary=[detail.message||detail.error,detail.path,detail.result].filter(Boolean).join(" · ");if(summary)add(row,el("p","",summary));
     const details=el("details","support-log-detail");add(details,el("summary","","جزئیات فنی"),el("pre","",JSON.stringify(detail,null,2)),el("small","muted","شناسه رویداد: "+item.id));add(row,details);add(rows,row);
    }
    add(out,rows);
   }catch(e){out.replaceChildren(note(errorDescription(e),true))}
  }
- const refresh=link("↻ تازه‌سازی",load,"button secondary");
- add(controls,add(el("label","field"),el("span","","تعداد"),limit),add(el("label","field"),el("span","","نوع رویداد"),event),refresh);
- event.addEventListener("change",load);limit.addEventListener("change",load);
+ function labelField(title,control,wide=false){const x=el("label","field"+(wide?" support-log-wide":""));add(x,el("span","",title),control);return x}
+ const refresh=link("↻ تازه‌سازی",()=>{filterOptionsLoaded=false;load()},"button secondary");
+ const clear=link("پاک‌کردن فیلترها",()=>{for(const x of [event,actor,source,process,stage])x.value="";for(const x of [caseUid,requestId,search])x.value="";load()},"button secondary");
+ add(controls,labelField("جستجو",search,true),labelField("کاربر",actor),labelField("اتصال BPMS",source),labelField("فرایند",process),
+  labelField("مرحله",stage),labelField("نوع رویداد",event),labelField("Case UID",caseUid),labelField("Request ID",requestId),labelField("تعداد",limit),
+  add(el("div","support-log-actions"),refresh,clear));
+ let timer=null;search.addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(load,350)});
+ for(const x of [event,actor,source,process,stage,limit])x.addEventListener("change",load);
+ for(const x of [caseUid,requestId])x.addEventListener("change",load);
  add(panel,controls,out);add(m,panel);await load();
 }
 
