@@ -57,32 +57,55 @@ def is_negative(value):
     return text.startswith("نه ") or text.startswith("خیر ")
 
 
+def _identity_forms(value):
+    """Exact human forms for identity matching; never fuzzy-match different people."""
+    normalized=normalize_text(value)
+    if not normalized:return set()
+    result={normalized}
+    # Persian speech/text frequently joins role words ("مدیرمالی"). Keep this
+    # as an exact alias only; uniqueness is still required across the directory.
+    if re.search(r"[\u0600-\u06FF]",normalized) and " " in normalized:
+        compact=normalized.replace(" ","")
+        if len(compact)>=4:result.add(compact)
+    return result
+
+
 def _aliases(person):
     result=set()
-    for key in ("username","avan_username","name","avan_name"):
-        raw=str(person.get(key) or "").strip()
-        if raw:result.add(normalize_text(raw))
+    for key in (
+        "username","avan_username","name","avan_name",
+        "position","title","unit","department","department_name",
+    ):
+        result.update(_identity_forms(person.get(key) or ""))
     username=normalize_text(person.get("username") or person.get("avan_username") or "")
     if "." in username:
         # Human speech/text often drops punctuation from usernames.
         result.add(username.replace("."," "))
+    # A manager account bound to an organizational unit can safely expose the
+    # natural Persian role alias "مدیر <واحد>" without guessing a random user.
+    unit=normalize_text(
+        person.get("unit") or person.get("department") or person.get("department_name") or ""
+    )
+    if username.startswith("mgr.") and unit:
+        result.update(_identity_forms("مدیر "+unit))
     if username=="administrator":
-        result.update({"admin","ادمین","administrator","مدیر سیستم"})
+        result.update({"admin","ادمین","administrator","مدیر سیستم","مدیرسیستم"})
     if username=="ceo":
         result.update({"ceo","مدیرعامل","مدیر عامل"})
     return {x for x in result if x}
 
 
 def unique_person(raw,directory):
-    """Return one active UID for an explicit identity, otherwise None."""
-    needle=normalize_text(raw)
-    if not needle:return None
+    """Return one active UID for an explicit identity/role alias, otherwise None."""
+    needles=_identity_forms(raw)
+    if not needles:return None
     active={str(uid):p for uid,p in (directory or {}).items() if p.get("active")}
-    if needle in active:return needle
+    for needle in needles:
+        if needle in active:return needle
     matches=[]
     for uid,person in active.items():
         aliases=_aliases(person)
-        if needle in aliases:
+        if needles & aliases:
             matches.append(uid)
     return matches[0] if len(matches)==1 else None
 
