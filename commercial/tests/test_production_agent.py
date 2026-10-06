@@ -157,6 +157,15 @@ def test_concurrent_run_per_identity_rejected():
             with run_slot('test-unique'):pass
 
 
+def test_sequential_run_per_identity_is_immediately_allowed():
+    with run_slot('test-sequential'):
+        pass
+    # Completing one request must not impose an artificial cooldown on the next
+    # secretary follow-up turn from the same user.
+    with run_slot('test-sequential'):
+        pass
+
+
 def draft_data():
     return {'summary':'پیگیری مجوز','actions':[{'description':'پیگیری مجوز ترخیص','source_quote':'مجوز را پیگیری کند',
         'owner_uid':'p1','suggested_role':'دبیر','owner_reason':'مسئول مرتبط','priority':'high',
