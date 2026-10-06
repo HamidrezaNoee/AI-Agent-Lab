@@ -19,6 +19,12 @@ class ClientEvent(BaseModel):
  detail:dict=Field(default_factory=dict)
 
 
+class SelfPasswordChange(BaseModel):
+ model_config=ConfigDict(extra="forbid")
+ password:str=Field(min_length=16,max_length=128)
+ confirmation:str=Field(min_length=16,max_length=128)
+
+
 def _identity(value):
  principal=value[2]
  role="GodAdmin" if is_godadmin(principal) else None
@@ -46,9 +52,18 @@ def register(app,authorized,csrf):
  @app.get("/api/support/logs")
  def support_logs(limit:int=Query(200,ge=1,le=500),
                   event:str|None=Query(None,max_length=80),
+                  actor_id:str|None=Query(None,max_length=128),
+                  source_id:str|None=Query(None,max_length=128),
+                  process_uid:str|None=Query(None,max_length=128),
+                  case_uid:str|None=Query(None,max_length=128),
+                  stage:str|None=Query(None,max_length=80),
+                  request_id:str|None=Query(None,max_length=128),
+                  q:str|None=Query(None,max_length=200),
                   value=Depends(authorized)):
   principal,role=_identity(value)
-  result=ux.logs(str(principal.tenant_id),principal.subject,role,limit=limit,event=event)
+  result=ux.logs(str(principal.tenant_id),principal.subject,role,limit=limit,event=event,
+                 actor_id=actor_id,source_id=source_id,process_uid=process_uid,
+                 case_uid=case_uid,stage=stage,request_id=request_id,q=q)
   # Resolve opaque identity subjects to AVAN display names for admin support views.
   names={}
   try:
@@ -61,7 +76,26 @@ def register(app,authorized,csrf):
    names={}
   for item in result.get("logs",[]):
    item["actor_name"]=names.get(item["actor_id"],"شما" if item["actor_id"]==principal.subject else item["actor_id"])
+  filters=result.get("filters") or {}
+  filters["actors"]=[
+   {"id":subject,"name":names.get(subject,"شما" if subject==principal.subject else subject)}
+   for subject in filters.get("actors",[])
+  ]
+  result["filters"]=filters
   return result
+
+ @app.post("/api/user/password")
+ def change_own_password(body:SelfPasswordChange,value=Depends(csrf)):
+  principal,_=_identity(value)
+  if body.password!=body.confirmation:
+   raise HTTPException(422,"تکرار رمز عبور با رمز جدید یکسان نیست.")
+  from . import user_accounts
+  with user_accounts.directory() as service:
+   service.password(principal.subject,body.password,
+                    lambda:user_accounts.revoke_sessions(principal.subject))
+  ux.audit(str(principal.tenant_id),principal.subject,"USER_PASSWORD_CHANGED",
+           {"result":"self_service"})
+  return {"updated":True,"signed_out":True}
 
  @app.post("/api/support/client-event")
  def client_event(body:ClientEvent,value=Depends(csrf)):
