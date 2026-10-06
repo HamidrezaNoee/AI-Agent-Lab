@@ -176,28 +176,27 @@ def gaps(values,task):
   # for MTG_MeetingNo would duplicate a system-owned field.
   if stage=='invitation' and not task.get('case_uid'):
    result=[x for x in result if x.get('field')!='MTG_MeetingNo']
-  if stage=='invitation':
-   for i,r in (values.get('MTG_Agenda') or {}).items():
-    for k,title in [('MTG_AgendaPresenterUID','ارائه‌دهنده'),('MTG_AgendaPlannedMinutes','زمان صحبت به دقیقه')]:
-     if r.get(k) in (None,''):result.append({'field':k,'question':f'{title} دستور جلسه ردیف {i} چیست؟'})
-  # legacy.missing() is the canonical source for minutes scalar gaps.
+  # The latest FR-MTG-001 does not require agenda presenter/duration or even
+  # participant/agenda grids for routing. Do not invent stricter AVAN-only gaps.
+  # legacy.missing() is the canonical source for invitation/minutes requirements.
   # Adding end-date/time questions again here produced duplicate pending items
   # with slightly different wording and incorrect "N items remaining" counts.
   return result
- if stage=='invitation_approval':required=['MTG_InvitationApproval'];comment='MTG_InvitationChairComment';decision='MTG_InvitationApproval'
- elif stage=='minutes_approval':required=['MTG_MinutesApproval'];comment='MTG_ChairComment';decision='MTG_MinutesApproval'
+ if stage=='invitation_approval':required=['MTG_InvitationApproval'];decision='MTG_InvitationApproval'
+ elif stage=='minutes_approval':required=['MTG_MinutesApproval'];decision='MTG_MinutesApproval'
  elif stage=='action_execution':
-  required=['MTGA_SubmissionType','MTGA_ProgressPercent','MTGA_ExecutionDescription','MTGA_ActualEffortMinutes']
-  if values.get('MTGA_SubmissionType')=='CompletionClaim':required+=['MTGA_ActualCompletionDateTime','MTGA_ActualCompletionTime']
+  required=['MTGA_SubmissionType','MTGA_ProgressPercent','MTGA_ExecutionDescription']
  elif stage=='action_review':
-  required=['MTGA_ReviewStatus2','MTGA_SecretaryProgressPercent2','MTGA_SecretaryActualEffortMinutes2']
+  required=['MTGA_ReviewStatus2','MTGA_SecretaryProgressPercent2']
   if values.get('MTGA_ReviewStatus2')=='Rework':required+=['MTGA_SecretaryComment1']
-  elif values.get('MTGA_ReviewStatus2')=='Closed':required+=['MTGA_SecretaryActualCompletionDateTime2','MTGA_SecretaryActualCompletionTime2']
  elif stage=='monitoring':required=['MTG_ClosingNote']
  if stage in ('invitation_approval','minutes_approval') and values.get(decision)=='Approved':
   underlying='invitation' if stage=='invitation_approval' else 'minutes'
-  return legacy.missing({**task['native'],**values},underlying)
- if stage in ('invitation_approval','minutes_approval') and values.get(decision)=='NeedsRevision':required+=[comment]
+  inherited={**task['native'],**values}
+  pending=legacy.missing(inherited,underlying)
+  if stage=='minutes_approval' and not legacy.rows(inherited.get('MTG_Actions')):
+   pending.append({'field':'MTG_Actions','question':'برای تأیید صورت‌جلسه حداقل یک اقدام معتبر لازم است.'})
+  return pending
  specs=form(task)
  return [{'field':k,'question':'لطفاً '+str(specs.get(k,{}).get('label') or k)+' را مشخص کنید.'} for k in required if values.get(k) in (None,'',{})]
 
@@ -439,7 +438,11 @@ def validate(values,task,scope):
    if r.get('MTG_MonSecActualDate'):legacy.jalali_instant(r['MTG_MonSecActualDate'],r.get('MTG_MonSecActualTime') or '00:00')
  if stage=='action_execution' and values.get('MTGA_SubmissionType') not in ('','ProgressUpdate','CompletionClaim'):raise ValueError('نوع گزارش اقدام معتبر نیست.')
  if stage=='action_execution' and values.get('MTGA_SubmissionType')=='CompletionClaim':values['MTGA_ProgressPercent']='100'
+ if stage=='action_execution' and values.get('MTGA_ActualCompletionTime') and not values.get('MTGA_ActualCompletionDateTime'):
+  raise ValueError('اگر ساعت واقعی انجام ثبت شده، تاریخ واقعی انجام نیز باید مشخص شود.')
  if stage=='action_review' and values.get('MTGA_ReviewStatus2') not in ('','Closed','Rework'):raise ValueError('نتیجه بررسی باید Closed یا Rework باشد.')
+ if stage=='action_review' and values.get('MTGA_SecretaryActualCompletionTime2') and not values.get('MTGA_SecretaryActualCompletionDateTime2'):
+  raise ValueError('اگر ساعت واقعی مورد تأیید دبیر ثبت شده، تاریخ واقعی نیز باید مشخص شود.')
 
 
 _KEEP_PENDING=object()
