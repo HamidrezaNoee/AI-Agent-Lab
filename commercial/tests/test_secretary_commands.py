@@ -405,3 +405,22 @@ def test_old_contradictory_history_uses_last_actual_end_question(pack, monkeypat
     assert result["MTG_MeetingEndTime"]=="15:00"
     assert result["MTG_PlannedActionEndTime"]=="17:00"
     assert "ساعت پایان واقعی جلسه روی 15:00" in reply
+
+
+def test_all_present_attendees_can_receive_one_attendance_time_command(pack):
+    s,participants=scope()
+    values=minutes_values(participants)
+    values["MTG_MeetingHeld"]="Held"
+    for i,row in values["MTG_Participants"].items():
+        row["MTG_AttendanceStatus"]="Present" if i!="3" else "Excused"
+        row["MTG_AttendanceTime"]=""
+    task_row=task(pack,"minutes",minutes_native())
+    result=commands.apply("ساعت حضور همه حاضرها 17:00 بود",values,task_row,s,questions=[
+        "ساعت حضور شرکت‌کننده حاضر ردیف 1 را به صورت HH:mm اعلام کنید.",
+        "ساعت حضور شرکت‌کننده حاضر ردیف 2 را به صورت HH:mm اعلام کنید.",
+    ])
+    assert result["resolution"]=="attendance_time"
+    assert result["values"]["MTG_Participants"]["1"]["MTG_AttendanceTime"]=="17:00"
+    assert result["values"]["MTG_Participants"]["2"]["MTG_AttendanceTime"]=="17:00"
+    assert result["values"]["MTG_Participants"]["3"]["MTG_AttendanceTime"]==""
+    assert not result["questions"]
