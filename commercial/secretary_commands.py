@@ -122,9 +122,31 @@ def _hour_value(text):
     return None
 
 
-def _clock_from_text(text):
+def _latest_assistant_text(history):
+    for item in reversed(list(history or [])):
+        if isinstance(item,dict) and item.get("role")=="assistant" and item.get("text"):
+            return str(item.get("text") or "")
+    return ""
+
+
+def _clock_target(text,history=()):
     normalized=resolution.normalize_text(text)
-    if not any(x in normalized for x in ("ساعت","صبح","ظهر","بعد از ظهر","عصر","شب")):
+    if ("پایان واقعی" in normalized or "ساعت پایان جلسه" in normalized) and "برنامه" not in normalized:
+        return "actual"
+    if "پایان برنامه" in normalized:
+        return "planned"
+    previous=resolution.normalize_text(_latest_assistant_text(history))
+    if previous:
+        if ("ساعت پایان واقعی جلسه" in previous or "ساعت پایان جلسه" in previous) and "برنامه" not in previous:
+            return "actual"
+        if "ساعت پایان برنامه" in previous:
+            return "planned"
+    return None
+
+
+def _clock_from_text(text,allow_bare=False):
+    normalized=resolution.normalize_text(text)
+    if not allow_bare and not any(x in normalized for x in ("ساعت","صبح","ظهر","بعد از ظهر","عصر","شب")):
         return None
     parsed=_hour_value(normalized)
     if not parsed:return None
@@ -135,11 +157,13 @@ def _clock_from_text(text):
     return f"{hour:02d}:{minute:02d}"
 
 
-def _planning_window_command(text):
+def _planning_window_command(text,history=()):
     normalized=resolution.normalize_text(text)
     days=_due_days(normalized)
     relative=days is not None and any(x in normalized for x in ("آینده","دیگه","بعد","بگذار","بذار","قرار بده","مهلت"))
-    return relative or _clock_from_text(normalized) is not None
+    target=_clock_target(text,history)
+    clock=_clock_from_text(normalized,allow_bare=bool(target))
+    return relative or bool(clock and target)
 
 
 def _jalali_after_days(days, now=None):
@@ -183,7 +207,7 @@ def _role_assignment_command(text):
     )
 
 
-def command_kind(text, stage="minutes"):
+def command_kind(text, stage="minutes", history=()):
     if stage != "minutes":
         return None
     if _role_assignment_command(text):
@@ -192,7 +216,7 @@ def command_kind(text, stage="minutes"):
         return "batch_actions"
     if _meeting_status(text):
         return "meeting_status"
-    if _planning_window_command(text):
+    if _planning_window_command(text,history):
         return "planning_window"
     return None
 
@@ -402,22 +426,34 @@ def _prune_questions(questions, values):
             "تاریخ پایان برنامه" in normalized or "mtg_meetingenddatetime" in text.casefold()
         ):
             continue
+        if values.get("MTG_MeetingEndTime") and (
+            "ساعت پایان واقعی جلسه" in normalized
+            or ("ساعت پایان جلسه" in normalized and "برنامه" not in normalized)
+            or "mtg_meetingendtime" in text.casefold()
+        ):
+            continue
         if values.get("MTG_PlannedActionEndTime") and (
             "ساعت پایان برنامه" in normalized or "mtg_plannedactionendtime" in text.casefold()
         ):
             continue
-        if values.get("MTG_Actions") and (
-            "mtg_action" in text.casefold()
-            or re.search(r"اقدام\s*\d+", normalized)
-        ):
-            continue
+        raw_action=re.search(r"(?:اقدام|ردیف)\s*(?:a\s*-?\s*)?0*(\d+)\b",normalized)
+        if raw_action and values.get("MTG_Actions"):
+            number=int(raw_action.group(1))
+            row=next((r for _,r in _rows(values.get("MTG_Actions"))
+                      if re.search(r"a\s*-?\s*0*"+str(number)+r"\b",
+                                   resolution.normalize_text(r.get("MTG_ActionNo") or ""))),None)
+            if row:
+                owner_question=("مسئول" in normalized or "owner" in normalized or "actionowneruid" in text.casefold())
+                due_question=("مهلت" in normalized or "موعد" in normalized or "actionduedatetime" in text.casefold())
+                if owner_question and row.get("MTG_ActionOwnerUID"):continue
+                if due_question and row.get("MTG_persiandate_ActionDueDateTime"):continue
         result.append(text)
     return result
 
 
-def apply(text, current, task, scope, *, questions=(), now=None):
+def apply(text, current, task, scope, *, questions=(), history=(), now=None):
     """Apply one explicit deterministic command to a minutes draft."""
-    kind = command_kind(text, task.get("stage"))
+    kind = command_kind(text, task.get("stage"),history)
     if not kind:
         return None
 
@@ -446,13 +482,17 @@ def apply(text, current, task, scope, *, questions=(), now=None):
 
     if kind == "planning_window":
         days=_due_days(normalized)
-        clock=_clock_from_text(normalized)
+        target=_clock_target(text,history)
+        clock=_clock_from_text(normalized,allow_bare=bool(target))
         changed=[]
         if days is not None:
             planned_date=_jalali_after_days(days,now=now)
             values["MTG_MeetingEndDateTime"]=planned_date
             changed.append("تاریخ پایان برنامه‌ریزی روی "+planned_date)
-        if clock:
+        if clock and target=="actual":
+            values["MTG_MeetingEndTime"]=clock
+            changed.append("ساعت پایان واقعی جلسه روی "+clock)
+        elif clock and target=="planned":
             values["MTG_PlannedActionEndTime"]=clock
             changed.append("ساعت پایان برنامه‌ریزی روی "+clock)
         return {
