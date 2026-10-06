@@ -35,15 +35,22 @@ A Smart Secretary turn is processed in this order:
    - Multiple unresolved action owners require an explicit row/action reference.
    - Questions and negations never become edits.
 
-4. **Deterministic Draft Q&A**
+4. **Explicit Agentic Command Executor**
+   - Executes narrow, explicit user commands that operate only on already-known BPMS identities.
+   - Supports attendee-driven batch actions such as choosing five attendees, assigning one draft action to each, and applying a relative deadline.
+   - Explicit attendance is respected: Absent/Excused users are never selected.
+   - When attendance capture has not started, the minutes participant list is used as the best available attendee set.
+   - Generated decisions/actions remain draft data and are never auto-submitted.
+
+5. **Deterministic Draft Q&A**
    - Read-only questions about already collected draft data are answered without a model where possible.
 
-5. **Structured LLM Extraction**
+6. **Structured LLM Extraction**
    - Used for genuinely new facts.
    - Every assignment must still have evidence copied from the new user message.
    - The model cannot use historical text as assignment evidence.
 
-6. **Validation and Commit**
+7. **Validation and Commit**
    - PMX schema validation.
    - Active-user validation.
    - Revision/native-state checks.
@@ -89,3 +96,21 @@ Structured model validation failures expose stable, non-sensitive codes:
 - `AI_STRUCTURED_OUTPUT_REJECTED`
 
 Deterministic confirmations are audited as `SECRETARY_CONFIRMATION_RESOLVED` without storing conversation text.
+
+
+## Explicit batch-action commands
+
+When the user explicitly delegates the choice to AVAN, the secretary may perform a
+deterministic draft operation instead of asking for UIDs already present in the
+meeting context. Examples include:
+
+- `پنج نفر از حاضرین را انتخاب کن و برای هرکدام یک تسک تصادفی بساز و پنج روز مهلت بده`
+- `برای هر کسی که توی جلسه شرکت کرده یک اقدام ایجاد کن`
+
+The executor resolves owners only from active users already bound to participant
+rows. It never invents a ProcessMaker UID. Selection requested as random is seeded
+from the meeting and command so a retry produces the same reviewable selection.
+Action numbers continue after existing actions. If no valid decision exists, AVAN
+creates linked draft decisions so the native ProcessMaker action contract remains
+valid. Those generated rows are explicitly described as drafts in the assistant
+response and still require the normal human review/submission step.
