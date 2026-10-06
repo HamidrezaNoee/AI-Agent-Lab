@@ -34,14 +34,9 @@ def scope():
     }, participants
 
 
-def minutes_values(participants):
+def minutes_native():
     return {
         "MTG_MeetingTitle": "بررسی وضعیت AVAN",
-        "MTG_MeetingHeld": "",
-        "MTG_MeetingDiscussionSummary": "جمع‌بندی توسعه و تحویل",
-        "MTG_MeetingEndDateTime": "1405/07/20",
-        "MTG_PlannedActionEndTime": "17:00",
-        "MTG_Participants": participants,
         "MTG_Agenda": {
             "1": {"MTG_AgendaTitle": "وضعیت توسعه AVAN"},
             "2": {"MTG_AgendaTitle": "اتصال ProcessMaker"},
@@ -49,6 +44,16 @@ def minutes_values(participants):
             "4": {"MTG_AgendaTitle": "نیازمندی بازرگانی"},
             "5": {"MTG_AgendaTitle": "برنامه تحویل"},
         },
+    }
+
+
+def minutes_values(participants):
+    return {
+        "MTG_MeetingHeld": "",
+        "MTG_MeetingDiscussionSummary": "جمع‌بندی توسعه و تحویل",
+        "MTG_MeetingEndDateTime": "1405/07/20",
+        "MTG_PlannedActionEndTime": "17:00",
+        "MTG_Participants": participants,
         "MTG_Decisions": {},
         "MTG_Actions": {},
     }
@@ -70,7 +75,7 @@ def test_explicit_random_five_attendees_creates_complete_actions_without_llm(pac
         "هر کدومشون از امروز پنج روز بهشون وقت بده."
     )
     result, questions, reply, intent, pending = runtime.converse(
-        text, task(pack, "minutes"), values, s, questions=[]
+        text, task(pack, "minutes", minutes_native()), values, s, questions=[]
     )
 
     assert result["MTG_MeetingHeld"] == "Held"
@@ -105,7 +110,7 @@ def test_all_attendees_command_uses_every_present_person(pack, monkeypatch):
 
     result, _, reply, intent, _ = runtime.converse(
         "برای هر کسی که توی جلسه شرکت کرده یک اقدام ایجاد کن و پنج روز مهلت بده.",
-        task(pack, "minutes"),
+        task(pack, "minutes", minutes_native()),
         values,
         s,
     )
@@ -125,7 +130,7 @@ def test_explicit_attendance_status_never_selects_absent_or_excused(pack):
     result = commands.apply(
         "پنج نفر از حاضرین را انتخاب کن و برایشان تسک تصادفی ایجاد کن و ۵ روز مهلت بده",
         values,
-        task(pack, "minutes"),
+        task(pack, "minutes", minutes_native()),
         s,
         now=datetime(2026, 10, 6, 9, 0, tzinfo=ZoneInfo("Asia/Tehran")),
     )
@@ -141,7 +146,7 @@ def test_non_command_question_is_not_interpreted_as_batch_mutation(pack):
     assert commands.apply(
         "اقدام‌های جلسه چه کسانی هستند؟",
         values,
-        task(pack, "minutes"),
+        task(pack, "minutes", minutes_native()),
         s,
     ) is None
 
@@ -154,7 +159,7 @@ def test_no_attendee_returns_focused_clarification_without_fabricated_identity(p
     result = commands.apply(
         "برای همه حاضرین یک اقدام ایجاد کن و پنج روز مهلت بده",
         values,
-        task(pack, "minutes"),
+        task(pack, "minutes", minutes_native()),
         s,
     )
     assert result["intent"] == "question"
