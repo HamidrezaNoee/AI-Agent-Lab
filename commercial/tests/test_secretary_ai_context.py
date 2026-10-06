@@ -153,9 +153,9 @@ def test_row_question_answers_from_draft_without_model_or_mutation(pack,monkeypa
  values={'MTG_Agenda':{'3':{'MTG_AgendaTitle':'نیازمندی‌های بازرگانی','MTG_AgendaPlannedMinutes':'10'}}}
  before=copy.deepcopy(values)
  monkeypatch.setattr(r,'extract',lambda *a,**kw:pytest.fail('Read-only row query must not call model'))
- result,questions,reply,intent=r.converse('موضوع ردیف ۳ چیه؟',t,values,S,questions=['قبلی'])
+ result,questions,reply,intent,pending=r.converse('موضوع ردیف ۳ چیه؟',t,values,S,questions=['قبلی'])
  assert 'نیازمندی‌های بازرگانی' in reply and '10' in reply
- assert intent=='question' and result==before==values and questions==['قبلی']
+ assert intent=='question' and pending is None and result==before==values and questions==['قبلی']
 
 def test_model_question_cannot_apply_assignments_or_clear_pending_questions(pack):
  def create(**kw):
@@ -177,8 +177,8 @@ def test_implicit_row_refers_to_current_missing_presenter(pack,monkeypatch):
  values=copy.deepcopy(V)
  values['MTG_Agenda']={'3':{'MTG_AgendaTitle':'نیازمندی‌های واحد بازرگانی','MTG_AgendaPlannedMinutes':'10'}}
  monkeypatch.setattr(r,'extract',lambda *a,**kw:pytest.fail('Model should not be needed'))
- _,_,reply,intent=r.converse('موضوع ردیف چیه؟',task(pack,'invitation'),values,S)
- assert 'ردیف 3' in reply and 'نیازمندی‌های واحد بازرگانی' in reply and intent=='question'
+ _,_,reply,intent,pending=r.converse('موضوع ردیف چیه؟',task(pack,'invitation'),values,S)
+ assert 'ردیف 3' in reply and 'نیازمندی‌های واحد بازرگانی' in reply and intent=='question' and pending is None
 
 
 
