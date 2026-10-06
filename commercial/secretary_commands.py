@@ -311,7 +311,7 @@ def apply(text, current, task, scope, *, questions=(), now=None):
             "MTG_ActionOwnerUID": uid,
             "MTG_ActionOwnerPosition": _position(participant, person),
             "MTG_persiandate_ActionDueDateTime": due_date,
-            "MTG_ActionPriority": "Medium",
+            "MTG_ActionPriority": "Normal",
         }
         actions[key] = row
         created.append((action_no, _person_label(uid, person), description))
