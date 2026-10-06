@@ -147,9 +147,22 @@ def missing(values,stage):
  if stage=='minutes' and values.get('MTG_MeetingHeld')=='Held':
   decisions={r.get('MTG_DecisionNo') for r in rows(values.get('MTG_Decisions')) if r.get('MTG_DecisionText')}
   for i,r in enumerate(rows(values.get('MTG_Actions')),1):
+   action_no=str(r.get('MTG_ActionNo') or ('ردیف '+str(i)))
+   action_text=str(r.get('MTG_ActionDescription') or '').strip()
+   subject=(' «'+action_text[:110]+'»') if action_text else ''
+   labels={
+    'MTG_ActionNo':'شماره اقدام',
+    'MTG_ActionDescription':'شرح اقدام',
+    'MTG_ActionOwnerUID':'مسئول اصلی اقدام',
+    'MTG_persiandate_ActionDueDateTime':'مهلت اقدام',
+    'MTG_ActionDecisionNo':'مصوبه مرتبط با اقدام',
+   }
    for k in ['MTG_ActionNo','MTG_ActionDescription','MTG_ActionOwnerUID','MTG_persiandate_ActionDueDateTime','MTG_ActionDecisionNo']:
-    if not r.get(k):result.append({'field':f'MTG_Actions.{i}.{k}','question':f'اقدام {i}: {k} را تعیین کنید.'})
-   if r.get('MTG_ActionDecisionNo') and r['MTG_ActionDecisionNo'] not in decisions:result.append({'field':f'MTG_Actions.{i}.decision','question':f'مصوبه مرتبط با اقدام {i} موجود نیست؛ مصوبه را تکمیل کنید.'})
+    if not r.get(k):
+     result.append({'field':f'MTG_Actions.{i}.{k}',
+      'question':labels[k]+' '+action_no+subject+' را مشخص کنید.'})
+   if r.get('MTG_ActionDecisionNo') and r['MTG_ActionDecisionNo'] not in decisions:
+    result.append({'field':f'MTG_Actions.{i}.decision','question':'مصوبه '+str(r['MTG_ActionDecisionNo'])+' برای '+action_no+subject+' در فهرست مصوبات پیدا نشد؛ مصوبه مرتبط را تکمیل کنید.'})
    if r.get('MTG_persiandate_ActionDueDateTime'):jalali_instant(r['MTG_persiandate_ActionDueDateTime'],'00:00')
   numbers=[r.get('MTG_ActionNo') for r in rows(values.get('MTG_Actions'))]
   if len(numbers)!=len(set(numbers)):raise ValueError('شماره اقدامات تکراری است.')
