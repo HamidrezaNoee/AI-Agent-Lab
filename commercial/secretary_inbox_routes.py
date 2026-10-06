@@ -303,12 +303,12 @@ def register(app,authorized,csrf):
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
   principal=value[2]
   try:
-   operation_start(principal,body.request_id,'secretary_session_turn',{'session_id':identifier,'source_id':source_id,'pack_id':row['pack_id'],'process_uid':runtime.process_for(t['pack'],t['stage'])})
    def snapshot(con,s,p):
     row,t=runtime.session_load(s,p.subject,identifier)
     if row['revision']!=body.revision:raise RevisionConflict()
     return s,row,t
    s,row,t=access(value,source_id,snapshot)
+   operation_start(principal,body.request_id,'secretary_session_turn',{'session_id':identifier,'source_id':source_id,'pack_id':row['pack_id'],'process_uid':runtime.process_for(t['pack'],t['stage'])})
    def model_only():
     with run_slot((str(principal.tenant_id),principal.subject)):
      operation_active(principal,body.request_id)
