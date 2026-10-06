@@ -122,6 +122,13 @@ def validate(values,stage,directory):
      if c.endswith('UID') and val and val not in people:raise ValueError('شناسه فرد فعال در همین BPMS را انتخاب کنید.')
      opts=columns[c].get('options') or []
      if opts and val and str(val) not in {str(o['value']) for o in opts}:raise ValueError('گزینه گرید نامعتبر است.')
+    if stage=='minutes' and key=='MTG_Participants':
+     status=str(row.get('MTG_AttendanceStatus') or '').strip()
+     attendance_time=str(row.get('MTG_AttendanceTime') or '').strip()
+     if status=='Present' and attendance_time and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',attendance_time):
+      raise ValueError('ساعت حضور شرکت‌کننده حاضر باید با قالب HH:mm باشد.')
+     if status!='Present' and attendance_time:
+      raise ValueError('برای شرکت‌کننده غایب یا دارای غیبت موجه، ساعت حضور نباید ثبت شود.')
   elif not isinstance(v,str) or len(v)>14000:raise ValueError('مقدار فیلد باید متن باشد.')
   if key.endswith('UserUID') and v and v not in people:raise ValueError('کاربر فعال در BPMS پیدا نشد.')
   if spec.get('options') and v and v not in {o['value'] for o in spec['options']}:raise ValueError('گزینه فیلد معتبر نیست.')
@@ -145,6 +152,20 @@ def missing(values,stage):
   elif values.get('MTG_MeetingHeld')=='Held':required+=['MTG_MeetingDiscussionSummary','MTG_MeetingEndDateTime','MTG_MeetingEndTime','MTG_PlannedActionEndTime']
  result=[{'field':k,'question':'لطفاً '+str(FORMS[stage][k]['label'] or k)+' را مشخص کنید.'} for k in required if not values.get(k)]
  if stage=='minutes' and values.get('MTG_MeetingHeld')=='Held':
+  for i,r in enumerate(rows(values.get('MTG_Participants')),1):
+   status=str(r.get('MTG_AttendanceStatus') or '').strip()
+   attendance_time=str(r.get('MTG_AttendanceTime') or '').strip()
+   participant=str(r.get('MTG_ParticipantPosition') or '').strip()
+   who=(' ('+participant+')') if participant else ''
+   if not status:
+    result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceStatus',
+     'question':f'وضعیت حضور شرکت‌کننده ردیف {i}{who} را مشخص کنید: حاضر، غایب یا غیبت موجه.'})
+   elif status=='Present' and not attendance_time:
+    result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceTime',
+     'question':f'ساعت حضور شرکت‌کننده حاضر ردیف {i}{who} را به صورت HH:mm اعلام کنید.'})
+   elif status=='Present' and not re.fullmatch(r'(?:[01]\\d|2[0-3]):[0-5]\\d',attendance_time):
+    result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceTime',
+     'question':f'ساعت حضور شرکت‌کننده حاضر ردیف {i}{who} معتبر نیست؛ آن را به صورت HH:mm اصلاح کنید.'})
   decisions={r.get('MTG_DecisionNo') for r in rows(values.get('MTG_Decisions')) if r.get('MTG_DecisionText')}
   for i,r in enumerate(rows(values.get('MTG_Actions')),1):
    action_no=str(r.get('MTG_ActionNo') or ('ردیف '+str(i)))
