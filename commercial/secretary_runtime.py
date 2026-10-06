@@ -835,6 +835,16 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
     raise PermissionError('پیش‌نویس این صورت‌جلسه متعلق به حساب فعلی نیست.')
    values=copy.deepcopy((row or {}).get('values') or {})
 
+  if values:
+   pending=legacy.missing(values,'minutes')
+   if pending:
+    first='؛ '.join(str(x.get('question') or '') for x in pending[:3] if x.get('question'))
+    extra=len(pending)-min(len(pending),3)
+    detail=f'صورت‌جلسه هنوز {len(pending)} مورد ناقص دارد'
+    if first:detail+=': '+first
+    if extra>0:detail+=f'؛ و {extra} مورد دیگر'
+    raise ValueError(detail)
+
   # No GET /variables preflight here. Some ProcessMaker deployments allow the
   # assigned user to write/route a case but forbid reading all case variables.
   # Re-sending the persisted AVAN draft to the same native case is intentional
