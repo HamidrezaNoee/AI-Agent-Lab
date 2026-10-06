@@ -554,13 +554,14 @@ async function userSettingsPage(){
  let prefs;
  try{prefs=await request("/api/user/preferences",{audit:false})}catch(e){add(m,note(errorDescription(e),true));return}
  app.preferences={...app.preferences,...prefs};
+ const isLocalGodAdmin=app.user?.role==="GodAdmin"||app.user?.bootstrap_mode===true;
 
  const identity=el("section","settings-identity-hero");
  const avatar=el("span","settings-avatar",(app.user?.name||app.user?.username||"U").trim().slice(0,1));
  const identityCopy=el("div","settings-identity-copy");
  add(identityCopy,el("span","settings-kicker","حساب فعال"),el("h2","",app.user?.name||app.user?.username||"کاربر آوان"),
   el("p","muted",(app.user?.username||"")+" · "+(app.user?.role||"User")));
- const securityBadge=el("span","settings-security-badge","Keycloak · ورود سازمانی");
+ const securityBadge=el("span","settings-security-badge",isLocalGodAdmin?"GodAdmin داخلی · حساب دائمی":"Keycloak · ورود سازمانی");
  add(identity,avatar,identityCopy,securityBadge);add(m,identity);
 
  const layout=el("div","settings-layout");
@@ -588,14 +589,14 @@ async function userSettingsPage(){
  },"button primary");
  add(panel,form,add(el("div","settings-card-actions"),save),status);
 
- const security=card("امنیت و رمز عبور","رمز در Keycloak تغییر می‌کند و هیچ رمز عبوری داخل AVAN ذخیره نمی‌شود.");security.classList.add("settings-card","settings-security-card");
+ const security=card("امنیت و رمز عبور",isLocalGodAdmin?"رمز GodAdmin در مخزن امن محلی تغییر می‌کند؛ رمز فعلی برای چرخش لازم است.":"رمز در Keycloak تغییر می‌کند و هیچ رمز عبوری داخل AVAN ذخیره نمی‌شود.");security.classList.add("settings-card","settings-security-card");
  const securityInfo=el("div","settings-security-info");
  add(securityInfo,
   add(el("div","settings-security-item"),el("span","","ارائه‌دهنده هویت"),el("strong","","Keycloak / OIDC")),
   add(el("div","settings-security-item"),el("span","","حساب"),el("strong","",app.user?.username||app.user?.subject||"—")),
   add(el("div","settings-security-item"),el("span","","اثر تغییر رمز"),el("strong","","خروج از همه نشست‌ها"))
  );
- const passwordGrid=el("div","settings-password-grid"),isLocalGodAdmin=app.user?.role==="GodAdmin";
+ const passwordGrid=el("div","settings-password-grid");
  const p0=isLocalGodAdmin?inputField("رمز فعلی GodAdmin","","password"):null;
  const p1=inputField("رمز جدید (حداقل ۱۶ نویسه)","","password"),p2=inputField("تکرار رمز جدید","","password");
  if(p0)p0.input.autocomplete="current-password";p1.input.autocomplete="new-password";p2.input.autocomplete="new-password";
