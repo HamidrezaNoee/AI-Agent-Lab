@@ -1,6 +1,6 @@
 """Admin-registered, source-specific secretary packs compiled from reviewed PMX."""
 from __future__ import annotations
-import hashlib,json,re,secrets
+import copy,hashlib,json,re,secrets
 import xml.etree.ElementTree as ET
 from . import agent_storage
 from .secretary_workflow import CONTRACT,WRITE_FIELDS
