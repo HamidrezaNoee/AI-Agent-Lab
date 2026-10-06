@@ -557,45 +557,66 @@ def test_minutes_submit_preflight_refuses_missing_locked_plan(pack,store):
   r.submit(S,'actor',t,row['revision'],pm=PM())
 
 
-def test_existing_minutes_http400_trigger_failure_can_reopen_without_replaying_trigger(pack,store,monkeypatch):
- native={
-  'MTG_LockedPlan':{'MTG_MeetingStartDateTime':'1405/07/10'},
+
+def test_minutes_direct_advance_uses_rest_only_and_routes_same_case(pack,store,monkeypatch):
+ native=copy.deepcopy(V)
+ native.update({
   'MTG_MeetingHeld':'Held',
   'MTG_MeetingDiscussionSummary':'جمع‌بندی',
-  'MTG_MeetingEndDateTime':'1405/07/24',
-  'MTG_MeetingEndTime':'15:00',
-  'MTG_PlannedActionEndTime':'17:00',
-  'MTG_Participants':{'1':{
-   'MTG_ParticipantUserUID':'c'*32,
-   'MTG_ParticipantPosition':'مدیر مجوزات',
-   'MTG_AttendanceStatus':'Present',
-   'MTG_AttendanceTime':'',
-  }},
- }
- t=task(pack,'minutes',copy.deepcopy(native));row=r.draft(S,'actor',t)
- key=r.task_key(S,t['case_uid'],t['index'])
- with r.agent_storage.transaction() as tx:
-  saved=tx.get(key,lock=True)
-  saved.update(status='reconciliation_required',recovery='manual',
-   last_error='ProcessMaker عملیات «اجرای Trigger بعد از فرم» را نپذیرفت (HTTP 400).')
-  tx.put(key,saved)
- verify_calls=[]
- sentinel_con=object()
- monkeypatch.setattr(c,'verify_installed',lambda *a,**kw:verify_calls.append(kw.get('con')) or True)
+  'MTG_MeetingEndTime':'17:00',
+ })
+ t=task(pack,'minutes',native)
+ row=r.draft(S,'actor',t)
+ trusted=c._trusted_meeting_pack()
  calls=[]
  class PM:
-  def assigned(self,*args):calls.append('assigned');return 1
-  def variables(self,*args):calls.append('variables');return copy.deepcopy(native)
-  def execute_trigger(self,*args):pytest.fail('recovery must not execute trigger')
-  def route(self,*args):pytest.fail('recovery must not route')
- reopened=r.recover_minutes_trigger(S,'actor',t,row['revision'],pm=PM(),con=sentinel_con)
- assert verify_calls==[sentinel_con]
- assert reopened['status']=='draft'
- assert reopened['revision']==row['revision']+1
- assert reopened['values']['MTG_Participants']['1']['MTG_AttendanceTime']==''
- assert calls==['assigned','variables']
- assert any(x['field'].endswith('MTG_AttendanceTime') for x in r.gaps(reopened['values'],{**t,'native':native}))
+  def __init__(self,*a,**kw):calls.append(('init',a,kw))
+  def info(self,case):
+   calls.append(('info',case))
+   return {'current_task':[{
+    'tas_uid':trusted['stages']['minutes']['task_uid'],
+    'usr_uid':S['external_user_id'],
+    'del_thread_status':'OPEN','del_index':1,
+   }]}
+  def set_variables(self,case,index,values,operation=None):
+   calls.append(('variables',case,index,operation))
+  def execute_trigger(self,case,trigger,operation=None):
+   calls.append(('trigger',case,trigger,operation))
+  def route(self,case,index):calls.append(('route',case,index))
+  def close(self):calls.append(('close',))
+ monkeypatch.setattr(r,'PM',PM)
+ monkeypatch.setattr(r,'_native_case_values',lambda *a:pytest.fail('minutes direct advance must never read PM MySQL'))
+ result=r.advance_minutes_direct(
+  S['tenant_id'],'actor',S['source_id'],S['external_user_id'],
+  t['case_uid'],t['index'],pack['id'],'bearer-token')
+ assert result['status']=='sent'
+ assert result['next_stage']=='minutes_approval'
+ assert [x[0] for x in calls if x][1:]==['info','variables','trigger','route','close']
+ saved=store[r.task_key(S,t['case_uid'],t['index'])]
+ assert saved['status']=='sent'
 
+
+def test_minutes_direct_advance_is_idempotent_after_case_reaches_approval(pack,store,monkeypatch):
+ t=task(pack,'minutes',copy.deepcopy(V));r.draft(S,'actor',t)
+ trusted=c._trusted_meeting_pack();calls=[]
+ class PM:
+  def __init__(self,*a,**kw):pass
+  def info(self,case):
+   return {'current_task':[{
+    'tas_uid':trusted['stages']['minutes_approval']['task_uid'],
+    'usr_uid':'c'*32,'del_thread_status':'OPEN','del_index':2,
+   }]}
+  def set_variables(self,*a,**kw):pytest.fail('already advanced case must not be written again')
+  def execute_trigger(self,*a,**kw):pytest.fail('already advanced case must not rerun trigger')
+  def route(self,*a,**kw):pytest.fail('already advanced case must not reroute')
+  def close(self):calls.append('close')
+ monkeypatch.setattr(r,'PM',PM)
+ result=r.advance_minutes_direct(
+  S['tenant_id'],'actor',S['source_id'],S['external_user_id'],
+  t['case_uid'],t['index'],pack['id'],'bearer-token')
+ assert result['already_advanced'] is True
+ assert result['next_stage']=='minutes_approval'
+ assert calls==['close']
 
 def test_trusted_runtime_pack_carries_reviewed_trigger_hashes():
  trusted=c._trusted_meeting_pack()
