@@ -669,3 +669,18 @@ def test_minutes_approval_requires_at_least_one_action_when_approved(pack):
  })
  gaps=r.gaps({'MTG_MinutesApproval':'Approved'},t)
  assert any(x['field']=='MTG_Actions' for x in gaps)
+
+
+def test_latest_reviewed_pmx_pair_is_the_only_runtime_contract():
+ trusted=c._trusted_meeting_pack()
+ assert trusted['meeting']['pmx_sha256']=='153492224d92b8df34aa4502e92ff7a8b4c9ec76cc41acffed184db5e5d72015'
+ assert trusted['action']['pmx_sha256']=='a44a7703546218ed84f32030822b6f14dccb92c7877ca7114badaa81235d8fdb'
+ assert set(trusted['meeting']['stages'])=={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}
+ assert set(trusted['action']['stages'])=={'action_execution','action_review'}
+ assert trusted['meeting']['stages']['minutes']['task_uid']=='a07e9ed93a4b3244aca40996c45eb227'
+ assert trusted['meeting']['stages']['minutes_approval']['task_uid']=='af8402c57b05992f6b6e6c6d9eb5276a'
+ assert trusted['meeting']['stages']['minutes']['after']==['fe88e8afc98ca69585ab0f5fb16bbf74']
+ assert trusted['action']['stages']['action_execution']['task_uid']=='473bb4e227460a3ea6ac0f2cbf8ef8d4'
+ assert trusted['action']['stages']['action_review']['task_uid']=='1bc65198c9b4cf2fae5d3ffbfeea3c00'
+ assert 'MTG002_MeetingAttachment' in trusted['meeting']['stages']['minutes_approval']['fields']
+ assert 'MTG_MeetingFile' not in trusted['meeting']['stages']['minutes_approval']['fields']
