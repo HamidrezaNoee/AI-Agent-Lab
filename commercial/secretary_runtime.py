@@ -797,6 +797,78 @@ def submit(scope,actor,task,revision,*,pm=None):
 
 
 
+def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,index,pack_id,bearer):
+ """Commit FR-MTG-003 and route the same native PM case without any MySQL read path.
+
+ ProcessMaker REST is the source of truth for this write. The actual FR-MTG-003
+ AFTER trigger remains authoritative for validation/normalization. It is safe to
+ rerun before route because the reviewed trigger only updates parent variables.
+ """
+ trusted=catalog._trusted_meeting_pack()
+ stage=trusted['stages']['minutes']
+ approval=trusted['stages']['minutes_approval']
+ pm=PM(source_id,process_uid=trusted['meeting']['process_uid'],bearer=bearer)
+ minimal_scope={'tenant_id':tenant_id,'source_id':source_id}
+ key=task_key(minimal_scope,case_uid,index)
+ row=None
+ try:
+  info=pm.info(case_uid)
+  open_tasks=[t for t in (info.get('current_task') or []) if t.get('del_thread_status')=='OPEN']
+  if any(str(t.get('tas_uid'))==approval['task_uid'] for t in open_tasks):
+   with agent_storage.transaction() as tx:
+    row=tx.get(key,lock=True)
+    if row and row.get('actor')==actor:
+     row.update(status='sent',last_error='',recovery='',failure_phase='',upstream_status=None)
+     tx.put(key,row)
+   return {'status':'sent','next_stage':'minutes_approval','already_advanced':True}
+
+  current=[t for t in open_tasks
+           if str(t.get('tas_uid'))==stage['task_uid']
+           and str(t.get('usr_uid'))==str(external_user_id)]
+  if len(current)!=1:
+   raise ValueError('پرونده دیگر در مرحله ثبت صورت‌جلسه و در کارتابل همین دبیر نیست.')
+  native_index=int(current[0].get('del_index') or 0)
+  if native_index!=int(index):
+   raise ValueError('شماره وظیفه ProcessMaker تغییر کرده است؛ کارتابل را تازه‌سازی کنید.')
+
+  with agent_storage.transaction() as tx:
+   row=tx.get(key,lock=True)
+   if row and row.get('actor')!=actor:
+    raise PermissionError('پیش‌نویس این صورت‌جلسه متعلق به حساب فعلی نیست.')
+   values=copy.deepcopy((row or {}).get('values') or {})
+
+  # If AVAN has a persisted draft, send exactly that draft. If the previous
+  # attempt already wrote variables to PM and AVAN has no draft, leave the
+  # native values untouched and continue with the authoritative trigger.
+  if values:
+   pm.set_variables(case_uid,native_index,values,operation='ثبت نهایی صورت‌جلسه')
+
+  for trigger in stage['after']:
+   pm.execute_trigger(case_uid,trigger,operation='کنترل نهایی صورت‌جلسه')
+
+  pm.route(case_uid,native_index)
+
+  if row:
+   row.update(status='sent',revision=int(row.get('revision') or 0)+1,
+              last_error='',recovery='',failure_phase='',upstream_status=None)
+   with agent_storage.transaction() as tx:
+    tx.put(key,row)
+    tx.audit(tenant_id,actor,'SECRETARY_MINUTES_SENT_DIRECT',
+             {'case_uid':case_uid,'index':native_index,'source_id':source_id,
+              'next_stage':'minutes_approval'})
+  return {'status':'sent','next_stage':'minutes_approval',
+          'revision':(row or {}).get('revision'),'already_advanced':False}
+ except Exception as exc:
+  if row:
+   # FR-MTG-003 is safe to retry; never trap minutes in reconciliation state.
+   row.update(status='draft',last_error=str(getattr(exc,'detail',None) or exc),
+              recovery='',failure_phase='',upstream_status=getattr(exc,'upstream_status',None))
+   with agent_storage.transaction() as tx:tx.put(key,row)
+  raise
+ finally:
+  pm.close()
+
+
 def _minutes_trigger_recovery_row(row):
  if not isinstance(row,dict) or row.get('status')!='reconciliation_required':return False
  if row.get('recovery')=='trigger_retry':return True
