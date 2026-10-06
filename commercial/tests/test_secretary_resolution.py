@@ -48,7 +48,7 @@ def test_pending_confirmation_is_built_from_unique_explicit_candidate(pack):
 
 
 @pytest.mark.parametrize("answer",[
-    "بله","بله همان است","آره همونه","مورد تاییده","تأیید است","اوکی",
+    "بله","بله همان است","آره همونه","مورد تاییده","مورد تاییده.","تأیید است","اوکی","بله administrator",
 ])
 def test_short_affirmations_apply_pending_value_without_model(pack,monkeypatch,answer):
     scope=scope_with_people()
@@ -209,3 +209,80 @@ def test_legacy_history_reconstructs_pending_confirmation_without_model(pack,mon
     assert intent=="resolved" and pending is None
     assert question not in questions
     assert "administrator" in reply
+
+
+def test_pending_confirmation_cannot_overwrite_newer_manual_edit(pack,monkeypatch):
+    scope=scope_with_people()
+    values=minutes_values()
+    values["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]="b"*32
+    pending={
+        "version":1,"kind":"set_identity",
+        "field_path":"MTG_Actions.1.MTG_ActionOwnerUID",
+        "value":"a"*32,"display":"administrator",
+        "expected_value":"",
+        "question":"اقدام 1: MTG_ActionOwnerUID را تعیین کنید.",
+    }
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("stale confirmation must not call model"))
+    result,questions,reply,intent,next_pending=runtime.converse(
+        "بله",task(pack,"minutes"),values,scope,
+        questions=[pending["question"]],pending_confirmation=pending)
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]=="b"*32
+    assert intent=="question" and next_pending is None
+    assert "تغییر کرده" in reply
+
+
+def test_expired_confirmation_cannot_mutate_draft(pack,monkeypatch):
+    from datetime import datetime,timedelta,timezone
+    scope=scope_with_people()
+    values=minutes_values()
+    pending={
+        "version":1,"kind":"set_identity",
+        "field_path":"MTG_Actions.1.MTG_ActionOwnerUID",
+        "value":"a"*32,"display":"administrator",
+        "expected_value":"",
+        "question":"اقدام 1: MTG_ActionOwnerUID را تعیین کنید.",
+        "expires_at":(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat(),
+    }
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("expired confirmation must not call model"))
+    result,_,reply,intent,next_pending=runtime.converse(
+        "بله همان است",task(pack,"minutes"),values,scope,
+        questions=[pending["question"]],pending_confirmation=pending)
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]==""
+    assert intent=="question" and next_pending is None
+    assert "منقضی" in reply
+
+
+@pytest.mark.parametrize("answer,uid",[
+    ("administrator","a"*32),
+    ("ادمین","a"*32),
+    ("مسئول اقدام ۱ mgr.sales باشد","b"*32),
+])
+def test_direct_identity_answer_bypasses_model_without_pending(pack,monkeypatch,answer,uid):
+    scope=scope_with_people()
+    values=minutes_values()
+    question="اقدام 1: MTG_ActionOwnerUID را تعیین کنید."
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("direct identity must not call model"))
+    result,questions,reply,intent,pending=runtime.converse(
+        answer,task(pack,"minutes"),values,scope,
+        questions=[question],pending_confirmation=None,history=[])
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]==uid
+    assert question not in questions
+    assert intent=="resolved" and pending is None
+
+
+def test_identity_question_never_mutates_directly(pack,monkeypatch):
+    scope=scope_with_people()
+    values=minutes_values()
+    called={"value":False}
+    def fake_extract(*args,**kwargs):
+        called["value"]=True
+        return copy.deepcopy(values),["اقدام 1: MTG_ActionOwnerUID را تعیین کنید."],"آیا منظور administrator است؟","question"
+    monkeypatch.setattr(runtime,"extract",fake_extract)
+    result,_,reply,intent,pending=runtime.converse(
+        "آیا administrator است؟",task(pack,"minutes"),values,scope,
+        questions=["اقدام 1: MTG_ActionOwnerUID را تعیین کنید."])
+    assert called["value"] is True
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]==""
+    assert intent=="question"
+    assert pending is not None
+    assert pending["value"]=="a"*32
