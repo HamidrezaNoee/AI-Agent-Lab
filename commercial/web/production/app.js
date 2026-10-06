@@ -188,11 +188,12 @@ async function clientAudit(event,detail={}){
  }catch(_){}
 }
 function errorDescription(error){
- const parts=[error?.message||"خطای نامشخص"];
+ const message=error?.message||"خطای نامشخص",parts=[message];
  if(error?.code && !String(error.code).startsWith("HTTP_") && error.code!=="NETWORK_ERROR" && error.code!=="ABORTED"){
   parts.push("کد: "+error.code);
  }
- if(error?.status)parts.push("HTTP "+error.status);
+ const alreadyShowsUpstream=/ProcessMaker.*HTTP\s+\d{3}/i.test(String(message));
+ if(error?.status && !(error.status===502&&alreadyShowsUpstream))parts.push("HTTP "+error.status);
  if(error?.requestId)parts.push("شناسه پیگیری: "+error.requestId);
  return parts.join(" · ");
 }
