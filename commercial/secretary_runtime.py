@@ -761,6 +761,10 @@ def submit(scope,actor,task,revision,*,pm=None):
   current_native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
   current={**task,'native':current_native}
   if native_stamp(current)!=native_stamp(task):raise RevisionConflict('Native data changed before submission')
+  # FR-MTG-003 AFTER depends on the native BEFORE trigger's locked baseline.
+  # Detect a task opened without preparation before mutating ProcessMaker.
+  if task['stage']=='minutes' and not isinstance(current_native.get('MTG_LockedPlan'),dict):
+   raise ValueError('اطلاعات پایه تأییدشده جلسه در ProcessMaker آماده نیست؛ وظیفه را از کارتابل دوباره باز کنید تا آماده‌سازی فرم انجام شود.')
   with agent_storage.transaction() as tx:
    key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
    if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
@@ -773,8 +777,16 @@ def submit(scope,actor,task,revision,*,pm=None):
    row['status']='sent'
   except Exception as exc:
    detail=_session_failure_text(exc)
-   row.update(status='reconciliation_required',last_error=detail,
-              recovery=('route_only' if 'ارسال پرونده به مرحله بعد' in detail else 'manual'))
+   phase=str(getattr(exc,'pm_phase','') or '')
+   upstream_status=getattr(exc,'upstream_status',None)
+   if phase=='route':
+    recovery='route_only'
+   elif phase=='after_trigger' and task['stage']=='minutes' and upstream_status==400:
+    recovery='trigger_retry'
+   else:
+    recovery='manual'
+   row.update(status='reconciliation_required',last_error=detail,recovery=recovery,
+              failure_phase=phase,upstream_status=upstream_status)
    with agent_storage.transaction() as tx:tx.put(key,row)
    raise
   with agent_storage.transaction() as tx:
@@ -783,6 +795,50 @@ def submit(scope,actor,task,revision,*,pm=None):
  finally:
   if owned:pm.close()
 
+
+
+def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
+ # Recovery is limited to the reviewed FR-MTG-003 AFTER trigger. No trigger is
+ # executed here; the persisted draft is reopened only after native state and
+ # the installed PMX have been verified.
+ if task['stage']!='minutes':raise PermissionError('بازیابی Trigger فقط برای مرحله صورت‌جلسه مجاز است.')
+ trigger='fe88e8afc98ca69585ab0f5fb16bbf74'
+ from pathlib import Path
+ reference=json.loads(Path(__file__).with_name('secretary_pack_reference.json').read_text(encoding='utf-8'))
+ expected_hash=(reference.get('meeting',{}).get('trigger_hashes',{}) or {}).get(trigger)
+ actual_hash=(task['pack'].get('meeting',{}).get('trigger_hashes',{}) or {}).get(trigger)
+ if not expected_hash or actual_hash!=expected_hash:
+  raise PermissionError('نسخه Trigger صورت‌جلسه برای بازیابی امن تأیید نشده است.')
+ catalog.verify_installed(scope['source_id'],task['pack'])
+ owned=pm is None
+ if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
+ try:
+  index=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
+  if index!=task['index']:raise RevisionConflict('Native task changed')
+  key=task_key(scope,task['case_uid'],task['index'])
+  with agent_storage.transaction() as tx:
+   row=tx.get(key,lock=True)
+   if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
+   if row['revision']!=revision or row['status']!='reconciliation_required' or row.get('recovery')!='trigger_retry':
+    raise RevisionConflict()
+  native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
+  if not _submitted_subset(native,row['values']):
+   raise ValueError('اطلاعات ثبت‌شده ProcessMaker با پیش‌نویس ارسال‌شده یکسان نیست؛ بازیابی خودکار متوقف شد.')
+  current={**task,'native':native}
+  values=initial(current)
+  with agent_storage.transaction() as tx:
+   latest=tx.get(key,lock=True)
+   if not latest or latest['revision']!=revision or latest['status']!='reconciliation_required' or latest.get('recovery')!='trigger_retry':
+    raise RevisionConflict()
+   latest.update(status='draft',revision=revision+1,native_stamp=native_stamp(current),values=values,
+                 questions=[],pending_confirmation=None,reply='',last_error='',recovery='',
+                 failure_phase='',upstream_status=None)
+   tx.put(key,latest)
+   tx.audit(scope['tenant_id'],actor,'SECRETARY_MINUTES_TRIGGER_RECOVERY_OPENED',
+            {'case_uid':task['case_uid'],'stage':'minutes','index':task['index']})
+  return latest
+ finally:
+  if owned:pm.close()
 
 def reconcile_task_route(scope,actor,task,revision,*,pm=None):
  owned=pm is None
