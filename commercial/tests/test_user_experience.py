@@ -176,3 +176,33 @@ def test_cancel_run_slot_allows_immediate_replacement_without_old_finally_clobbe
         if second is not None:
             second.__exit__(None,None,None)
         meeting_agent.cancel_run_slot(key)
+
+
+def test_support_logs_filter_by_user_process_source_case_and_stage(memory_store):
+    ux.audit("tenant-1","user-a","API_ACTION",{
+        "source_id":"source-a","process_uid":"process-1","case_uid":"case-1",
+        "stage":"minutes","request_id":"req-1111111111111111","message":"صورتجلسه",
+    })
+    ux.audit("tenant-1","user-b","API_ACTION",{
+        "source_id":"source-b","process_uid":"process-2","case_uid":"case-2",
+        "stage":"action_execution","request_id":"req-2222222222222222","message":"اقدام",
+    })
+    admin=ux.logs("tenant-1","admin","SysAdmin",limit=100,
+                  actor_id="user-b",source_id="source-b",process_uid="process-2",
+                  case_uid="case-2",stage="action_execution")
+    assert len(admin["logs"])==1
+    assert admin["logs"][0]["actor_id"]=="user-b"
+    assert admin["logs"][0]["detail"]["case_uid"]=="case-2"
+    assert set(admin["filters"])=={"actors","sources","processes","stages"}
+
+    mine=ux.logs("tenant-1","user-a","Expert",limit=100,actor_id="user-b")
+    assert {x["actor_id"] for x in mine["logs"]}=={"user-a"}
+
+
+def test_support_log_text_search_matches_safe_operational_context(memory_store):
+    ux.audit("tenant-1","user-a","API_ERROR",{
+        "path":"/api/test","case_uid":"case-77","stage":"minutes","error":"ProcessMaker unavailable",
+    })
+    found=ux.logs("tenant-1","user-a","Expert",limit=100,q="processmaker")
+    assert len(found["logs"])==1
+    assert found["logs"][0]["detail"]["case_uid"]=="case-77"
