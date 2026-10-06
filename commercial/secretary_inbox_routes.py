@@ -175,6 +175,17 @@ def register(app,authorized,csrf):
   try:
    operation_start(p,body.request_id,'secretary_task_turn',{'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id,'pack_id':pack_id,'process_uid':runtime.process_for(t['pack'],t['stage'])})
    def model_run():
+    # Workflow commands are deterministic. Never ask the language model whether
+    # an explicit "send" command should advance a completed minutes task.
+    if t.get('stage')=='minutes' and body.auto_advance and runtime.explicit_advance_intent(body.text,'minutes'):
+     bearer=credentials.token(s,p.subject)
+     sent=runtime.advance_minutes_direct(
+      str(p.tenant_id),p.subject,source_id,s['external_user_id'],
+      case_uid,index,pack_id,bearer)
+     return {'result':{'advanced':True,'status':sent['status'],'assistant':{
+      'stage':'minutes','summary':'','missing':[],'can_submit':False,
+      'message':'صورت‌جلسه به مرحله «تأیید صورت‌جلسه» ارسال شد.'
+     }},'intent':'update','committed':True}
     with run_slot((str(p.tenant_id),p.subject)):
      row=runtime.draft(s,p.subject,t)
      replay=committed_turn_response(s,p,t,row,body.text,body.revision)
