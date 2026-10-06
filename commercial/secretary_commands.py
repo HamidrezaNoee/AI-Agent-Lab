@@ -115,6 +115,11 @@ def _explicit_command(text):
     )
 
 
+def is_explicit_batch_action_command(text, stage="minutes"):
+    """Return True only for the narrow, explicit batch-action command surface."""
+    return stage == "minutes" and _explicit_command(text)
+
+
 def _meeting_was_explicitly_held(text):
     normalized = resolution.normalize_text(text)
     return any(phrase in normalized for phrase in _HELD_PHRASES)
@@ -252,7 +257,7 @@ def apply(text, current, task, scope, *, questions=(), now=None):
 
     Returns None when the message is not a supported explicit command.
     """
-    if task.get("stage") != "minutes" or not _explicit_command(text):
+    if not is_explicit_batch_action_command(text, task.get("stage")):
         return None
 
     normalized = resolution.normalize_text(text)
@@ -290,6 +295,7 @@ def apply(text, current, task, scope, *, questions=(), now=None):
     days = _due_days(normalized)
     due_date = _jalali_after_days(days, now=now) if days is not None else ""
     topics = _topics({**task.get("native", {}), **values})
+    had_decisions = bool(_existing_decisions(values))
     decisions, decision_numbers = _ensure_decisions(values, topics, len(selected))
     values["MTG_Decisions"] = decisions
 
@@ -327,6 +333,8 @@ def apply(text, current, task, scope, *, questions=(), now=None):
         reply += f" مهلت همه اقدامات {days} روز از امروز، یعنی {due_date}، ثبت شد."
     if shortage:
         reply += f" فقط {len(selected)} شرکت‌کننده واجد شرایط در جلسه موجود بود؛ بیشتر از این تعداد انتخاب نشد."
+    if not had_decisions:
+        reply += " برای حفظ ارتباط معتبر اقدام‌ها با ProcessMaker، مصوبه‌های مرتبط نیز به‌صورت پیش‌نویس ساخته شدند."
     reply += "\n" + "\n".join(
         f"{action_no} · {owner}: {description}" for action_no, owner, description in created
     )
