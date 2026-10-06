@@ -2,7 +2,7 @@
 from __future__ import annotations
 import copy,hashlib,json,logging,re,secrets,traceback
 from datetime import datetime,timedelta,timezone
-from . import agent_storage,secretary_catalog as catalog,secretary_workflow as legacy
+from . import agent_storage,secretary_catalog as catalog,secretary_workflow as legacy,secretary_resolution as resolution
 from .agent_workspace import source_user_key,scope_stamp,RevisionConflict
 from .processmaker_store import query,decode_case,text,grid
 from .secretary_credentials import token
@@ -146,7 +146,7 @@ def draft(scope,actor,task):
   key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
   if not row or row.get('scope')!=scope_stamp(scope) or row['actor']!=actor or ((row.get('native_stamp')!=native_stamp(task) or row.get('pack_revision')!=task['pack']['revision']) and row.get('status')=='draft'):
    initial_values=initial(task);assistant=assistant_state(initial_values,task,scope)
-   row={'actor':actor,'scope':scope_stamp(scope),'pack_revision':task['pack']['revision'],'native_stamp':native_stamp(task),'values':initial_values,'revision':(row or {}).get('revision',0)+1,'status':'draft','questions':[],
+   row={'actor':actor,'scope':scope_stamp(scope),'pack_revision':task['pack']['revision'],'native_stamp':native_stamp(task),'values':initial_values,'revision':(row or {}).get('revision',0)+1,'status':'draft','questions':[],'pending_confirmation':None,
         'history':[{'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()}]}
    tx.put(key,row)
  return row
@@ -409,7 +409,9 @@ def validate(values,task,scope):
  if stage=='action_review' and values.get('MTGA_ReviewStatus2') not in ('','Closed','Rework'):raise ValueError('نتیجه بررسی باید Closed یا Rework باشد.')
 
 
-def update(scope,actor,task,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None,reply=None):
+_KEEP_PENDING=object()
+
+def update(scope,actor,task,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None,reply=None,pending_confirmation=_KEEP_PENDING):
  validate(values,task,scope)
  with agent_storage.transaction() as tx:
   key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
@@ -423,7 +425,8 @@ def update(scope,actor,task,revision,values,questions=(),*,turn_text=None,turn_s
    history.append({'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()})
   attachments=list(row.get('attachments') or [])
   if attachment:attachments=(attachments+[attachment])[-20:]
-  row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments,reply=reply or '');tx.put(key,row)
+  confirmation=row.get('pending_confirmation') if pending_confirmation is _KEEP_PENDING else pending_confirmation
+  row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments,reply=reply or '',pending_confirmation=confirmation);tx.put(key,row)
  return row
 
 def _merge_extracted_value(current,value):
@@ -534,8 +537,22 @@ class ConversationExtraction(legacy.Extraction):
  intent: Literal['update','question']
  reply: str = legacy.Field(max_length=4000)
 
-def converse(notes,task,current,scope,*,questions=()):
+def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,history=()):
  raw=_intent_text(notes)
+
+ # Layer 1: deterministic reference/confirmation resolution. No model call.
+ resolved=resolution.resolve_pending(notes,current,questions,pending_confirmation,scope.get('directory',{}))
+ if resolved:
+  values=resolved['values'];remaining=resolved['questions'];intent=resolved['intent']
+  next_state=assistant_state(values,task,scope,remaining)
+  reply=resolved['reply']
+  if intent=='resolved' and next_state['message'] and next_state['message'] not in reply:
+   reply+='\n\n'+next_state['message']
+  elif intent=='question' and next_state['missing']:
+   reply+='\n\n'+next_state['message']
+  return values,remaining,reply,intent,resolved.get('pending_confirmation')
+
+ # Layer 2: deterministic read-only questions about current draft.
  if len(raw)<180 and 'ردیف' in raw and any(x in raw for x in ('چیه','چیست','کدام','کدوم','موضوعش')):
   match=re.search(r'ردیف\s*(\d+)',raw)
   if not match:
@@ -550,8 +567,16 @@ def converse(notes,task,current,scope,*,questions=()):
     if row.get('MTG_AgendaPlannedMinutes'):reply+=' زمان ارائه: '+str(row['MTG_AgendaPlannedMinutes'])+' دقیقه.'
     presenter=row.get('MTG_AgendaPresenterUID')
     reply+=(' ارائه‌دهنده: '+_person(presenter,scope)+'.') if presenter else ' ارائه‌دهنده این ردیف هنوز مشخص نشده؛ چه کسی ارائه می‌کند؟'
-    return copy.deepcopy(current),list(questions),reply,'question'
- return extract(notes,task,current,scope,questions=questions,with_reply=True)
+    return copy.deepcopy(current),list(questions),reply,'question',pending_confirmation
+
+ # Layer 3: structured LLM extraction for genuinely new facts.
+ values,remaining,reply,intent=extract(notes,task,current,scope,questions=questions,with_reply=True)
+ pending=None
+ if intent=='update':
+  pending=resolution.propose_identity_confirmation(
+   reply,values,gaps(values,task),scope.get('directory',{})
+  )
+ return values,remaining,reply,intent,pending
 
 def extract(notes,task,current,scope,*,questions=(),client=None,model=None,with_reply=False):
  from .secretary_ai_context import build_context
@@ -612,6 +637,7 @@ def extract(notes,task,current,scope,*,questions=(),client=None,model=None,with_
     return values,remaining
    except (AgentInvalid,ValueError) as exc:
     last=exc
+    logger.warning('Secretary validation rejected attempt=%s reason=%s',attempt+1,str(exc)[:160])
     if attempt==0:continue
     raise
   raise last or AgentInvalid('Invalid extraction')
@@ -706,7 +732,7 @@ def session_create(scope,actor,pack_id,values=None):
  item={'pack':pack,'stage':'invitation','native':{}}
  validate(values,item,scope)
  assistant=assistant_state(values,item,scope)
- row={'id':secrets.token_urlsafe(24),'pack_id':pack_id,'pack_revision':pack['revision'],'scope':scope_stamp(scope),'actor':actor,'values':values,'status':'draft','revision':1,'case_uid':None,'questions':[],
+ row={'id':secrets.token_urlsafe(24),'pack_id':pack_id,'pack_revision':pack['revision'],'scope':scope_stamp(scope),'actor':actor,'values':values,'status':'draft','revision':1,'case_uid':None,'questions':[],'pending_confirmation':None,
       'history':[{'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()}],'attachments':[]}
  with agent_storage.transaction() as tx:
   key=source_user_key('secretary_sessions',scope,actor);items=tx.get(key,[],lock=True)
@@ -721,7 +747,7 @@ def session_load(scope,actor,identifier):
  if row['pack_revision']!=pack['revision']:raise RevisionConflict('تنظیم بسته فرایند تغییر کرده است.')
  return row,{'pack':pack,'stage':'invitation','native':{},'case_uid':None}
 
-def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None,reply=None):
+def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None,reply=None,pending_confirmation=_KEEP_PENDING):
  _,task=session_load(scope,actor,identifier);validate(values,task,scope)
  with agent_storage.transaction() as tx:
   key=source_user_key('secretary_sessions',scope,actor);items=tx.get(key,[],lock=True);row=next((r for r in items if r['id']==identifier and r['scope']==scope_stamp(scope)),None)
@@ -735,7 +761,8 @@ def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_te
    history.append({'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()})
   attachments=list(row.get('attachments') or [])
   if attachment:attachments=(attachments+[attachment])[-20:]
-  row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments,reply=reply or '');tx.put(key,items)
+  confirmation=row.get('pending_confirmation') if pending_confirmation is _KEEP_PENDING else pending_confirmation
+  row.update(values=values,revision=revision+1,questions=list(questions),history=history[-40:],attachments=attachments,reply=reply or '',pending_confirmation=confirmation);tx.put(key,items)
  return row
 
 def _submitted_subset(current,submitted):
