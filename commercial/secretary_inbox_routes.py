@@ -177,7 +177,7 @@ def register(app,authorized,csrf):
    result=guard_model(model_run)
    if intent=='resolved':
     event=('SECRETARY_AGENTIC_COMMAND_EXECUTED'
-           if runtime.commands.is_explicit_batch_action_command(body.text,t.get('stage'))
+           if runtime.commands.command_kind(body.text,t.get('stage'))
            else 'SECRETARY_CONFIRMATION_RESOLVED')
     ux.audit(str(p.tenant_id),p.subject,event,{
      'case_uid':case_uid,'stage':t.get('stage'),'result':'deterministic'
@@ -338,7 +338,7 @@ def register(app,authorized,csrf):
    result=access(value,source_id,commit)
    if intent=='resolved':
     event=('SECRETARY_AGENTIC_COMMAND_EXECUTED'
-           if runtime.commands.is_explicit_batch_action_command(body.text,t.get('stage'))
+           if runtime.commands.command_kind(body.text,t.get('stage'))
            else 'SECRETARY_CONFIRMATION_RESOLVED')
     ux.audit(str(principal.tenant_id),principal.subject,event,{
      'session_id':identifier,'result':'deterministic'
