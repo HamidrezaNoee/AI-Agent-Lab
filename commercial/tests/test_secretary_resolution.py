@@ -191,3 +191,21 @@ def test_confirmation_intent_is_not_generic_update_to_prevent_accidental_advance
         "بله",task(pack,"minutes"),values,scope,
         questions=[pending["question"]],pending_confirmation=pending)
     assert intent=="resolved"
+
+
+def test_legacy_history_reconstructs_pending_confirmation_without_model(pack,monkeypatch):
+    scope=scope_with_people()
+    values=minutes_values()
+    question="اقدام 1: MTG_ActionOwnerUID را تعیین کنید."
+    history=[
+        {"role":"user","text":"ادمین"},
+        {"role":"assistant","text":"برای مسئول اقدام ۱، «ادمین» را دریافت کردم؛ اما نام کاربری موجود در فهرست «administrator» است. لطفاً تأیید کنید منظور همین کاربر است."},
+    ]
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("legacy confirmation recovery must not call model"))
+    result,questions,reply,intent,pending=runtime.converse(
+        "بله همان است",task(pack,"minutes"),values,scope,
+        questions=[question],pending_confirmation=None,history=history)
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]=="a"*32
+    assert intent=="resolved" and pending is None
+    assert question not in questions
+    assert "administrator" in reply
