@@ -848,6 +848,13 @@ def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
  finally:
   if owned:pm.close()
 
+def _route_recovery_row(row):
+ if not isinstance(row,dict) or row.get('status')!='reconciliation_required':return False
+ if row.get('recovery')=='route_only':return True
+ detail=str(row.get('last_error') or '')
+ return row.get('recovery') in ('','manual',None) and 'ارسال پرونده به مرحله بعد' in detail
+
+
 def reconcile_task_route(scope,actor,task,revision,*,pm=None):
  owned=pm is None
  if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
@@ -858,7 +865,7 @@ def reconcile_task_route(scope,actor,task,revision,*,pm=None):
   with agent_storage.transaction() as tx:
    row=tx.get(key,lock=True)
    if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
-   if row['revision']!=revision or row['status']!='reconciliation_required':raise RevisionConflict()
+   if row['revision']!=revision or not _route_recovery_row(row):raise RevisionConflict()
   native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
   if not _submitted_subset(native,row['values']):
    raise ValueError('اطلاعات ثبت‌شده ProcessMaker با پیش‌نویس تأییدشده AVAN یکسان نیست؛ Route خودکار متوقف شد.')
