@@ -797,6 +797,14 @@ def submit(scope,actor,task,revision,*,pm=None):
 
 
 
+def _minutes_trigger_recovery_row(row):
+ if not isinstance(row,dict) or row.get('status')!='reconciliation_required':return False
+ if row.get('recovery')=='trigger_retry':return True
+ # Compatibility with failures persisted by builds before failure-phase metadata.
+ detail=str(row.get('last_error') or '')
+ return row.get('recovery') in ('','manual',None) and 'اجرای Trigger بعد از فرم' in detail and 'HTTP 400' in detail
+
+
 def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
  # Recovery is limited to the reviewed FR-MTG-003 AFTER trigger. No trigger is
  # executed here; the persisted draft is reopened only after native state and
@@ -819,7 +827,7 @@ def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
   with agent_storage.transaction() as tx:
    row=tx.get(key,lock=True)
    if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
-   if row['revision']!=revision or row['status']!='reconciliation_required' or row.get('recovery')!='trigger_retry':
+   if row['revision']!=revision or not _minutes_trigger_recovery_row(row):
     raise RevisionConflict()
   native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
   if not _submitted_subset(native,row['values']):
@@ -828,7 +836,7 @@ def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
   values=initial(current)
   with agent_storage.transaction() as tx:
    latest=tx.get(key,lock=True)
-   if not latest or latest['revision']!=revision or latest['status']!='reconciliation_required' or latest.get('recovery')!='trigger_retry':
+   if not latest or latest['revision']!=revision or not _minutes_trigger_recovery_row(latest):
     raise RevisionConflict()
    latest.update(status='draft',revision=revision+1,native_stamp=native_stamp(current),values=values,
                  questions=[],pending_confirmation=None,reply='',last_error='',recovery='',
