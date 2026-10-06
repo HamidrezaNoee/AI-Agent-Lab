@@ -601,6 +601,18 @@ def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,h
   return values,remaining,reply,command['intent'],command.get('pending_confirmation')
 
  # Layer 2: deterministic read-only questions about current draft.
+ if len(raw)<180 and any(x in raw for x in ('کجا گیریم','کجا گیر کردیم','کجا هستیم','چی مونده','چه چیزی مونده','چه چیزهایی مونده','مرحله بعد چیه')):
+  pending=gaps(current,task)
+  state=assistant_state(current,task,scope,questions)
+  if not pending:
+   reply='این مرحله کامل است و مورد اجباری باز نداریم. '+state['message']
+  else:
+   first=str(pending[0].get('question') or '')
+   rest=max(0,len(pending)-1)
+   reply='الان روی «'+(STAGE_LABELS.get(task['stage']) or task['stage'])+'» هستیم. مورد بعدی: '+first
+   if rest:reply+=' بعد از آن '+str(rest)+' مورد ضروری دیگر باقی می‌ماند.'
+  return copy.deepcopy(current),list(questions),reply,'question',pending_confirmation
+
  if len(raw)<180 and 'ردیف' in raw and any(x in raw for x in ('چیه','چیست','کدام','کدوم','موضوعش')):
   match=re.search(r'ردیف\s*(\d+)',raw)
   if not match:
