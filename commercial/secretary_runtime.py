@@ -575,7 +575,7 @@ def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,h
  # missing UID path. This avoids unnecessary model calls for exact usernames,
  # known safe aliases, or phrases such as "مسئول اقدام ۲ mgr.sales باشد".
  direct=resolution.resolve_direct_identity(
-  notes,current,questions,gaps(current,task),scope.get('directory',{}))
+  notes,current,questions,gaps(current,task),scope.get('directory',{}),history=history)
  if direct:
   values=direct['values'];remaining=direct['questions']
   next_state=assistant_state(values,task,scope,remaining)
