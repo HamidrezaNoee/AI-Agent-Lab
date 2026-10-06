@@ -424,3 +424,19 @@ def test_all_present_attendees_can_receive_one_attendance_time_command(pack):
     assert result["values"]["MTG_Participants"]["2"]["MTG_AttendanceTime"]=="17:00"
     assert result["values"]["MTG_Participants"]["3"]["MTG_AttendanceTime"]==""
     assert not result["questions"]
+
+
+def test_all_present_with_time_fills_attendance_in_one_command(pack):
+    s,participants=scope()
+    values=minutes_values(participants)
+    for row in values["MTG_Participants"].values():
+        row["MTG_AttendanceStatus"]=""
+        row["MTG_AttendanceTime"]=""
+    result=commands.apply(
+        "همه شرکت‌کنندگان حاضر بودند و ساعت حضور همه 17:00 بود",
+        values,task(pack,"minutes",minutes_native()),s,questions=[]
+    )
+    assert result["resolution"]=="all_present"
+    for row in result["values"]["MTG_Participants"].values():
+        assert row["MTG_AttendanceStatus"]=="Present"
+        assert row["MTG_AttendanceTime"]=="17:00"
