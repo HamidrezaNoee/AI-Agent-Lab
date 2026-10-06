@@ -144,7 +144,7 @@ def register(app,authorized,csrf):
  def task_turn(source_id:str,case_uid:str,index:int,pack_id:str,body:Turn,value=Depends(csrf)):
   s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
   try:
-   operation_start(p,body.request_id,'secretary_task_turn',{'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id})
+   operation_start(p,body.request_id,'secretary_task_turn',{'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id,'pack_id':pack_id,'process_uid':runtime.process_for(t['pack'],t['stage'])})
    def model_run():
     with run_slot((str(p.tenant_id),p.subject)):
      row=runtime.draft(s,p.subject,t)
@@ -180,7 +180,8 @@ def register(app,authorized,csrf):
            if runtime.commands.command_kind(body.text,t.get('stage'))
            else 'SECRETARY_CONFIRMATION_RESOLVED')
     ux.audit(str(p.tenant_id),p.subject,event,{
-     'case_uid':case_uid,'stage':t.get('stage'),'result':'deterministic'
+     'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id,'pack_id':pack_id,
+     'process_uid':runtime.process_for(t['pack'],t['stage']),'result':'deterministic'
     })
    operation_finish(p,body.request_id,'completed',{'case_uid':case_uid,'stage':t.get('stage'),'result':'updated'})
    return result
@@ -302,7 +303,7 @@ def register(app,authorized,csrf):
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
   principal=value[2]
   try:
-   operation_start(principal,body.request_id,'secretary_session_turn',{'session_id':identifier,'source_id':source_id})
+   operation_start(principal,body.request_id,'secretary_session_turn',{'session_id':identifier,'source_id':source_id,'pack_id':row['pack_id'],'process_uid':runtime.process_for(t['pack'],t['stage'])})
    def snapshot(con,s,p):
     row,t=runtime.session_load(s,p.subject,identifier)
     if row['revision']!=body.revision:raise RevisionConflict()
@@ -341,7 +342,8 @@ def register(app,authorized,csrf):
            if runtime.commands.command_kind(body.text,t.get('stage'))
            else 'SECRETARY_CONFIRMATION_RESOLVED')
     ux.audit(str(principal.tenant_id),principal.subject,event,{
-     'session_id':identifier,'result':'deterministic'
+     'session_id':identifier,'source_id':source_id,'pack_id':row['pack_id'],
+     'process_uid':runtime.process_for(t['pack'],t['stage']),'stage':t.get('stage'),'result':'deterministic'
     })
    operation_finish(principal,body.request_id,'completed',{'session_id':identifier,'result':'updated'})
    return result
