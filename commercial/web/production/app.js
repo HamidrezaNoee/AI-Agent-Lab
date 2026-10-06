@@ -189,6 +189,9 @@ async function clientAudit(event,detail={}){
 }
 function errorDescription(error){
  const parts=[error?.message||"خطای نامشخص"];
+ if(error?.code && !String(error.code).startsWith("HTTP_") && error.code!=="NETWORK_ERROR" && error.code!=="ABORTED"){
+  parts.push("کد: "+error.code);
+ }
  if(error?.status)parts.push("HTTP "+error.status);
  if(error?.requestId)parts.push("شناسه پیگیری: "+error.requestId);
  return parts.join(" · ");
