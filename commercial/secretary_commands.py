@@ -408,7 +408,11 @@ def apply(text, current, task, scope, *, questions=(), now=None):
         values["MTG_Actions"] = actions
         remaining = _prune_questions(questions, values)
         # Replace stale raw owner questions with focused ambiguity questions only.
-        remaining = [q for q in remaining if "مسئول اصلی اقدام" not in resolution.normalize_text(q)]
+        remaining = [
+            q for q in remaining
+            if "مسئول اصلی اقدام" not in resolution.normalize_text(q)
+            and "mtg_actionowneruid" not in str(q).casefold()
+        ]
         remaining.extend(reason for _, _, reason in unresolved)
         if assigned:
             lines = [
