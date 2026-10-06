@@ -269,7 +269,15 @@ def assistant_state(values,task,scope,questions=()):
    if discussion:lines.append('جمع‌بندی مذاکرات: '+discussion)
    decisions=[_compact(r.get('MTG_DecisionText'),220) for r in _rows(v.get('MTG_Decisions')) if r.get('MTG_DecisionText')]
    if decisions:lines.append('مصوبات: '+ '؛ '.join(decisions[:8]))
-   actions=[_compact(r.get('MTG_ActionDescription'),220) for r in _rows(v.get('MTG_Actions')) if r.get('MTG_ActionDescription')]
+   actions=[]
+   for row in _rows(v.get('MTG_Actions')):
+    if not row.get('MTG_ActionDescription'):continue
+    item=''
+    if row.get('MTG_ActionNo'):item+=_compact(row.get('MTG_ActionNo'),40)+' · '
+    item+=_compact(row.get('MTG_ActionDescription'),220)
+    if row.get('MTG_ActionOwnerUID'):item+=' — '+_person(row.get('MTG_ActionOwnerUID'),scope)
+    if row.get('MTG_persiandate_ActionDueDateTime'):item+=' — مهلت '+_display_date(row.get('MTG_persiandate_ActionDueDateTime'))
+    actions.append(item)
    if actions:lines.append('اقدامات: '+ '؛ '.join(actions[:8]))
  elif stage in ('action_execution','action_review'):
   lines.append('اقدام '+_compact(v.get('MTGA_ActionNo'))+' · '+_compact(v.get('MTGA_ActionDescription') or task.get('title')))
