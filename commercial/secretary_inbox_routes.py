@@ -306,17 +306,6 @@ def register(app,authorized,csrf):
   if not body.confirmed:raise HTTPException(422,'ارسال را بعد از بازبینی تأیید کنید.')
   Ref(case_uid=case_uid,index=index,pack_id=pack_id)
   return access(value,source_id,lambda con,s,p:runtime.submit(s,p.subject,runtime.task(con,s,case_uid,index,pack_id),body.revision))
- @app.post(base+'/tasks/{case_uid}/{index}/recover-trigger')
- def recover_task_trigger(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
-  if not body.confirmed:raise HTTPException(422,'بازیابی امن مرحله را صریحاً تأیید کنید.')
-  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
-  def run(con,s,p):
-   t=runtime.task(con,s,case_uid,index,pack_id)
-   row=runtime.recover_minutes_trigger(s,p.subject,t,body.revision,con=con)
-   fresh=runtime.task(con,s,case_uid,index,pack_id)
-   return response(s,p,fresh,row)
-  return access(value,source_id,run)
-
  @app.post(base+'/tasks/{case_uid}/{index}/reconcile-route')
  def reconcile_task_route(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
   if not body.confirmed:raise HTTPException(422,'ادامه Route همین پرونده را صریحاً تأیید کنید.')
