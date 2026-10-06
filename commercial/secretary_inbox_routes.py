@@ -1,4 +1,5 @@
 """Task inbox and secretary tools; all writes retain current native assignment checks."""
+import logging
 from fastapi import Depends,HTTPException,Query,Request
 from fastapi.responses import Response
 from urllib.parse import unquote
@@ -7,6 +8,8 @@ from . import secretary_runtime as runtime,secretary_catalog as catalog,secretar
 from .agent_workspace import RevisionConflict
 from .agent_routes import guard_model
 from .meeting_agent import run_slot
+
+logger=logging.getLogger(__name__)
 
 class Pack(BaseModel):
  model_config=ConfigDict(extra='forbid')
@@ -62,7 +65,13 @@ def register(app,authorized,csrf):
  def operation_active(p,request_id):
   if request_id:ux.ensure_active(str(p.tenant_id),p.subject,request_id)
  def operation_finish(p,request_id,state='completed',detail=None):
-  if request_id:ux.finish_operation(str(p.tenant_id),p.subject,request_id,state,detail or {})
+  if not request_id:return True
+  try:
+   ux.finish_operation(str(p.tenant_id),p.subject,request_id,state,detail or {})
+   return True
+  except Exception:
+   logger.exception("Secretary operation finalization failed request_id=%s state=%s",request_id,state)
+   return False
  def header_request_id(request):
   value=str(request.headers.get('X-AVAN-Request-ID') or '').strip()
   if not value:return None
