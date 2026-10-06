@@ -811,13 +811,16 @@ def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
  # the installed PMX have been verified.
  if task['stage']!='minutes':raise PermissionError('بازیابی Trigger فقط برای مرحله صورت‌جلسه مجاز است.')
  trigger='fe88e8afc98ca69585ab0f5fb16bbf74'
- from pathlib import Path
- reference=json.loads(Path(__file__).with_name('secretary_pack_reference.json').read_text(encoding='utf-8'))
- expected_hash=(reference.get('meeting',{}).get('trigger_hashes',{}) or {}).get(trigger)
- actual_hash=(task['pack'].get('meeting',{}).get('trigger_hashes',{}) or {}).get(trigger)
- if not expected_hash or actual_hash!=expected_hash:
-  raise PermissionError('نسخه Trigger صورت‌جلسه برای بازیابی امن تأیید نشده است.')
- catalog.verify_installed(scope['source_id'],task['pack'])
+ # Saved catalog rows from older AVAN builds may not contain trigger_hashes.
+ # Recovery must verify the live ProcessMaker installation, not stale catalog
+ # metadata. Use the reviewed built-in descriptor (with reference hashes) and
+ # let verify_installed hash TRI_WEBBOT from the ProcessMaker database.
+ reviewed=catalog._trusted_meeting_pack()
+ if task['pack'].get('meeting',{}).get('process_uid')!=reviewed['meeting']['process_uid']:
+  raise PermissionError('فرایند صورت‌جلسه با نسخه بازبینی‌شده AVAN یکسان نیست.')
+ if trigger not in (reviewed['meeting'].get('trigger_hashes') or {}):
+  raise PermissionError('Hash مرجع Trigger صورت‌جلسه در AVAN موجود نیست.')
+ catalog.verify_installed(scope['source_id'],reviewed)
  owned=pm is None
  if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
  try:
