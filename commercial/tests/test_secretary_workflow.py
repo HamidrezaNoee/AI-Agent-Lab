@@ -150,3 +150,17 @@ def test_minutes_missing_questions_never_expose_internal_pmx_field_names():
  assert 'MTG_ActionOwnerUID' not in owner['question']
  assert 'مسئول اصلی اقدام' in owner['question']
  assert 'A-002' in owner['question']
+
+
+def test_minutes_requires_actual_meeting_end_time_and_allows_writing_it():
+ values={
+  'MTG_MeetingHeld':'Held',
+  'MTG_MeetingDiscussionSummary':'جمع‌بندی جلسه',
+  'MTG_MeetingEndDateTime':'1405/07/24',
+  'MTG_PlannedActionEndTime':'17:00',
+ }
+ gaps=f.missing(values,'minutes')
+ assert any(x['field']=='MTG_MeetingEndTime' for x in gaps)
+ values['MTG_MeetingEndTime']='15:00'
+ assert not any(x['field']=='MTG_MeetingEndTime' for x in f.missing(values,'minutes'))
+ f.validate(values,'minutes',S['directory'])
