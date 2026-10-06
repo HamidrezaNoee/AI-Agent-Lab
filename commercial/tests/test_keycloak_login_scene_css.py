@@ -67,3 +67,19 @@ def test_keycloak_theme_cache_is_disabled_for_runtime_appearance_volume():
     assert "--spi-theme--cache-templates=false" in compose
     assert "rm -rf /opt/keycloak/data/tmp/kc-gzip-cache" in compose
     assert "avan-ui:/opt/keycloak/themes/avan/login/resources/generated:ro" in compose
+
+
+def test_login_scene_reloads_saved_appearance_when_tab_regains_focus():
+    js = (THEME / "js" / "login-scene.js").read_text(encoding="utf-8")
+    assert "async function refreshConfig()" in js
+    assert 'addEventListener("focus",()=>{if(root)void refreshConfig()})' in js
+    assert 'if(!document.hidden)void refreshConfig()' in js
+
+
+def test_all_keycloak_deployment_modes_disable_stale_theme_cache():
+    for name in ("compose.yaml","compose.production.yaml","compose.https.yaml"):
+        compose = (ROOT / name).read_text(encoding="utf-8")
+        assert "--spi-theme--static-max-age=-1" in compose
+        assert "--spi-theme--cache-themes=false" in compose
+        assert "--spi-theme--cache-templates=false" in compose
+        assert "rm -rf /opt/keycloak/data/tmp/kc-gzip-cache" in compose
