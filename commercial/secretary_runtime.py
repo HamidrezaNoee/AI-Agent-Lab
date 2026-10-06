@@ -149,6 +149,16 @@ def draft(scope,actor,task):
    row={'actor':actor,'scope':scope_stamp(scope),'pack_revision':task['pack']['revision'],'native_stamp':native_stamp(task),'values':initial_values,'revision':(row or {}).get('revision',0)+1,'status':'draft','questions':[],'pending_confirmation':None,
         'history':[{'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()}]}
    tx.put(key,row)
+  elif row.get('status')=='draft':
+   allowed=set(FIELDS[task['stage']])|({'MTG_ActionSummary'} if task['stage']=='monitoring' else set())
+   current=row.get('values') or {}
+   cleaned={k:v for k,v in current.items() if k in allowed}
+   if cleaned!=current:
+    row['values']=cleaned
+    row['revision']=int(row.get('revision') or 0)+1
+    row['questions']=[]
+    row['pending_confirmation']=None
+    tx.put(key,row)
  return row
 
 def form(task):
