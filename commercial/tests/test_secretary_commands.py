@@ -301,3 +301,27 @@ def test_progress_question_reports_human_next_gap_without_llm(pack, monkeypatch)
     assert intent=="question"
     assert "مسئول اصلی اقدام A-002" in reply
     assert "MTG_ActionOwnerUID" not in reply
+
+
+def test_relative_planning_date_and_spoken_time_are_deterministic(pack, monkeypatch):
+    s,participants=scope()
+    values=minutes_values(participants)
+    values["MTG_MeetingHeld"]="Held"
+    values["MTG_MeetingEndDateTime"]=""
+    values["MTG_PlannedActionEndTime"]=""
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("planning command must not call LLM"))
+    monkeypatch.setattr(commands,"_jalali_after_days",lambda days,now=None:"1405/07/24")
+    result,questions,reply,intent,_=runtime.converse(
+        "برای ده روز آینده بگذار",task(pack,"minutes",minutes_native()),values,s,
+        questions=["تاریخ پایان برنامه‌ریزی را مشخص کنید."]
+    )
+    assert result["MTG_MeetingEndDateTime"]=="1405/07/24"
+    assert intent=="resolved"
+    assert "1405/07/24" in reply
+    result2,questions2,reply2,intent2,_=runtime.converse(
+        "ساعت پنج بعد از ظهر",task(pack,"minutes",minutes_native()),result,s,
+        questions=["ساعت پایان برنامه‌ریزی را مشخص کنید."]
+    )
+    assert result2["MTG_PlannedActionEndTime"]=="17:00"
+    assert intent2=="resolved"
+    assert "17:00" in reply2
