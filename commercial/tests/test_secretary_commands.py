@@ -51,9 +51,6 @@ def minutes_values(participants):
     return {
         "MTG_MeetingHeld": "",
         "MTG_MeetingDiscussionSummary": "جمع‌بندی توسعه و تحویل",
-        "MTG_MeetingEndDateTime": "1405/07/20",
-        "MTG_MeetingEndTime": "16:00",
-        "MTG_PlannedActionEndTime": "17:00",
         "MTG_Participants": participants,
         "MTG_Decisions": {},
         "MTG_Actions": {},
