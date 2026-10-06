@@ -1876,7 +1876,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     editor.replaceChildren(note(t.stage==="minutes"?"صورت‌جلسه با موفقیت به مرحله «تأیید صورت‌جلسه» ارسال شد.":"اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));
     if(t.stage==="minutes"){setTimeout(()=>load().catch(()=>{}),500)}
     else await load();
-   }finally{send.disabled=locked||dirty}
+   }finally{if(send?.isConnected)send.disabled=locked||dirty||missing.length>0||!info.oauth_connected}
   }),"button primary");
   send.disabled=locked||missing.length>0||!info.oauth_connected;
   add(formBody,save,send,status);add(p,formDetails);
