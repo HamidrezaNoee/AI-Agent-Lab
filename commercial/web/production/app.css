@@ -404,3 +404,22 @@ body.flow-snapshot-open{overflow:hidden}
  .secretary-form-grid,.secretary-grid-row-fields{grid-template-columns:1fr}.secretary-form-grid .field-textarea,.secretary-grid-row-fields .field-textarea{grid-column:auto}.chat-bubble{max-width:94%!important}
  .support-log-controls{grid-template-columns:1fr}.support-log-wide{grid-column:auto}.case-branch-corridor{min-width:470px}.case-branch-lane{grid-template-columns:120px 150px 120px}
 }
+
+
+/* Connected graph uses the original node connector (::before).
+   Suppress legacy/experimental secondary connectors so every path is drawn once. */
+.case-process-map-integrated .case-git-node:not(:last-child)::after{display:none!important}
+.case-branch-route .branch-mini-node::after{display:none!important}
+.case-process-map-integrated .case-git-graph-linear .case-git-node:not(:last-child)::before,
+.case-process-map-integrated .case-git-graph-before .case-git-node:not(:last-child)::before{
+  height:2px!important;
+  background:#d4e0e4!important
+}
+.case-process-map-integrated .case-git-graph-linear .case-git-node.done:not(:last-child)::before,
+.case-process-map-integrated .case-git-graph-before .case-git-node.done:not(:last-child)::before{
+  background:#5fb9a8!important
+}
+.case-process-map-integrated .case-git-graph-linear .case-git-node.current:not(:last-child)::before,
+.case-process-map-integrated .case-git-graph-before .case-git-node.current:not(:last-child)::before{
+  background:linear-gradient(90deg,#d4e0e4 0 50%,#159889 50% 100%)!important
+}
