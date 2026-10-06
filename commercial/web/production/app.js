@@ -169,7 +169,17 @@ function dateControl(initial="",options={}){
  add(control,canonical,display,toggle,popup);sync();
  return {control,input:canonical,display,toggle,set};
 }
-function toast(text){const t=$("toast");t.textContent=text;t.hidden=false}
+function toast(text,options={}){
+ const t=$("toast");if(!t)return;
+ if(toast.timer){clearTimeout(toast.timer);toast.timer=null}
+ const hide=()=>{t.hidden=true;t.replaceChildren();if(toast.timer){clearTimeout(toast.timer);toast.timer=null}};
+ const message=el("span","toast-message",text||"");
+ const close=el("button","toast-close","×");close.type="button";close.setAttribute("aria-label","بستن پیام");
+ close.addEventListener("click",event=>{event.stopPropagation();hide()});
+ t.replaceChildren(message,close);t.hidden=false;t.setAttribute("role",options.error?"alert":"status");
+ t.onclick=event=>{if(event.target===t||event.target===message)hide()};
+ if(!options.sticky)toast.timer=setTimeout(hide,options.duration||9000);
+}
 function sourceApi(sourceId,path){
  return sourceId?("/api/sources/"+encodeURIComponent(sourceId)+path):("/api"+path);
 }
