@@ -132,7 +132,11 @@ services:
         export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
         export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
         export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
-        exec /opt/keycloak/bin/kc.sh start --optimized --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
+        # The AVAN login appearance is generated at runtime into the shared
+        # theme volume. Keycloak's theme/gzip cache otherwise keeps serving the
+        # old appearance.json even after GodAdmin saves new orbit/globe settings.
+        rm -rf /opt/keycloak/data/tmp/kc-gzip-cache
+        exec /opt/keycloak/bin/kc.sh start --optimized --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true --spi-theme--static-max-age=-1 --spi-theme--cache-themes=false --spi-theme--cache-templates=false
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/avan_keycloak
