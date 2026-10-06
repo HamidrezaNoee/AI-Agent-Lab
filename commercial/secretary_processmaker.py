@@ -10,6 +10,15 @@ AFTER={PLAN:'7c9d0f8ea4e54f92b1f7931fb6f97a01',MINUTES:'fe88e8afc98ca69585ab0f5f
 BEFORE_MONITOR='408334d60c9cca3317668fba26f7e8b5'
 logger=logging.getLogger(__name__)
 
+class PMRejected(HTTPException):
+ def __init__(self,operation,status,message=''):
+  self.operation=str(operation or 'عملیات ProcessMaker')
+  self.upstream_status=int(status)
+  self.upstream_message=str(message or '')
+  detail=f'ProcessMaker عملیات «{self.operation}» را نپذیرفت (HTTP {self.upstream_status})'
+  if self.upstream_message:detail+=': '+self.upstream_message
+  super().__init__(502,detail)
+
 def uid(value):
  if not re.fullmatch(r'[a-zA-Z0-9]{32}',str(value)):raise ValueError('شناسه پرونده معتبر نیست.')
  return value
@@ -34,18 +43,23 @@ class PM:
     message=''
     try:
      body=r.json()
-     err=body.get('error') if isinstance(body,dict) else None
-     if isinstance(err,dict):message=str(err.get('message') or err.get('code') or '')
-     elif err:message=str(err)
+     if isinstance(body,dict):
+      err=body.get('error')
+      if isinstance(err,dict):message=str(err.get('message') or err.get('code') or body.get('message') or '')
+      elif err:message=str(err)
+      elif body.get('message'):message=str(body.get('message'))
+     elif body:message=str(body)
     except Exception:
      message=''
-    safe=re.sub(r'[\r\n\t]+',' ',message).strip()[:240]
+    safe=re.sub(r'[\r\n\t]+',' ',message).strip()[:360]
+    if re.search(r'(?i)(authorization|bearer|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|password)\s*[:=]',safe):
+     safe=''
     logger.warning('ProcessMaker rejected operation=%s method=%s path=%s status=%s message=%s',
                    label,method,path,r.status_code,safe or '-')
     low=safe.casefold()
     if 'mtg_meeting_sequence' in low and ("doesn't exist" in low or 'does not exist' in low):
      raise HTTPException(409,'زیرساخت شماره‌گذاری جلسات ProcessMaker آماده نیست: جدول MTG_MEETING_SEQUENCE در دیتابیس Workspace وجود ندارد.')
-    raise HTTPException(502,f'ProcessMaker عملیات «{label}» را نپذیرفت (HTTP {r.status_code}).')
+    raise PMRejected(label,r.status_code,safe)
    result=r.json() if r.content else {}
    if isinstance(result,dict) and result.get('error'):
     logger.warning('ProcessMaker returned error object operation=%s method=%s path=%s',label,method,path)
@@ -91,7 +105,24 @@ class PM:
  def submit_stage(self,case,stage,person,values,expected_index):
   index=self.assigned(case,stage['task_uid'],person)
   if index!=expected_index:raise ValueError('نسخه وظیفه در فرایند تغییر کرده است.')
-  self.set_variables(case,index,values,operation='ثبت نهایی اطلاعات مرحله')
+  try:
+   self.set_variables(case,index,values,operation='ثبت نهایی اطلاعات مرحله')
+  except Exception as exc:
+   try:exc.pm_phase='variables'
+   except Exception:pass
+   raise
   for trigger in stage['after']:
-   self.execute_trigger(case,trigger,operation='اجرای Trigger بعد از فرم')
-  self.route(case,index)
+   try:
+    self.execute_trigger(case,trigger,operation='اجرای Trigger بعد از فرم')
+   except Exception as exc:
+    try:
+     exc.pm_phase='after_trigger'
+     exc.pm_trigger=trigger
+    except Exception:pass
+    raise
+  try:
+   self.route(case,index)
+  except Exception as exc:
+   try:exc.pm_phase='route'
+   except Exception:pass
+   raise
