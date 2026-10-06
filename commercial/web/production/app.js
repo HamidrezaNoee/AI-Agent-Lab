@@ -629,6 +629,7 @@ async function supportLogsPage(){
  const controls=el("div","support-log-controls");
  const limit=el("select"),event=el("select"),actor=el("select"),source=el("select"),process=el("select"),stage=el("select");
  const caseUid=el("input"),requestId=el("input"),search=el("input"),out=el("div","support-log-output");
+ requestId.value=String(app.pendingLogRequestId||"");app.pendingLogRequestId="";
  for(const [v,t] of [["100","۱۰۰ رویداد"],["250","۲۵۰ رویداد"],["500","۵۰۰ رویداد"]]){const o=el("option","",t);o.value=v;add(limit,o)}limit.value="250";
  const known=[
   ["API_ERROR","خطاهای API"],["CLIENT_NETWORK_ERROR","خطای ارتباط"],["CLIENT_UI_ERROR","خطای رابط کاربری"],["CLIENT_REQUEST_ABORTED","پردازش متوقف‌شده"],
@@ -1541,7 +1542,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    const actions=el("div","chat-error-actions");
    const retryButton=link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true,bubble),"button secondary");
    const editButton=link("✎ ویرایش پیام",()=>{notes.value=text;autosize();notes.focus()},"button secondary");
-   const logsButton=link("☷ مشاهده لاگ",()=>select("support-logs"),"button secondary");
+   const logsButton=link("☷ مشاهده لاگ",()=>{app.pendingLogRequestId=error?.requestId||"";select("support-logs")},"button secondary");
    add(actions,retryButton,editButton,logsButton);add(bubble,actions);
    return bubble;
   }
