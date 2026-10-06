@@ -891,8 +891,17 @@ def _source_store_response(source_id, action, principal):
             "قرارداد بسته فرایندی معتبر نیست.":"تعریف فرایند انتخاب‌شده ناقص است و باید در مدیریت سامانه بازبینی شود.",
         }
         raise HTTPException(status_code=403,detail=details.get(reason,"مجوز مشاهده اطلاعات این BPMS وجود ندارد."))
-    except ProductionUnavailable:
-        raise HTTPException(status_code=503,detail="ارتباط با ProcessMaker انتخاب‌شده برقرار نیست.")
+    except ProductionUnavailable as exc:
+        reason=str(exc)
+        details={
+            "ProcessMaker MySQL connection is disabled":"اتصال خواندنی MySQL این ProcessMaker در تنظیمات AVAN غیرفعال است.",
+            "ProcessMaker MySQL is not configured":"تنظیمات MySQL این ProcessMaker کامل نیست؛ Host، Database، Username و Password را بررسی کنید.",
+            "A native ProcessMaker workspace database is required":"نام دیتابیس ProcessMaker معتبر نیست؛ باید Workspace واقعی مانند bitnami_pm یا wf_* انتخاب شود.",
+            "Use a dedicated SELECT-only account":"برای خواندن ProcessMaker باید کاربر اختصاصی فقط‌خواندنی استفاده شود؛ root/admin مجاز نیست.",
+            "MySQL did not negotiate TLS":"اتصال MySQL برقرار شد اما TLS مورد انتظار فعال نشد؛ تنظیم TLS این Source را بررسی کنید.",
+            "Read-only ProcessMaker MySQL unavailable":"AVAN نتوانست اتصال خواندنی MySQL به ProcessMaker را برقرار نگه دارد؛ Host/Port/Firewall یا دسترسی کاربر را بررسی کنید.",
+        }
+        raise HTTPException(status_code=503,detail=details.get(reason,"ارتباط با ProcessMaker انتخاب‌شده برقرار نیست: "+reason[:180]))
     except HTTPException:
         raise
 
