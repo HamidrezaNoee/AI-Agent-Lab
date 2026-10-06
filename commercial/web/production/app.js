@@ -235,11 +235,12 @@ async function request(url,options={}){
      const validation=e.detail.map(x=>x?.msg).filter(Boolean);
      if(validation.length)message=validation.join("؛ ");
     }else if(e.detail?.message)message=e.detail.message;
-    if(typeof e.code==="string")code=e.code;
+    if(typeof e.detail?.code==="string")code=e.detail.code;
+    else if(typeof e.code==="string")code=e.code;
     if(typeof e.request_id==="string")serverRequestId=e.request_id;
    }catch{}
    const error=Error(message);error.status=response.status;error.code=code;error.requestId=serverRequestId||requestId;
-   void clientAudit("API_ERROR",{request_id:error.requestId,path:url,method:options.method||"GET",status:response.status,error:message});
+   void clientAudit("API_ERROR",{request_id:error.requestId,path:url,method:options.method||"GET",status:response.status,error:message,code});
    throw error;
  }
  if(audit!==false && !background && options.method==="POST" &&
