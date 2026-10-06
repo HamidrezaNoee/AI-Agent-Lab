@@ -223,10 +223,17 @@ def resolve_pending(text,current,questions,pending,directory):
 
     # Explicit correction takes precedence over "yes/no" prefixes.
     candidate=unique_person(compact,directory)
-    if candidate and candidate!=value:
+    if candidate:
         updated=set_path(current,path,candidate)
         remaining=_remove_resolved_questions(questions,pending)
         display=person_display(candidate,directory)
+        if candidate==value:
+            return {
+                "values":updated,"questions":remaining,"pending_confirmation":None,
+                "intent":"resolved",
+                "reply":"تأیید شد؛ این مورد روی «"+display+"» تنظیم شد.",
+                "resolution":"confirmed_explicit_identity",
+            }
         return {
             "values":updated,"questions":remaining,"pending_confirmation":None,
             "intent":"resolved",
