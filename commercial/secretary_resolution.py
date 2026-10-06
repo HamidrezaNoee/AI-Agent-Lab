@@ -106,11 +106,26 @@ def set_path(values,path,value):
     return result
 
 
-def _first_missing_uid_path(gaps):
+def _select_missing_uid_path(gaps,reply):
+    candidates=[]
     for item in gaps or []:
         field=str(item.get("field") or "")
         if field.endswith("UID"):
-            return field,str(item.get("question") or "")
+            candidates.append((field,str(item.get("question") or "")))
+    if not candidates:return None,None
+    if len(candidates)==1:return candidates[0]
+
+    text=normalize_text(reply)
+    row=None
+    match=re.search(r"(?:اقدام|ردیف)\s*(\d+)",text)
+    if not match:
+        match=re.search(r"\ba\s*-?\s*0*(\d+)\b",text)
+    if match:row=str(int(match.group(1)))
+    if row:
+        matched=[item for item in candidates if ("."+row+".") in item[0]]
+        if len(matched)==1:return matched[0]
+    # Multiple unresolved identity paths without a unique row reference are
+    # intentionally left unresolved. Never bind a confirmation to "the first".
     return None,None
 
 
@@ -133,7 +148,7 @@ def propose_identity_confirmation(reply,current,gaps,directory):
     normalized=normalize_text(raw)
     if not raw or not any(normalize_text(cue) in normalized for cue in CONFIRM_CUES):
         return None
-    path,question=_first_missing_uid_path(gaps)
+    path,question=_select_missing_uid_path(gaps,raw)
     if not path:return None
     candidates=_mentioned_people(raw,directory)
     if len(candidates)!=1:return None
