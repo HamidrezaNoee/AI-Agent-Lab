@@ -592,3 +592,11 @@ def test_existing_minutes_http400_trigger_failure_can_reopen_without_replaying_t
  assert reopened['values']['MTG_Participants']['1']['MTG_AttendanceTime']==''
  assert calls==['assigned','variables']
  assert any(x['field'].endswith('MTG_AttendanceTime') for x in r.gaps(reopened['values'],{**t,'native':native}))
+
+
+def test_trusted_runtime_pack_carries_reviewed_trigger_hashes():
+ trusted=c._trusted_meeting_pack()
+ reference=json.loads(Path(__file__).parents[1].joinpath('secretary_pack_reference.json').read_text(encoding='utf-8'))
+ trigger='fe88e8afc98ca69585ab0f5fb16bbf74'
+ assert trusted['meeting']['trigger_hashes'][trigger]==reference['meeting']['trigger_hashes'][trigger]
+ assert trusted['action']['trigger_hashes']==reference['action']['trigger_hashes']
