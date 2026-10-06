@@ -87,7 +87,13 @@ def _aliases(person):
         person.get("unit") or person.get("department") or person.get("department_name") or ""
     )
     if username.startswith("mgr.") and unit:
-        result.update(_identity_forms("مدیر "+unit))
+        unit_forms={unit}
+        cleaned=re.sub(r"^(?:واحد|مدیریت|اداره|دپارتمان|امور)\s+","",unit).strip()
+        if cleaned:unit_forms.add(cleaned)
+        compact_tokens=[x for x in unit.split() if x not in {"واحد","مدیریت","اداره","دپارتمان","امور"}]
+        if compact_tokens:unit_forms.add(" ".join(compact_tokens))
+        for unit_form in unit_forms:
+            result.update(_identity_forms("مدیر "+unit_form))
     if username=="administrator":
         result.update({"admin","ادمین","administrator","مدیر سیستم","مدیرسیستم"})
     if username=="ceo":
