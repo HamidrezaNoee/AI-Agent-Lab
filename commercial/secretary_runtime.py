@@ -869,60 +869,6 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
   pm.close()
 
 
-def _minutes_trigger_recovery_row(row):
- if not isinstance(row,dict) or row.get('status')!='reconciliation_required':return False
- if row.get('recovery')=='trigger_retry':return True
- # Compatibility with failures persisted by builds before failure-phase metadata.
- detail=str(row.get('last_error') or '')
- return row.get('recovery') in ('','manual',None) and 'اجرای Trigger بعد از فرم' in detail and 'HTTP 400' in detail
-
-
-def recover_minutes_trigger(scope,actor,task,revision,*,pm=None,con=None):
- # Recovery is limited to the reviewed FR-MTG-003 AFTER trigger. No trigger is
- # executed here; the persisted draft is reopened only after native state and
- # the installed PMX have been verified.
- if task['stage']!='minutes':raise PermissionError('بازیابی Trigger فقط برای مرحله صورت‌جلسه مجاز است.')
- trigger='fe88e8afc98ca69585ab0f5fb16bbf74'
- # Saved catalog rows from older AVAN builds may not contain trigger_hashes.
- # Recovery must verify the live ProcessMaker installation, not stale catalog
- # metadata. Use the reviewed built-in descriptor (with reference hashes) and
- # let verify_installed hash TRI_WEBBOT from the ProcessMaker database.
- reviewed=catalog._trusted_meeting_pack()
- if task['pack'].get('meeting',{}).get('process_uid')!=reviewed['meeting']['process_uid']:
-  raise PermissionError('فرایند صورت‌جلسه با نسخه بازبینی‌شده AVAN یکسان نیست.')
- if trigger not in (reviewed['meeting'].get('trigger_hashes') or {}):
-  raise PermissionError('Hash مرجع Trigger صورت‌جلسه در AVAN موجود نیست.')
- catalog.verify_installed(scope['source_id'],reviewed,con=con)
- owned=pm is None
- if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
- try:
-  index=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
-  if index!=task['index']:raise RevisionConflict('Native task changed')
-  key=task_key(scope,task['case_uid'],task['index'])
-  with agent_storage.transaction() as tx:
-   row=tx.get(key,lock=True)
-   if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
-   if row['revision']!=revision or not _minutes_trigger_recovery_row(row):
-    raise RevisionConflict()
-  native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
-  if not _submitted_subset(native,row['values']):
-   raise ValueError('اطلاعات ثبت‌شده ProcessMaker با پیش‌نویس ارسال‌شده یکسان نیست؛ بازیابی خودکار متوقف شد.')
-  current={**task,'native':native}
-  values=initial(current)
-  with agent_storage.transaction() as tx:
-   latest=tx.get(key,lock=True)
-   if not latest or latest['revision']!=revision or not _minutes_trigger_recovery_row(latest):
-    raise RevisionConflict()
-   latest.update(status='draft',revision=revision+1,native_stamp=native_stamp(current),values=values,
-                 questions=[],pending_confirmation=None,reply='',last_error='',recovery='',
-                 failure_phase='',upstream_status=None)
-   tx.put(key,latest)
-   tx.audit(scope['tenant_id'],actor,'SECRETARY_MINUTES_TRIGGER_RECOVERY_OPENED',
-            {'case_uid':task['case_uid'],'stage':'minutes','index':task['index']})
-  return latest
- finally:
-  if owned:pm.close()
-
 def _route_recovery_row(row):
  if not isinstance(row,dict) or row.get('status')!='reconciliation_required':return False
  if row.get('recovery')=='route_only':return True
