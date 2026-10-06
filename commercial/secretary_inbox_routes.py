@@ -154,9 +154,22 @@ def register(app,authorized,csrf):
  @app.post(base+'/tasks/open')
  def open_task(source_id:str,body:Ref,value=Depends(csrf)):
   s,t=native(value,source_id,body)
-  # BEFORE triggers are an explicit preparation tool, not a side effect of GET.
-  access(value,source_id,lambda con,s,p:runtime.prepare(t,s,p.subject))
-  return access(value,source_id,lambda con,s,p:response(s,p,(fresh:=runtime.task(con,s,body.case_uid,body.index,body.pack_id)),runtime.draft(s,p.subject,fresh)))
+  def run(con,s,p):
+   current=runtime.task(con,s,body.case_uid,body.index,body.pack_id)
+   row=runtime.draft(s,p.subject,current)
+   # A rejected FR-MTG-003 AFTER trigger from a previous attempt is recoverable
+   # without replaying the trigger or creating another case. Opening the task is
+   # already an explicit user action, so restore the AVAN draft automatically and
+   # continue through the normal editor instead of forcing a separate recovery UI.
+   if current.get('stage')=='minutes' and runtime._minutes_trigger_recovery_row(row):
+    row=runtime.recover_minutes_trigger(s,p.subject,current,row['revision'])
+    current=runtime.task(con,s,body.case_uid,body.index,body.pack_id)
+   # BEFORE triggers are the native preparation step for the form. They run only
+   # after safe recovery so the refreshed draft is based on the current PM state.
+   runtime.prepare(current,s,p.subject)
+   fresh=runtime.task(con,s,body.case_uid,body.index,body.pack_id)
+   return response(s,p,fresh,runtime.draft(s,p.subject,fresh))
+  return access(value,source_id,run)
  @app.post(base+'/tasks/load')
  def load_task(source_id:str,body:Ref,value=Depends(csrf)):
   return access(value,source_id,lambda con,s,p:response(s,p,(t:=runtime.task(con,s,body.case_uid,body.index,body.pack_id)),runtime.draft(s,p.subject,t)))
