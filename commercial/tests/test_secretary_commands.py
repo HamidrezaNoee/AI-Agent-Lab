@@ -165,3 +165,49 @@ def test_no_attendee_returns_focused_clarification_without_fabricated_identity(p
     assert result["intent"] == "question"
     assert not result["values"].get("MTG_Actions")
     assert "هیچ شرکت‌کننده فعال" in result["reply"]
+
+
+def test_meeting_held_status_is_resolved_without_llm(pack, monkeypatch):
+    s, participants = scope()
+    values = minutes_values(participants)
+    monkeypatch.setattr(
+        runtime,
+        "extract",
+        lambda *a, **kw: pytest.fail("meeting status must not call the LLM"),
+    )
+    result, _, reply, intent, _ = runtime.converse(
+        "جلسه تشکیل شد",
+        task(pack, "minutes", minutes_native()),
+        values,
+        s,
+        questions=["لطفاً وضعیت تشکیل جلسه را مشخص کنید."],
+    )
+    assert result["MTG_MeetingHeld"] == "Held"
+    assert result["MTG_NotHeldReason"] == ""
+    assert intent == "resolved"
+    assert "جلسه تشکیل شد" in reply
+
+
+def test_not_held_status_and_reason_are_applied_together(pack, monkeypatch):
+    s, participants = scope()
+    values = minutes_values(participants)
+    monkeypatch.setattr(
+        runtime,
+        "extract",
+        lambda *a, **kw: pytest.fail("meeting status must not call the LLM"),
+    )
+    result, questions, reply, intent, _ = runtime.converse(
+        "جلسه تشکیل نشد به دلیل عدم حضور رئیس جلسه",
+        task(pack, "minutes", minutes_native()),
+        values,
+        s,
+        questions=[
+            "لطفاً وضعیت تشکیل جلسه را مشخص کنید.",
+            "لطفاً علت عدم تشکیل جلسه را مشخص کنید.",
+        ],
+    )
+    assert result["MTG_MeetingHeld"] == "NotHeld"
+    assert result["MTG_NotHeldReason"] == "عدم حضور رئیس جلسه"
+    assert intent == "resolved"
+    assert not questions
+    assert "جلسه تشکیل نشد" in reply
