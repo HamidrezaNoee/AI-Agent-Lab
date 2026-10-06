@@ -2,7 +2,7 @@
 from __future__ import annotations
 import copy,hashlib,json,logging,re,secrets,traceback
 from datetime import datetime,timedelta,timezone
-from . import agent_storage,secretary_catalog as catalog,secretary_workflow as legacy,secretary_resolution as resolution
+from . import agent_storage,secretary_catalog as catalog,secretary_workflow as legacy,secretary_resolution as resolution,secretary_commands as commands
 from .agent_workspace import source_user_key,scope_stamp,RevisionConflict
 from .processmaker_store import query,decode_case,text,grid
 from .secretary_credentials import token
@@ -575,6 +575,22 @@ def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,h
   if next_state['message'] and next_state['message'] not in reply:
    reply+='\n\n'+next_state['message']
   return values,remaining,reply,'resolved',None
+
+ # Layer 1c: explicit agentic batch commands. This path is intentionally
+ # independent from the LLM so an explicit instruction such as "choose five
+ # attendees and create one action for each, due in five days" can use the
+ # already-known ProcessMaker identities instead of asking for UIDs again.
+ command=commands.apply(
+  notes,current,task,scope,questions=questions
+ )
+ if command:
+  values=command['values'];remaining=command['questions']
+  validate(values,task,scope)
+  next_state=assistant_state(values,task,scope,remaining)
+  reply=command['reply']
+  if next_state['message'] and next_state['message'] not in reply:
+   reply+='\n\n'+next_state['message']
+  return values,remaining,reply,command['intent'],command.get('pending_confirmation')
 
  # Layer 2: deterministic read-only questions about current draft.
  if len(raw)<180 and 'ردیف' in raw and any(x in raw for x in ('چیه','چیست','کدام','کدوم','موضوعش')):
