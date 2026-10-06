@@ -198,8 +198,15 @@ def register(app,authorized,csrf):
       turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation)
      assistant=runtime.assistant_state(updated['values'],fresh,fresh_scope,updated.get('questions',[]))
      operation_active(p,body.request_id)
-     if intent=='update' and body.auto_advance and advance and not assistant['missing']:
-      sent=runtime.submit(fresh_scope,p2.subject,fresh,updated['revision'])
+     can_advance_now=(fresh['stage']=='minutes' or not assistant['missing'])
+     if intent=='update' and body.auto_advance and advance and can_advance_now:
+      if fresh['stage']=='minutes':
+       bearer=credentials.token(fresh_scope,p2.subject)
+       sent=runtime.advance_minutes_direct(
+        str(p2.tenant_id),p2.subject,source_id,fresh_scope['external_user_id'],
+        case_uid,index,pack_id,bearer)
+      else:
+       sent=runtime.submit(fresh_scope,p2.subject,fresh,updated['revision'])
       return {'advanced':True,'status':sent['status'],'assistant':{
        'stage':fresh['stage'],'summary':assistant['summary'],'missing':[],
        'can_submit':False,'message':'دستور صریح شما اجرا شد و پرونده به مرحله بعد فرایند منتقل شد.'
