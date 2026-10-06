@@ -1862,17 +1862,6 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
      }finally{routeOnly.disabled=!info.oauth_connected}
     }),"button primary");
     routeOnly.disabled=!info.oauth_connected;add(recovery,routeOnly);
-   }else if(d.recovery==="trigger_retry"){
-    recovery=card("اصلاح خطای صورت‌جلسه","ProcessMaker اطلاعات فرم را دریافت کرده اما Trigger بعد از فرم یکی از کنترل‌های صورت‌جلسه را رد کرده است. AVAN ابتدا همان Case را بدون اجرای Trigger دوباره به حالت ویرایش برمی‌گرداند تا مورد ناقص اصلاح شود.");
-    if(d.last_error)add(recovery,note("علت ثبت‌شده: "+d.last_error,true));
-    const reopen=link("بازگشت امن به تکمیل صورت‌جلسه",checked(async()=>{
-     reopen.disabled=true;
-     try{
-      const result=await post(path+"/recover-trigger"+query,{revision:d.revision,confirmed:true});
-      render(result,false);
-     }finally{reopen.disabled=!info.oauth_connected}
-    }),"button primary");
-    reopen.disabled=!info.oauth_connected;add(recovery,reopen);
    }else{
     recovery=card("نیازمند بررسی پرونده","بخشی از عملیات ProcessMaker شروع شده اما نقطه توقف برای اجرای خودکار دوباره قطعی نیست. برای جلوگیری از ثبت تکراری، ارسال مجدد خودکار غیرفعال است.");
     if(d.last_error)add(recovery,note("آخرین خطا: "+d.last_error,true));
