@@ -1632,7 +1632,8 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    }
    const editButton=link("✎ ویرایش پیام",()=>{notes.value=text;autosize();notes.focus()},"button secondary");
    const logsButton=link("☷ مشاهده لاگ",()=>{app.pendingLogRequestId=error?.requestId||"";select("support-logs")},"button secondary");
-   add(actions,editButton,logsButton);add(bubble,actions);
+   const dismissButton=link("× بستن",()=>bubble.remove(),"button secondary");
+   add(actions,editButton,logsButton,dismissButton);add(bubble,actions);
    return bubble;
   }
   function thinkingBubble(label="دبیر در حال بررسی پیام شماست"){
