@@ -286,3 +286,41 @@ def test_identity_question_never_mutates_directly(pack,monkeypatch):
     assert intent=="question"
     assert pending is not None
     assert pending["value"]=="a"*32
+
+
+def test_question_mark_identity_phrase_never_becomes_direct_edit(pack,monkeypatch):
+    scope=scope_with_people()
+    values=minutes_values()
+    called={"value":False}
+    def fake_extract(*args,**kwargs):
+        called["value"]=True
+        return copy.deepcopy(values),["اقدام 1: MTG_ActionOwnerUID را تعیین کنید."],"بله، administrator یکی از گزینه‌های معتبر است.","question"
+    monkeypatch.setattr(runtime,"extract",fake_extract)
+    result,_,_,intent,_=runtime.converse(
+        "مسئول اقدام ۱ administrator است؟",task(pack,"minutes"),values,scope,
+        questions=["اقدام 1: MTG_ActionOwnerUID را تعیین کنید."])
+    assert called["value"] is True
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]==""
+    assert intent=="question"
+
+
+def test_semantic_duplicate_owner_question_is_removed_after_confirmation(pack,monkeypatch):
+    scope=scope_with_people()
+    values=minutes_values()
+    pending={
+        "version":1,"kind":"set_identity",
+        "field_path":"MTG_Actions.1.MTG_ActionOwnerUID",
+        "value":"a"*32,"display":"administrator",
+        "question":"اقدام 1: MTG_ActionOwnerUID را تعیین کنید.",
+    }
+    questions=[
+        pending["question"],
+        "لطفاً مسئول اصلی اقدام ۱ را مشخص کنید.",
+        "سؤال دیگری باقی بماند",
+    ]
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("confirmation must not call model"))
+    _,remaining,_,intent,_=runtime.converse(
+        "بله همان است",task(pack,"minutes"),values,scope,
+        questions=questions,pending_confirmation=pending)
+    assert intent=="resolved"
+    assert remaining==["سؤال دیگری باقی بماند"]
