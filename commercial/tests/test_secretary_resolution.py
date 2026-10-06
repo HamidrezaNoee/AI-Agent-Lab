@@ -23,6 +23,7 @@ def minutes_values():
         "MTG_MeetingHeld":"Held",
         "MTG_MeetingDiscussionSummary":"جمع‌بندی جلسه",
         "MTG_MeetingEndDateTime":"1405/07/24",
+        "MTG_MeetingEndTime":"16:00",
         "MTG_PlannedActionEndTime":"17:00",
         "MTG_Decisions":{"1":{"MTG_DecisionNo":"D-001","MTG_DecisionText":"فایل برنامه واردات به‌روز شود"}},
         "MTG_Actions":{"1":{
@@ -424,3 +425,33 @@ def test_manager_alias_strips_organizational_prefixes():
         "x"*32:{"active":True,"username":"finance01","unit":"امور مالی","position":"کارشناس مالی"},
     }
     assert resolution.unique_person("مدیر مالی",directory)=="f"*32
+
+
+def test_stale_a_dash_owner_question_is_removed_after_resolution():
+    scope=scope_with_people()
+    values=minutes_values()
+    values["MTG_Actions"]["6"]={
+        "MTG_ActionNo":"A-006",
+        "MTG_ActionDescription":"پیگیری لجستیک",
+        "MTG_ActionOwnerUID":"",
+        "MTG_persiandate_ActionDueDateTime":"1405/07/25",
+        "MTG_ActionDecisionNo":"D-001",
+    }
+    pending={
+        "field_path":"MTG_Actions.6.MTG_ActionOwnerUID",
+        "question":"منظورتان از logestic کدام کاربر است؟ آیا مسئول اقدام A-006 همان logistics01 است؟",
+    }
+    questions=[
+        "منظورتان از logestic کدام کاربر است؟ آیا مسئول اقدام A-006 همان logistics01 است؟"
+    ]
+    remaining=resolution._remove_resolved_questions(questions,pending)
+    assert remaining==[]
+
+
+def test_strict_identity_evidence_does_not_match_manager_from_unit_only():
+    directory={
+        "m"*32:{"active":True,"username":"mgr.commercial","name":"مدیر بازرگانی","unit":"بازرگانی","position":"مدیر بازرگانی"},
+        "e"*32:{"active":True,"username":"commercial01","name":"کارشناس بازرگانی","unit":"بازرگانی","position":"کارشناس بازرگانی"},
+    }
+    assert resolution.strict_identity_mentions("کارشناس بازرگانی",directory)==["e"*32]
+    assert resolution.strict_identity_mentions("مدیر بازرگانی",directory)==["m"*32]
