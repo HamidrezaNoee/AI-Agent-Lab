@@ -176,7 +176,10 @@ def register(app,authorized,csrf):
     return access(value,source_id,commit)
    result=guard_model(model_run)
    if intent=='resolved':
-    ux.audit(str(p.tenant_id),p.subject,'SECRETARY_CONFIRMATION_RESOLVED',{
+    event=('SECRETARY_AGENTIC_COMMAND_EXECUTED'
+           if runtime.commands.is_explicit_batch_action_command(body.text,t.get('stage'))
+           else 'SECRETARY_CONFIRMATION_RESOLVED')
+    ux.audit(str(p.tenant_id),p.subject,event,{
      'case_uid':case_uid,'stage':t.get('stage'),'result':'deterministic'
     })
    operation_finish(p,body.request_id,'completed',{'case_uid':case_uid,'stage':t.get('stage'),'result':'updated'})
@@ -334,7 +337,10 @@ def register(app,authorized,csrf):
     return session_response(fresh_scope,p,updated,fresh_task)
    result=access(value,source_id,commit)
    if intent=='resolved':
-    ux.audit(str(principal.tenant_id),principal.subject,'SECRETARY_CONFIRMATION_RESOLVED',{
+    event=('SECRETARY_AGENTIC_COMMAND_EXECUTED'
+           if runtime.commands.is_explicit_batch_action_command(body.text,t.get('stage'))
+           else 'SECRETARY_CONFIRMATION_RESOLVED')
+    ux.audit(str(principal.tenant_id),principal.subject,event,{
      'session_id':identifier,'result':'deterministic'
     })
    operation_finish(principal,body.request_id,'completed',{'session_id':identifier,'result':'updated'})
