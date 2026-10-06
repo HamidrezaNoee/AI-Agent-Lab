@@ -265,6 +265,10 @@ def assistant_state(values,task,scope,questions=()):
   objective=_compact(v.get('MTG_Objective'),500)
   if objective:lines.append('هدف: '+objective)
   if stage in ('minutes','minutes_approval'):
+   if v.get('MTG_MeetingEndTime'):lines.append('ساعت پایان واقعی جلسه: '+_compact(v.get('MTG_MeetingEndTime')))
+   if v.get('MTG_MeetingEndDateTime') or v.get('MTG_PlannedActionEndTime'):
+    planned=' '.join(x for x in [_display_date(v.get('MTG_MeetingEndDateTime')),_compact(v.get('MTG_PlannedActionEndTime'))] if x)
+    if planned:lines.append('پایان برنامه‌ریزی‌شده اقدامات: '+planned)
    discussion=_compact(v.get('MTG_MeetingDiscussionSummary'),700)
    if discussion:lines.append('جمع‌بندی مذاکرات: '+discussion)
    decisions=[_compact(r.get('MTG_DecisionText'),220) for r in _rows(v.get('MTG_Decisions')) if r.get('MTG_DecisionText')]
@@ -285,7 +289,28 @@ def assistant_state(values,task,scope,questions=()):
   if v.get('MTGA_ProgressPercent') not in (None,''):lines.append('پیشرفت اعلامی: '+str(v.get('MTGA_ProgressPercent'))+'٪')
  summary='\n'.join(x for x in lines if x)
  missing_now=gaps(values,task)
- pending=[str(x.get('question') or x) for x in missing_now]+[str(x) for x in questions if str(x).strip()]
+ extra_questions=[]
+ for item in questions:
+  text=str(item or '').strip()
+  if not text:continue
+  normalized=resolution.normalize_text(text)
+  stale=False
+  if v.get('MTG_MeetingEndTime') and (
+   'ساعت پایان واقعی جلسه' in normalized
+   or ('ساعت پایان جلسه' in normalized and 'برنامه' not in normalized)
+   or 'mtg_meetingendtime' in text.casefold()
+  ):stale=True
+  if v.get('MTG_PlannedActionEndTime') and (
+   'ساعت پایان برنامه' in normalized or 'mtg_plannedactionendtime' in text.casefold()
+  ):stale=True
+  if not stale:
+   for i,row in enumerate(_rows(v.get('MTG_Actions')),1):
+    if row.get('MTG_ActionOwnerUID') and resolution._question_targets_path(
+     text,'MTG_Actions.'+str(i)+'.MTG_ActionOwnerUID'
+    ):
+     stale=True;break
+  if not stale:extra_questions.append(text)
+ pending=[str(x.get('question') or x) for x in missing_now]+extra_questions
  # Preserve order while removing duplicates.
  pending=list(dict.fromkeys(pending))[:12]
  if pending:
