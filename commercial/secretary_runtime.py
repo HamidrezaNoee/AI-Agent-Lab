@@ -291,8 +291,8 @@ def assistant_state(values,task,scope,questions=()):
  if pending:
   first=pending[0]
   rest=len(pending)-1
-  message='متوجه شدم و اطلاعات قابل استخراج را ثبت کردم.\n\nبرای ادامه فقط این مورد را مشخص کنید:\n'+first
-  if rest>0:message+='\n\nبعد از پاسخ شما، '+str(rest)+' مورد باقی‌مانده را مرحله‌به‌مرحله می‌پرسم.'
+  message='برای ادامه فقط این مورد را مشخص کنید:\n'+first
+  if rest>0:message+='\n\nبعد از پاسخ شما، '+str(rest)+' مورد باقی‌مانده است.'
  elif stage=='invitation':
   message='اطلاعات دعوت‌نامه کامل است. آیا گام اول ایجاد و برای رئیس جلسه ارسال شود؟ می‌توانید بگویید «بله، ایجاد و ارسال کن».'
  elif stage=='invitation_approval':
@@ -589,7 +589,7 @@ def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,h
  # attendees and create one action for each, due in five days" can use the
  # already-known ProcessMaker identities instead of asking for UIDs again.
  command=commands.apply(
-  notes,current,task,scope,questions=questions
+  notes,current,task,scope,questions=questions,history=history
  )
  if command:
   values=command['values'];remaining=command['questions']
