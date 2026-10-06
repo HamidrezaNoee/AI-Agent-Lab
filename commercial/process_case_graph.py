@@ -573,7 +573,7 @@ def load(con,scope,args:FlowGraphQuery):
 
   current=[]
   owners=[]
-  action_counts={"total":0,"open":0,"review":0,"closed":0}
+  action_counts={"planned":0,"total":0,"open":0,"review":0,"closed":0}
   for d in by_case.get(case_uid,[]):
    stage=by_task.get(str(d[2]))
    if stage and str(d[4])=="OPEN":
@@ -582,13 +582,17 @@ def load(con,scope,args:FlowGraphQuery):
 
   definitions=_action_definition_rows(data)
   mapping=_child_map(data)
-  numbers=list(dict.fromkeys([*definitions.keys(),*mapping.keys()]))
+  # Planned rows are not visual workflow branches. Fork only after a real
+  # ProcessMaker action child case exists in MTG_ActionCaseMapJson.
+  action_counts["planned"]=len(definitions)
+  numbers=list(dict.fromkeys(mapping.keys()))
   action_branches=[]
   for number in numbers:
    cid=mapping.get(number)
-   crow=child_by_uid.get(cid) if cid else None
-   cd=child_data.get(cid,{}) if cid else {}
-   branch=_action_branch(scope,number,definitions.get(number,{"number":number}),cid,crow,cd,by_case.get(cid,[]) if cid else [],by_task)
+   if not cid:continue
+   crow=child_by_uid.get(cid)
+   cd=child_data.get(cid,{})
+   branch=_action_branch(scope,number,definitions.get(number,{"number":number}),cid,crow,cd,by_case.get(cid,[]),by_task)
    action_branches.append(branch)
    action_counts["total"]+=1
    if branch["state"]=="closed":action_counts["closed"]+=1
@@ -623,6 +627,8 @@ def load(con,scope,args:FlowGraphQuery):
    "action_branches":action_branches,
    "topology":{"split_after":"minutes_approval","merge_before":"monitoring",
                "branch_count":len(action_branches),
+               "planned_action_count":len(definitions),
+               "branches_materialized":bool(action_branches),
                "all_branches_closed":bool(action_branches) and all(x["state"]=="closed" for x in action_branches)},
    "meeting_roles":{
     "secretary":_person(scope,text(data.get("MTG_SecretaryUserUID"))) if text(data.get("MTG_SecretaryUserUID")) else None,
