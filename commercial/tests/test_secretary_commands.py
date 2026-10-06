@@ -373,3 +373,17 @@ def test_planned_end_time_context_still_targets_planned_field(pack, monkeypatch)
     assert result["MTG_PlannedActionEndTime"]=="17:00"
     assert result["MTG_MeetingEndTime"]=="16:00"
     assert "ساعت پایان برنامه‌ریزی روی 17:00" in reply
+
+
+def test_minutes_gap_list_has_no_duplicate_end_date_or_time_questions(pack):
+    s,participants=scope()
+    values=minutes_values(participants)
+    values["MTG_MeetingHeld"]="Held"
+    values["MTG_MeetingEndDateTime"]=""
+    values["MTG_MeetingEndTime"]=""
+    values["MTG_PlannedActionEndTime"]=""
+    pending=runtime.gaps(values,task(pack,"minutes",minutes_native()))
+    fields=[x["field"] for x in pending]
+    assert fields.count("MTG_MeetingEndDateTime")==1
+    assert fields.count("MTG_MeetingEndTime")==1
+    assert fields.count("MTG_PlannedActionEndTime")==1
