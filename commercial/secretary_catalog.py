@@ -132,7 +132,9 @@ def _trusted_meeting_pack():
  variables remain readable from APP_DATA and are never user-writable.
  """
  from pathlib import Path
- contract=json.loads(Path(__file__).with_name('secretary_pmx.json').read_text(encoding='utf-8'))
+ base=Path(__file__).parent
+ contract=json.loads((base/'secretary_pmx.json').read_text(encoding='utf-8'))
+ reference=json.loads((base/'secretary_pack_reference.json').read_text(encoding='utf-8'))
  forms=contract.get('forms') or {}
  def by_prefix(prefix):
   found=[v for k,v in forms.items() if re.match(re.escape(prefix)+r'(?:\s|[-–]|$)',k)]
@@ -183,9 +185,11 @@ def _trusted_meeting_pack():
    }},
  }
  meeting={'process_uid':'f7f263ea31d8731d212820f220c65a48','title':'فرایند مدیریت جلسات',
-          'pmx_sha256':contract.get('pmx_sha256','builtin'),'stages':meeting_stages}
+          'pmx_sha256':contract.get('pmx_sha256','builtin'),'stages':meeting_stages,
+          'trigger_hashes':dict((reference.get('meeting',{}) or {}).get('trigger_hashes') or {})}
  action={'process_uid':'cd66870095907431106b6dd110e06fa7','title':'فرایند اقدام مصوب جلسه',
-         'pmx_sha256':'trusted-action-pmx-v7','stages':action_stages}
+         'pmx_sha256':'trusted-action-pmx-v7','stages':action_stages,
+         'trigger_hashes':dict((reference.get('action',{}) or {}).get('trigger_hashes') or {})}
  return _compile_pair(meeting,action)
 
 def _verify_trusted_pack(source_id,pack):
