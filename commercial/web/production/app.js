@@ -593,7 +593,7 @@ async function supportLogsPage(){
  add(event,el("option","","همه رویدادها"));
  const known=[
   ["API_ERROR","خطاهای API"],["CLIENT_NETWORK_ERROR","خطای ارتباط"],["CLIENT_UI_ERROR","خطای رابط کاربری"],["CLIENT_REQUEST_ABORTED","پردازش متوقف‌شده"],
-  ["SECRETARY_PROCESSING_STARTED","شروع پردازش دبیر"],["SECRETARY_PROCESSING_COMPLETED","پایان پردازش دبیر"],
+  ["SECRETARY_PROCESSING_STARTED","شروع پردازش دبیر"],["SECRETARY_PROCESSING_COMPLETED","پایان پردازش دبیر"],["SECRETARY_CONFIRMATION_RESOLVED","تأیید قطعی توسط Resolver"],
   ["SECRETARY_PROCESSING_FAILED","خطای پردازش دبیر"],["SECRETARY_PROCESSING_CANCELLED","توقف پردازش دبیر"],
   ["API_ACTION","عملیات کاربر"],["NAVIGATE","جابجایی صفحات"],["USER_PREFERENCES_CHANGED","تغییر تنظیمات"]
  ];
