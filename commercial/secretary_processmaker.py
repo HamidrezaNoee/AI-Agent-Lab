@@ -10,6 +10,23 @@ AFTER={PLAN:'7c9d0f8ea4e54f92b1f7931fb6f97a01',MINUTES:'fe88e8afc98ca69585ab0f5f
 BEFORE_MONITOR='408334d60c9cca3317668fba26f7e8b5'
 logger=logging.getLogger(__name__)
 
+def _repair_mojibake(value):
+ """Repair the common UTF-8→Windows-1252/Latin-1 mojibake returned by old PM/PHP stacks."""
+ text=str(value or "")
+ if not text:return ""
+ def score(s):
+  persian=sum(1 for ch in s if "\u0600"<=ch<="\u06ff")
+  junk=sum(s.count(x) for x in ("Ø","Ù","Û","Ã","Â","�"))
+  return persian*4-junk*3
+ best=text
+ for encoding in ("cp1252","latin1"):
+  try:
+   candidate=text.encode(encoding).decode("utf-8")
+  except (UnicodeEncodeError,UnicodeDecodeError):
+   continue
+  if score(candidate)>score(best):best=candidate
+ return best
+
 class PMRejected(HTTPException):
  def __init__(self,operation,status,message=''):
   self.operation=str(operation or 'عملیات ProcessMaker')
@@ -51,7 +68,7 @@ class PM:
      elif body:message=str(body)
     except Exception:
      message=''
-    safe=re.sub(r'[\r\n\t]+',' ',message).strip()[:360]
+    safe=re.sub(r'[\r\n\t]+',' ',_repair_mojibake(message)).strip()[:360]
     if re.search(r'(?i)(authorization|bearer|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|password)\s*[:=]',safe):
      safe=''
     logger.warning('ProcessMaker rejected operation=%s method=%s path=%s status=%s message=%s',
