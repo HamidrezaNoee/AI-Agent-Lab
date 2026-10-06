@@ -75,15 +75,19 @@ def register(app,authorized,csrf):
   context={k:v for k,v in t['native'].items() if k in t['pack']['stages'][t['stage']]['fields'] and not any(x in k for x in ('File','Evidence','Json','History'))}
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
+  draft={k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments')}
+  draft['pending_confirmation']=runtime.resolution.safe_public_pending(row.get('pending_confirmation'))
   return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},
-          'draft':{k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments')},
+          'draft':draft,
           'form':runtime.form(t),'context':context,'missing':assistant['missing'],'assistant':assistant,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
 
  def session_response(s,p,row,t):
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
-  return {'session':{k:v for k,v in row.items() if k not in ('actor','scope')},
+  public_session={k:v for k,v in row.items() if k not in ('actor','scope','pending_confirmation')}
+  public_session['pending_confirmation']=runtime.resolution.safe_public_pending(row.get('pending_confirmation'))
+  return {'session':public_session,
           'task':{'stage':'invitation','title':row['values'].get('MTG_MeetingTitle') or 'جلسه جدید'},
           'form':runtime.form(t),'missing':assistant['missing'],'assistant':assistant,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
@@ -135,7 +139,7 @@ def register(app,authorized,csrf):
  @app.post(base+'/tasks/{case_uid}/{index}/edit')
  def edit_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Edit,value=Depends(csrf)):
   ref=Ref(case_uid=case_uid,index=index,pack_id=pack_id)
-  return access(value,source_id,lambda con,s,p:response(s,p,(t:=runtime.task(con,s,case_uid,index,pack_id)),runtime.update(s,p.subject,t,body.revision,body.values)))
+  return access(value,source_id,lambda con,s,p:response(s,p,(t:=runtime.task(con,s,case_uid,index,pack_id)),runtime.update(s,p.subject,t,body.revision,body.values,pending_confirmation=None)))
  @app.post(base+'/tasks/{case_uid}/{index}/turn')
  def task_turn(source_id:str,case_uid:str,index:int,pack_id:str,body:Turn,value=Depends(csrf)):
   s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
@@ -146,7 +150,11 @@ def register(app,authorized,csrf):
      row=runtime.draft(s,p.subject,t)
      if row['revision']!=body.revision:raise RevisionConflict()
      operation_active(p,body.request_id)
-     vals,questions,reply,intent=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
+     vals,questions,reply,intent,pending_confirmation=runtime.converse(
+      body.text,t,row['values'],s,
+      questions=row.get('questions',[]),
+      pending_confirmation=row.get('pending_confirmation'),
+      history=row.get('history',[]))
      operation_active(p,body.request_id)
      decision=runtime.apply_explicit_decision(body.text,t['stage'],vals) if intent=='update' else None
      workflow_intent=runtime.apply_explicit_workflow_intent(body.text,t['stage'],vals) if intent=='update' else None
@@ -154,7 +162,8 @@ def register(app,authorized,csrf):
     def commit(con,fresh_scope,p2):
      operation_active(p,body.request_id)
      fresh=runtime.task(con,fresh_scope,case_uid,index,pack_id)
-     updated=runtime.update(fresh_scope,p2.subject,fresh,body.revision,vals,questions,turn_text=body.text,reply=reply)
+     updated=runtime.update(fresh_scope,p2.subject,fresh,body.revision,vals,questions,
+      turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation)
      assistant=runtime.assistant_state(updated['values'],fresh,fresh_scope,updated.get('questions',[]))
      operation_active(p,body.request_id)
      if intent=='update' and body.auto_advance and advance and not assistant['missing']:
@@ -281,7 +290,7 @@ def register(app,authorized,csrf):
   return access(value,source_id,run)
  @app.post(base+'/sessions/{identifier}/edit')
  def edit_session(source_id:str,identifier:str,body:Edit,value=Depends(csrf)):
-  return access(value,source_id,lambda con,s,p:runtime.session_update(s,p.subject,identifier,body.revision,body.values))
+  return access(value,source_id,lambda con,s,p:runtime.session_update(s,p.subject,identifier,body.revision,body.values,pending_confirmation=None))
  @app.post(base+'/sessions/{identifier}/turn')
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
   principal=value[2]
@@ -295,15 +304,20 @@ def register(app,authorized,csrf):
    def model_only():
     with run_slot((str(principal.tenant_id),principal.subject)):
      operation_active(principal,body.request_id)
-     result=runtime.converse(body.text,t,row['values'],s,questions=row.get('questions',[]))
+     result=runtime.converse(
+      body.text,t,row['values'],s,
+      questions=row.get('questions',[]),
+      pending_confirmation=row.get('pending_confirmation'),
+      history=row.get('history',[]))
      operation_active(principal,body.request_id)
      return result
-   vals,questions,reply,intent=guard_model(model_only)
+   vals,questions,reply,intent,pending_confirmation=guard_model(model_only)
    def commit(con,fresh_scope,p):
     operation_active(principal,body.request_id)
     current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
     if current['revision']!=body.revision:raise RevisionConflict()
-    updated=runtime.session_update(fresh_scope,p.subject,identifier,body.revision,vals,questions,turn_text=body.text,reply=reply)
+    updated=runtime.session_update(fresh_scope,p.subject,identifier,body.revision,vals,questions,
+     turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation)
     assistant=runtime.assistant_state(updated['values'],fresh_task,fresh_scope,updated.get('questions',[]))
     operation_active(principal,body.request_id)
     if intent=='update' and body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
