@@ -46,6 +46,8 @@ _ALL_ATTENDEE_PHRASES = (
     "هر کس که در جلسه شرکت کرده",
     "همه حاضرین",
     "تمام حاضرین",
+    "همه حاضرها",
+    "تمام حاضرها",
     "همه افراد حاضر",
     "تمام افراد حاضر",
     "برای هر حاضر",
@@ -159,6 +161,15 @@ def _clock_from_text(text,allow_bare=False):
     return f"{hour:02d}:{minute:02d}"
 
 
+def _attendance_time_command(text):
+    normalized=resolution.normalize_text(text)
+    if not any(phrase in normalized for phrase in _ALL_ATTENDEE_PHRASES):
+        return False
+    if not any(word in normalized for word in ("ساعت حضور","حضور","از ساعت","ساعت")):
+        return False
+    return _clock_from_text(normalized,allow_bare=True) is not None
+
+
 def _planning_window_command(text,history=()):
     normalized=resolution.normalize_text(text)
     days=_due_days(normalized)
@@ -218,6 +229,8 @@ def command_kind(text, stage="minutes", history=()):
         return "batch_actions"
     if _meeting_status(text):
         return "meeting_status"
+    if _attendance_time_command(text):
+        return "attendance_time"
     if _planning_window_command(text,history):
         return "planning_window"
     return None
@@ -480,6 +493,31 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
             "pending_confirmation": None,
             "reply": "وضعیت جلسه روی «" + label + "» ثبت شد.",
             "resolution": "meeting_status",
+        }
+
+    if kind == "attendance_time":
+        clock=_clock_from_text(normalized,allow_bare=True)
+        participants=values.get("MTG_Participants") or {}
+        changed=0
+        for _,row in _rows(participants):
+            if str(row.get("MTG_AttendanceStatus") or "").strip()=="Present":
+                row["MTG_AttendanceTime"]=clock
+                changed+=1
+        remaining=[
+            q for q in _prune_questions(questions,values)
+            if "ساعت حضور" not in resolution.normalize_text(q)
+        ]
+        if not changed:
+            reply="هنوز هیچ شرکت‌کننده‌ای با وضعیت «حاضر» ثبت نشده است؛ ابتدا وضعیت حضور افراد را مشخص کنید."
+        else:
+            reply=f"ساعت حضور {changed} شرکت‌کننده حاضر روی {clock} ثبت شد."
+        return {
+            "values":values,
+            "questions":remaining,
+            "intent":"resolved",
+            "pending_confirmation":None,
+            "reply":reply,
+            "resolution":"attendance_time",
         }
 
     if kind == "planning_window":
