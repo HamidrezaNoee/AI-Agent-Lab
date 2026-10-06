@@ -58,12 +58,26 @@
   if(!assetsPromise)assetsPromise=Promise.resolve([sceneRoot+"boardroom-v5.webp",sceneRoot+"globe-v5.webp"]);
   return assetsPromise;
  }
- function loadConfig(){
-  if(!configPromise)configPromise=fetch(appearanceUrl+(appearanceUrl.includes("?")?"&":"?")+"v="+Date.now(),{cache:"no-store"})
+ function fetchConfig(){
+  return fetch(appearanceUrl+(appearanceUrl.includes("?")?"&":"?")+"v="+Date.now(),{cache:"no-store"})
    .then(r=>r.ok?r.json():fallback).catch(()=>fallback);
+ }
+ function loadConfig(){
+  if(!configPromise)configPromise=fetchConfig();
   return configPromise;
  }
  function mergeConfig(raw){const r={...fallback,...(raw&&typeof raw==="object"?raw:{})};r.elements=Array.isArray(raw?.elements)?raw.elements:fallback.elements;return r}
+ async function refreshConfig(){
+  if(!root)return;
+  try{
+   const next=mergeConfig(await fetchConfig());
+   config=next;configPromise=Promise.resolve(next);
+   const assets=await loadAssets();
+   const globe=wrap?.querySelector(".avan-globe-image");
+   if(globe)globe.src=config.globe_image||assets[1]||"";
+   applySceneStyle(assets[0]);renderNodes();resizeCanvas();updateMotion();
+  }catch(_){}
+ }
 
  function applySceneStyle(background){
   const set=(k,v)=>root.style.setProperty(k,String(v));
@@ -279,7 +293,8 @@
   if(next){card=next;document.body.classList.add("avan-live-login-enabled");if(!root&&!creating)creating=makeScene().catch(()=>{}).finally(()=>{creating=null});enableReveal(card)}
   else if(root){teardown();card=null}
  }
- document.addEventListener("visibilitychange",updateMotion);
+ document.addEventListener("visibilitychange",()=>{updateMotion();if(!document.hidden)void refreshConfig()});
+ addEventListener("focus",()=>{if(root)void refreshConfig()});
  reduced.addEventListener("change",updateMotion);compact.addEventListener("change",updateMotion);
  addEventListener("resize",()=>{updateMotion();if(selected&&config.hover_mode==="tooltip")positionTip(selected)},{passive:true});
  document.addEventListener("pointermove",e=>{
