@@ -16,7 +16,7 @@ FORM_NAMES=list(CONTRACT['forms'])
 FORMS={s:CONTRACT['forms'][FORM_NAMES[i]] for s,i in [('invitation',0),('minutes',2),('monitoring',4)]}
 WRITE_FIELDS={
  'invitation':{'MTG_MeetingNo','MTG_MeetingTitle','MTG_Objective','MTG_Location','MTG_MeetingStartDateTime','MTG_MeetingStartTime','MTG_MeetingEndTime','MTG_SecretaryUserUID','MTG_ChairUserUID','MTG_Participants','MTG_Agenda'},
- 'minutes':{'MTG_MeetingHeld','MTG_NotHeldReason','MTG_MeetingDiscussionSummary','MTG_ParkingLot','MTG_Decisions','MTG_Actions','MTG_MeetingEndDateTime','MTG_PlannedActionEndTime','MTG_Participants'},
+ 'minutes':{'MTG_MeetingHeld','MTG_NotHeldReason','MTG_MeetingDiscussionSummary','MTG_ParkingLot','MTG_Decisions','MTG_Actions','MTG_MeetingEndDateTime','MTG_MeetingEndTime','MTG_PlannedActionEndTime','MTG_Participants'},
  'monitoring':{'MTG_ClosingNote'},
 }
 
@@ -142,7 +142,7 @@ def missing(values,stage):
  if stage=='invitation':required+=['MTG_Participants','MTG_Agenda']
  if stage=='minutes':
   if values.get('MTG_MeetingHeld')=='NotHeld':required+=['MTG_NotHeldReason']
-  elif values.get('MTG_MeetingHeld')=='Held':required+=['MTG_MeetingDiscussionSummary','MTG_MeetingEndDateTime','MTG_PlannedActionEndTime']
+  elif values.get('MTG_MeetingHeld')=='Held':required+=['MTG_MeetingDiscussionSummary','MTG_MeetingEndDateTime','MTG_MeetingEndTime','MTG_PlannedActionEndTime']
  result=[{'field':k,'question':'لطفاً '+str(FORMS[stage][k]['label'] or k)+' را مشخص کنید.'} for k in required if not values.get(k)]
  if stage=='minutes' and values.get('MTG_MeetingHeld')=='Held':
   decisions={r.get('MTG_DecisionNo') for r in rows(values.get('MTG_Decisions')) if r.get('MTG_DecisionText')}
