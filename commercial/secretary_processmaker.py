@@ -68,6 +68,13 @@ class PM:
      elif body:message=str(body)
     except Exception:
      message=''
+    if not message:
+     try:
+      raw=r.text or ''
+      raw=re.sub(r'<[^>]+>',' ',raw)
+      message=re.sub(r'\s+',' ',raw).strip()
+     except Exception:
+      message=''
     safe=re.sub(r'[\r\n\t]+',' ',_repair_mojibake(message)).strip()[:360]
     if re.search(r'(?i)(authorization|bearer|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|password)\s*[:=]',safe):
      safe=''
