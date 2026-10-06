@@ -16,7 +16,12 @@ def payload(stage):
   values['MTG_Agenda']['1'].update(MTG_AgendaPresenterUID='c'*32,MTG_AgendaPlannedMinutes='20')
   return values
  if stage=='invitation_approval':return {'MTG_InvitationApproval':'Approved'}
- if stage=='minutes':return {'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'گزارش بررسی شد','MTG_MeetingEndDateTime':'1405/07/10','MTG_PlannedActionEndTime':'12:00'}
+ if stage=='minutes':return {
+  'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'گزارش بررسی شد',
+  'MTG_Decisions':{'1':{'MTG_DecisionNo':'D-001','MTG_DecisionText':'پیگیری شود'}},
+  'MTG_Actions':{'1':{'MTG_ActionDecisionNo':'D-001','MTG_ActionNo':'A-001','MTG_ActionDescription':'پیگیری',
+                       'MTG_ActionOwnerUID':'c'*32,'MTG_persiandate_ActionDueDateTime':'1405/07/20'}}
+ }
  if stage=='minutes_approval':return {'MTG_MinutesApproval':'Approved'}
  if stage=='action_execution':return {'MTGA_SubmissionType':'CompletionClaim','MTGA_ProgressPercent':'70','MTGA_ExecutionDescription':'گزارش انجام کار','MTGA_ActualEffortMinutes':'60','MTGA_ActualCompletionDateTime':'1405/07/10','MTGA_ActualCompletionTime':'11:00'}
  if stage=='action_review':return {'MTGA_ReviewStatus2':'Closed','MTGA_SecretaryProgressPercent2':'100','MTGA_SecretaryActualEffortMinutes2':'60','MTGA_SecretaryActualCompletionDateTime2':'1405/07/10','MTGA_SecretaryActualCompletionTime2':'11:00'}
