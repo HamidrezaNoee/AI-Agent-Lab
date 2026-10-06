@@ -579,14 +579,17 @@ def test_existing_minutes_http400_trigger_failure_can_reopen_without_replaying_t
   saved.update(status='reconciliation_required',recovery='manual',
    last_error='ProcessMaker عملیات «اجرای Trigger بعد از فرم» را نپذیرفت (HTTP 400).')
   tx.put(key,saved)
- monkeypatch.setattr(c,'verify_installed',lambda *a:True)
+ verify_calls=[]
+ sentinel_con=object()
+ monkeypatch.setattr(c,'verify_installed',lambda *a,**kw:verify_calls.append(kw.get('con')) or True)
  calls=[]
  class PM:
   def assigned(self,*args):calls.append('assigned');return 1
   def variables(self,*args):calls.append('variables');return copy.deepcopy(native)
   def execute_trigger(self,*args):pytest.fail('recovery must not execute trigger')
   def route(self,*args):pytest.fail('recovery must not route')
- reopened=r.recover_minutes_trigger(S,'actor',t,row['revision'],pm=PM())
+ reopened=r.recover_minutes_trigger(S,'actor',t,row['revision'],pm=PM(),con=sentinel_con)
+ assert verify_calls==[sentinel_con]
  assert reopened['status']=='draft'
  assert reopened['revision']==row['revision']+1
  assert reopened['values']['MTG_Participants']['1']['MTG_AttendanceTime']==''
