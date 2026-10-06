@@ -146,6 +146,38 @@ def _mentioned_people(text,directory):
     return list(dict.fromkeys(found))
 
 
+def resolve_direct_identity(text,current,questions,gaps,directory):
+    """Resolve an explicit person answer for one unambiguous missing UID path.
+
+    This intentionally rejects questions and negations; those continue through
+    normal conversation handling instead of being treated as edits.
+    """
+    raw=normalize_text(text)
+    if not raw or is_affirmative(raw) or is_negative(raw):return None
+    if any(token in raw for token in ("آیا","کیه","کی هست","چه کسی","کدام کاربر","کدوم کاربر","نیست","نباشد")):
+        return None
+    path,question=_select_missing_uid_path(gaps,text)
+    if not path:return None
+    candidates=_mentioned_people(text,directory)
+    if len(candidates)!=1:
+        # Short aliases such as "ادمین" may not appear as a canonical directory
+        # phrase but can still be a deterministic unique alias.
+        candidate=unique_person(raw,directory) if len(raw)<=120 else None
+        candidates=[candidate] if candidate else []
+    if len(candidates)!=1:return None
+    uid=candidates[0]
+    updated=set_path(current,path,uid)
+    pending={"field_path":path,"question":question}
+    return {
+        "values":updated,
+        "questions":_remove_resolved_questions(questions,pending),
+        "pending_confirmation":None,
+        "intent":"resolved",
+        "reply":"شخص مشخص شد و این مورد روی «"+person_display(uid,directory)+"» تنظیم شد.",
+        "resolution":"direct_identity",
+    }
+
+
 def propose_identity_confirmation(reply,current,gaps,directory):
     """Build a pending proposal only from a unique identity explicitly named by AVAN."""
     raw=str(reply or "")
