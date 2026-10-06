@@ -63,6 +63,9 @@ def _aliases(person):
         raw=str(person.get(key) or "").strip()
         if raw:result.add(normalize_text(raw))
     username=normalize_text(person.get("username") or person.get("avan_username") or "")
+    if "." in username:
+        # Human speech/text often drops punctuation from usernames.
+        result.add(username.replace("."," "))
     if username=="administrator":
         result.update({"admin","ادمین","administrator","مدیر سیستم"})
     if username=="ceo":
