@@ -595,9 +595,10 @@ async function userSettingsPage(){
   add(el("div","settings-security-item"),el("span","","حساب"),el("strong","",app.user?.username||app.user?.subject||"—")),
   add(el("div","settings-security-item"),el("span","","اثر تغییر رمز"),el("strong","","خروج از همه نشست‌ها"))
  );
- const passwordGrid=el("div","settings-password-grid");
+ const passwordGrid=el("div","settings-password-grid"),isLocalGodAdmin=app.user?.role==="GodAdmin";
+ const p0=isLocalGodAdmin?inputField("رمز فعلی GodAdmin","","password"):null;
  const p1=inputField("رمز جدید (حداقل ۱۶ نویسه)","","password"),p2=inputField("تکرار رمز جدید","","password");
- p1.input.autocomplete="new-password";p2.input.autocomplete="new-password";
+ if(p0)p0.input.autocomplete="current-password";p1.input.autocomplete="new-password";p2.input.autocomplete="new-password";
  const meter=el("div","password-strength"),meterFill=el("span"),meterText=el("small","muted","قدرت رمز: —");add(meter,meterFill);
  function passwordScore(){
   const v=p1.input.value||"";let n=0;
@@ -605,15 +606,15 @@ async function userSettingsPage(){
   meterFill.style.width=(n*25)+"%";meter.dataset.score=String(n);meterText.textContent="قدرت رمز: "+(["—","حداقلی","متوسط","خوب","قوی"][n]||"—");
  }
  p1.input.addEventListener("input",passwordScore);
- add(passwordGrid,p1.wrap,p2.wrap);const pwOut=el("div","settings-password-status");
+ if(p0)add(passwordGrid,p0.wrap);add(passwordGrid,p1.wrap,p2.wrap);const pwOut=el("div","settings-password-status");
  const changePassword=link("تغییر رمز و خروج از نشست‌ها",async()=>{
   pwOut.replaceChildren();
   if((p1.input.value||"").length<16){pwOut.replaceChildren(note("رمز جدید باید حداقل ۱۶ نویسه باشد.",true));return}
   if(p1.input.value!==p2.input.value){pwOut.replaceChildren(note("تکرار رمز با رمز جدید یکسان نیست.",true));return}
   changePassword.disabled=true;
   try{
-   await request("/api/user/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:p1.input.value,confirmation:p2.input.value})});
-   p1.input.value="";p2.input.value="";passwordScore();pwOut.replaceChildren(note("رمز تغییر کرد. برای امنیت، همه نشست‌ها پایان یافت؛ در حال انتقال به ورود..."));
+   await request("/api/user/password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({current:p0?.input.value||"",password:p1.input.value,confirmation:p2.input.value})});
+   if(p0)p0.input.value="";p1.input.value="";p2.input.value="";passwordScore();pwOut.replaceChildren(note("رمز تغییر کرد. برای امنیت، همه نشست‌ها پایان یافت؛ در حال انتقال به ورود..."));
    setTimeout(()=>window.location.assign("/auth/login"),900);
   }catch(e){pwOut.replaceChildren(note(errorDescription(e),true));changePassword.disabled=false}
  },"button primary");
