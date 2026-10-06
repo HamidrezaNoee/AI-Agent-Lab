@@ -125,72 +125,28 @@ def _installed_process(con,process_uid):
          'pmx_sha256':'installed:'+digest,'stages':stages}
 
 def _trusted_meeting_pack():
- """Built-in typed descriptor for the reviewed Iran Rover meeting/action PMX pair.
+ """Return the single reviewed seven-stage contract shipped with AVAN.
 
- The meeting form field contract is already shipped as secretary_pmx.json.
- Only the minimal editable action fields are declared here; native context
- variables remain readable from APP_DATA and are never user-writable.
+ secretary_pack_reference.json is generated/reviewed against the two accepted
+ PMX files and is the canonical runtime descriptor. Keeping a second hard-coded
+ stage/form contract here caused the application to drift from ProcessMaker.
  """
  from pathlib import Path
- base=Path(__file__).parent
- contract=json.loads((base/'secretary_pmx.json').read_text(encoding='utf-8'))
- reference=json.loads((base/'secretary_pack_reference.json').read_text(encoding='utf-8'))
- forms=contract.get('forms') or {}
- def by_prefix(prefix):
-  found=[v for k,v in forms.items() if re.match(re.escape(prefix)+r'(?:\s|[-–]|$)',k)]
-  if len(found)!=1:raise ValueError('قرارداد فرم داخلی مدیریت جلسات ناقص است.')
-  return found[0]
- meeting_meta={
-  'invitation':('4a6419a60141d7d36001ba9344db4eac','1b4a9033de82d5d38afb8a471d4bd5b1',['8bfb9a18e7b6d6ae82441e22101b7909'],['7c9d0f8ea4e54f92b1f7931fb6f97a01'],'FR-MTG-001'),
-  'invitation_approval':('f040c82fd83e47fd908770b62d967384','7774ba689f3c4c46b3d5efaa55fde907',[],['2cce620239ad07d5d415eedee1916175'],'FR-MTG-002'),
-  'minutes':('a07e9ed93a4b3244aca40996c45eb227','5e84e43db54993a49119997cb0b5df34',['575a453b1e1dc60a52f64edf2c0a57f0','7942584696aa92ab223c498087838907'],['fe88e8afc98ca69585ab0f5fb16bbf74'],'FR-MTG-003'),
-  'minutes_approval':('af8402c57b05992f6b6e6c6d9eb5276a','366ac686c45b9ecc2ad8c41a00846db7',['575a453b1e1dc60a52f64edf2c0a57f0','09a5c128a12a358797021feb3e8b2ab8'],['2593597a9d5a6de465784bf8dc338439'],'FR-MTG-004'),
-  'monitoring':('cb9f098d6b9462db552ae29d4622950a','d30094992baf2ab00fce7f558ba7160a',['575a453b1e1dc60a52f64edf2c0a57f0','408334d60c9cca3317668fba26f7e8b5'],['9cfa2876edd7cfa8fa5016a2f25f771d'],'FR-MTG-005'),
- }
- meeting_stages={}
- for stage,(task_uid,form_uid,before,after,prefix) in meeting_meta.items():
-  meeting_stages[stage]={'task_uid':task_uid,'task_title':stage,'form_uid':form_uid,
-                         'fields':by_prefix(prefix),'before':before,'after':after}
+ reference=json.loads(Path(__file__).with_name('secretary_pack_reference.json').read_text(encoding='utf-8'))
+ pack=copy.deepcopy(reference)
+ if pack.get('adapter')!='meeting_v2':
+  raise ValueError('قرارداد داخلی بسته جلسات AVAN معتبر نیست.')
+ if set((pack.get('meeting') or {}).get('stages') or {})!={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}:
+  raise ValueError('قرارداد داخلی فرایند مدیریت جلسات ناقص است.')
+ if set((pack.get('action') or {}).get('stages') or {})!={'action_execution','action_review'}:
+  raise ValueError('قرارداد داخلی فرایند اقدام مصوب جلسه ناقص است.')
+ expected={**pack['meeting']['stages'],**pack['action']['stages']}
+ if set(pack.get('stages') or {})!=set(expected):
+  raise ValueError('قرارداد تجمیعی هفت مرحله با دو PMX مرجع یکسان نیست.')
+ # Always rebuild the union to prevent stale duplicated stage definitions.
+ pack['stages']=copy.deepcopy(expected)
+ return _compile_pair(pack['meeting'],pack['action'])
 
- def spec(label,kind='text',required=False,options=None,mode='edit'):
-  return {'label':label,'type':kind,'required':required,'options':options,'mode':mode}
- action_stages={
-  'action_execution':{
-   'task_uid':'473bb4e227460a3ea6ac0f2cbf8ef8d4',
-   'task_title':'اجرای اقدام',
-   'form_uid':'a6f690be582466ab0c0ad6649ba8b93f',
-   'before':['290a2731cf20d1515dc2e8202b9fc94e'],
-   'after':['a4f666dadb04c365e1762e0b33495692'],
-   'fields':{
-    'MTGA_SubmissionType':spec('نوع ارسال','dropdown',True,[{'value':'ProgressUpdate','label':'گزارش پیشرفت'},{'value':'CompletionClaim','label':'اعلام تکمیل اقدام'}]),
-    'MTGA_ProgressPercent':spec('درصد پیشرفت اعلامی','text',True),
-    'MTGA_ExecutionDescription':spec('شرح اقدام انجام‌شده / گزارش پیشرفت','textarea'),
-    'MTGA_ActualCompletionDateTime':spec('تاریخ واقعی انجام (در صورت تکمیل)'),
-    'MTGA_ActualCompletionTime':spec('ساعت واقعی انجام (در صورت تکمیل)'),
-    'MTGA_ActualEffortMinutes':spec('زمان واقعی صرف‌شده (دقیقه)'),
-   }},
-  'action_review':{
-   'task_uid':'1bc65198c9b4cf2fae5d3ffbfeea3c00',
-   'task_title':'بررسی اقدام توسط دبیر جلسه',
-   'form_uid':'42ba129e30d6f03e685e81a4301cdaa4',
-   'before':['8666274ec4af8ae2eab09a4af385b4d5'],
-   'after':['b12993814458ae485790da734d84eb38'],
-   'fields':{
-    'MTGA_ReviewStatus2':spec('نتیجه بررسی','dropdown',True,[{'value':'Closed','label':'تأیید و بستن اقدام'},{'value':'Rework','label':'بازگشت برای اصلاح / ادامه اقدام'}]),
-    'MTGA_SecretaryProgressPercent2':spec('درصد پیشرفت تأییدشده توسط دبیر','text',True),
-    'MTGA_SecretaryActualCompletionDateTime2':spec('تاریخ واقعی مورد تأیید دبیر'),
-    'MTGA_SecretaryActualCompletionTime2':spec('ساعت واقعی مورد تأیید دبیر'),
-    'MTGA_SecretaryActualEffortMinutes2':spec('زمان واقعی تأییدشده (دقیقه)'),
-    'MTGA_SecretaryComment1':spec('نظر دبیر جلسه','textarea'),
-   }},
- }
- meeting={'process_uid':'f7f263ea31d8731d212820f220c65a48','title':'فرایند مدیریت جلسات',
-          'pmx_sha256':contract.get('pmx_sha256','builtin'),'stages':meeting_stages,
-          'trigger_hashes':dict((reference.get('meeting',{}) or {}).get('trigger_hashes') or {})}
- action={'process_uid':'cd66870095907431106b6dd110e06fa7','title':'فرایند اقدام مصوب جلسه',
-         'pmx_sha256':'trusted-action-pmx-v7','stages':action_stages,
-         'trigger_hashes':dict((reference.get('action',{}) or {}).get('trigger_hashes') or {})}
- return _compile_pair(meeting,action)
 
 def _verify_trusted_pack(source_id,pack):
  """Verify the reviewed descriptor against the installed PM without parsing DYN_CONTENT."""
