@@ -73,13 +73,36 @@ def ensure_still_authorized(principal,initial_scope,initial_rows,module,source_i
     return scope
 
 
+def _agent_invalid_detail(exc):
+    raw=str(exc or "")
+    mapping={
+        "Invalid assignment evidence":(
+            "AI_EVIDENCE_MISMATCH",
+            "پاسخ مدل با شواهد قابل تأیید این پیام سازگار نبود؛ AVAN از ثبت تغییر جلوگیری کرد."
+        ),
+        "Explicit list was omitted":(
+            "AI_EXPLICIT_SECTION_OMITTED",
+            "مدل بخشی را که صریحاً در پیام آمده بود کامل استخراج نکرد؛ AVAN پاسخ ناقص را ثبت نکرد."
+        ),
+        "Incomplete extraction":(
+            "AI_INCOMPLETE_OUTPUT",
+            "پاسخ ساختاری مدل کامل نشد؛ دوباره تلاش کنید."
+        ),
+    }
+    code,message=mapping.get(raw,(
+        "AI_STRUCTURED_OUTPUT_REJECTED",
+        "پاسخ مدل از اعتبارسنجی ساختاری AVAN عبور نکرد و هیچ تغییر نامعتبر ثبت نشد."
+    ))
+    return {"message":message,"code":code}
+
+
 def guard_model(fn):
     from .security import AuthenticationFailed,ConfigurationFailed
     try:return fn()
     except (AuthenticationFailed,ConfigurationFailed):raise HTTPException(401,"اعتبار نشست پایان یافته است؛ دوباره وارد شوید.")
     except AgentBusy as exc:raise HTTPException(429,str(exc))
     except AgentUnavailable as exc:raise HTTPException(503,str(exc))
-    except AgentInvalid:raise HTTPException(502,'پاسخ مدل از بررسی ساختار یا ارجاع عبور نکرد؛ پرسش را دوباره اجرا کنید.')
+    except AgentInvalid as exc:raise HTTPException(502,_agent_invalid_detail(exc))
 
 
 def monitor_for(principal,source_id=None):
