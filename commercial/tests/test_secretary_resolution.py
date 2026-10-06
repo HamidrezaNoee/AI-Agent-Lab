@@ -475,3 +475,23 @@ def test_model_uid_evidence_cannot_map_expert_role_to_manager_by_unit_only():
     )
     assert resolved2==expert_uid
     assert not issues2
+
+
+def test_manager_logistics_never_resolves_to_logistics_expert():
+    expert_uid="l"*32
+    directory={
+        expert_uid:{
+            "active":True,
+            "username":"logistics01",
+            "name":"کارشناس لجستیک",
+            "unit":"لجستیک",
+            "position":"کارشناس لجستیک",
+        }
+    }
+    assert resolution.unique_person("مدیر لجستیک",directory) is None
+    spec={"label":"مسئول اصلی","type":"suggest","options":[]}
+    resolved,issues=runtime.resolve_extracted_people(
+        "MTG_ActionOwnerUID",expert_uid,spec,directory,evidence="منظورم مدیر لجستیک هست"
+    )
+    assert resolved==""
+    assert issues
