@@ -1431,7 +1431,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
  function render(r,isSession){
   editor.replaceChildren();editor.dataset.editing="true";out.hidden=true;
   add(editor,link("← بازگشت به میز کار",checked(async()=>{editor.replaceChildren();editor.dataset.editing="false";out.hidden=false;await load()}),"button secondary secretary-back"));
-  const d=r.draft,t=r.task,values=structuredClone(d.values||{}),assistant=r.assistant||{};
+  const d=r.draft,t=r.task,values=structuredClone(d.values||{});let assistant=r.assistant||{};
   const stageLabels={invitation:"دعوت‌نامه",invitation_approval:"تأیید دعوت‌نامه",minutes:"صورت‌جلسه",minutes_approval:"تأیید صورت‌جلسه",action_execution:"گزارش اجرای اقدام",action_review:"بررسی اقدام",monitoring:"پایش و اختتام"};
   const p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+(stageLabels[t.stage]||t.stage));p.classList.add("secretary-editor-card");
   const stageProgress=el("div","secretary-editor-progress");stageProgress.setAttribute("aria-label","مرحله جاری پرونده");
@@ -1473,31 +1473,51 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   conversation.classList.add("secretary-conversation");
   const chat=el("div","secretary-chat");
   const history=d.history||[];
-  function addChatBubble(role,text,extra=""){
+  let chatPinned=true;
+  function nearChatBottom(){
+   return chat.scrollHeight-chat.scrollTop-chat.clientHeight<90;
+  }
+  function scrollChat({force=false,smooth=true}={}){
+   if(!force&&!chatPinned)return;
+   requestAnimationFrame(()=>{
+    if(!chat.isConnected)return;
+    chat.scrollTo({top:chat.scrollHeight,behavior:smooth?"smooth":"auto"});
+   });
+  }
+  chat.addEventListener("scroll",()=>{chatPinned=nearChatBottom()},{passive:true});
+  function addChatBubble(role,text,extra="",options={}){
    const bubble=el("div","chat-bubble "+role+(extra?" "+extra:""));
    add(bubble,el("small","",role==="user"?"شما":"دبیر هوشمند"),el("div","chat-bubble-text",text||""));
-   add(chat,bubble);requestAnimationFrame(()=>{chat.scrollTop=chat.scrollHeight});return bubble;
+   add(chat,bubble);
+   if(options.summary){
+    const details=el("details","chat-summary-details"),summary=el("summary","","خلاصه اطلاعات استخراج‌شده");
+    add(details,summary,el("pre","chat-summary",options.summary));add(bubble,details);
+   }
+   if(options.scroll)scrollChat({force:!!options.force,smooth:options.smooth!==false});
+   return bubble;
   }
   if(history.length){
    for(const turn of history){
-    const bubble=addChatBubble(turn.role==="user"?"user":"assistant",turn.text||"");
+    const bubble=addChatBubble(turn.role==="user"?"user":"assistant",turn.text||"","",{summary:turn.summary||""});
     if(turn.source==="file")bubble.querySelector("small").textContent="فایل شما";
-    if(turn.summary){
-     const details=el("details","chat-summary-details"),summary=el("summary","","خلاصه اطلاعات استخراج‌شده");
-     add(details,summary,el("pre","chat-summary",turn.summary));add(bubble,details);
-    }
    }
   }else if(assistant.message)addChatBubble("assistant",assistant.message);
+  // Initial history is positioned once, without replaying an animated scroll for
+  // every old message. Subsequent turns are appended incrementally.
+  requestAnimationFrame(()=>{if(chat.isConnected){chat.scrollTop=chat.scrollHeight;chatPinned=true}});
   add(conversation,chat);
 
-  const missing=assistant.missing||r.missing||[];
-  const progress=el("div","secretary-progress",missing.length?("برای تکمیل این مرحله "+missing.length+" مورد باقی مانده؛ دبیر آن‌ها را یکی‌یکی می‌پرسد."):"اطلاعات این مرحله کامل است.");
+  let missing=assistant.missing||r.missing||[];
+  const progress=el("div","secretary-progress");
   add(conversation,progress);
-
-  if(assistant.summary){
-   const contextSummary=el("details","secretary-context-summary"),summaryTitle=el("summary","",["invitation_approval","minutes_approval"].includes(t.stage)?"خلاصه برای تصمیم شما":"خلاصه اطلاعات استخراج‌شده");
-   add(contextSummary,summaryTitle,el("pre","",assistant.summary));add(conversation,contextSummary);
+  const contextSummary=el("details","secretary-context-summary"),summaryTitle=el("summary","",["invitation_approval","minutes_approval"].includes(t.stage)?"خلاصه برای تصمیم شما":"خلاصه اطلاعات استخراج‌شده"),summaryBody=el("pre");
+  add(contextSummary,summaryTitle,summaryBody);add(conversation,contextSummary);
+  function refreshConversationMeta(){
+   progress.textContent=missing.length?("برای تکمیل این مرحله "+missing.length+" مورد باقی مانده؛ دبیر آن‌ها را یکی‌یکی می‌پرسد."):"اطلاعات این مرحله کامل است.";
+   summaryBody.textContent=assistant.summary||"";
+   contextSummary.hidden=!assistant.summary;
   }
+  refreshConversationMeta();
 
   const composer=el("div","secretary-composer"),composerBox=el("div","secretary-composer-box"),notes=el("textarea","secretary-composer-input");
   notes.maxLength=18000;notes.rows=1;notes.setAttribute("aria-label","پیام به دبیر هوشمند");
@@ -1550,7 +1570,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    const bubble=el("div","chat-bubble assistant thinking"),row=el("div","typing-row"),dots=el("span","typing-dots");
    add(dots,el("i"),el("i"),el("i"));add(row,el("span","typing-label",label),dots);
    add(bubble,el("small","","دبیر هوشمند"),row);add(chat,bubble);
-   requestAnimationFrame(()=>{chat.scrollTop=chat.scrollHeight});return bubble;
+   scrollChat({smooth:true});return bubble;
   }
 
   async function detachedSpeech(){
@@ -1568,9 +1588,42 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     editor.replaceChildren(note(result.assistant?.message||"پرونده به مرحله بعد منتقل شد."));
     await load();return
    }
+   const nextDraft=isSession?result.session:result.draft;
+   const nextAssistant=result.assistant||{};
+   if(!nextDraft){
+    if(nextAssistant.message)addChatBubble("assistant",nextAssistant.message,"",{scroll:true});
+    return;
+   }
+
+   // Keep this editor and chat DOM alive. Only merge the new server state and
+   // append the newest assistant turn, like a normal chat application.
+   const previousRevision=Number(d.revision||0);
+   const serverHistory=Array.isArray(nextDraft.history)?nextDraft.history:[];
+   const latestAssistant=[...serverHistory].reverse().find(x=>x?.role==="assistant");
+   const assistantText=latestAssistant?.text||nextAssistant.message||"";
+   const assistantSummary=latestAssistant?.summary||nextAssistant.summary||"";
+   const wait=chat.querySelector(".chat-bubble.thinking");if(wait)wait.remove();
+   if(assistantText)addChatBubble("assistant",assistantText,"",{summary:assistantSummary,scroll:true});
+
+   d.revision=nextDraft.revision;d.status=nextDraft.status;
+   d.history=serverHistory;d.questions=nextDraft.questions||[];
+   d.attachments=nextDraft.attachments||[];d.pending_confirmation=nextDraft.pending_confirmation||null;
+   d.values=nextDraft.values||{};
+   for(const key of Object.keys(values))delete values[key];
+   Object.assign(values,structuredClone(nextDraft.values||{}));
+   assistant=nextAssistant;
+   missing=nextAssistant.missing||result.missing||[];
+   refreshConversationMeta();
+   dirty=false;
+   status.replaceChildren();
+   if(send)send.disabled=locked||missing.length>0||!info.oauth_connected;
    if(app.preferences.secretary_auto_play_voice)await detachedSpeech();
-   if(isSession)render({...result,draft:result.session,task:result.task||{stage:"invitation",title:result.session?.values?.MTG_MeetingTitle||"جلسه جدید"}},true);
-   else render(result,false);
+
+   // If the form is currently open, tell the user that its values changed
+   // without destroying/rebuilding the conversation DOM.
+   if(formDetails?.open&&Number(nextDraft.revision||0)!==previousRevision){
+    formSummary.textContent="مشاهده / اصلاح فرم استخراج‌شده · اطلاعات جدید ثبت شد";
+   }
   }
   async function latestConversationState(){
    if(isSession){
@@ -1584,7 +1637,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(locked||sending)return false;
    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
    const text=(textValue??notes.value).trim();if(!text)throw Error("پیامی برای ارسال وارد کنید.");
-   if(!retry){notes.value="";autosize();addChatBubble("user",text)}
+   if(!retry){notes.value="";autosize();chatPinned=true;addChatBubble("user",text,"",{scroll:true,force:true})}
    if(errorBubble)errorBubble.remove();
    thinkingBubble(retry?"دبیر دوباره در حال بررسی همین پیام است":"دبیر در حال بررسی پیام شماست");
    let operation=beginOperation("secretary_turn");
@@ -1634,7 +1687,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   async function uploadConversationFile(selected){
    if(!selected||sending)return;
    if(dirty){statusLine.textContent="ابتدا اصلاحات دستی فرم را ذخیره کنید.";file.value="";return}
-   addChatBubble("user","📎 "+selected.name);thinkingBubble("دبیر در حال خواندن فایل است");
+   chatPinned=true;addChatBubble("user","📎 "+selected.name,"",{scroll:true,force:true});thinkingBubble("دبیر در حال خواندن فایل است");
    const operation=beginOperation("secretary_attachment");
    setSending(true,"در حال خواندن و استخراج اطلاعات فایل... برای توقف از دکمه «توقف» استفاده کنید.");
    try{
