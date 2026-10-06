@@ -1485,9 +1485,27 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    });
   }
   chat.addEventListener("scroll",()=>{chatPinned=nearChatBottom()},{passive:true});
+  function secretaryDisplayText(role,text){
+   let value=String(text||"");
+   if(role!=="assistant")return value;
+   const labels={
+    MTG_ActionOwnerUID:"مسئول اصلی اقدام",
+    MTG_MeetingEndTime:"ساعت پایان واقعی جلسه",
+    MTG_PlannedActionEndTime:"ساعت پایان برنامه‌ریزی‌شده",
+    MTG_MeetingEndDateTime:"تاریخ پایان برنامه‌ریزی‌شده",
+    MTG_ParticipantUserUID:"شرکت‌کننده",
+    MTG_AgendaPresenterUID:"ارائه‌دهنده",
+    MTG_ChairUserUID:"رئیس جلسه",
+    MTG_SecretaryUserUID:"دبیر جلسه"
+   };
+   for(const [key,label] of Object.entries(labels)){
+    value=value.replace(new RegExp("`?"+key+"`?","g"),label);
+   }
+   return value;
+  }
   function addChatBubble(role,text,extra="",options={}){
    const bubble=el("div","chat-bubble "+role+(extra?" "+extra:""));
-   add(bubble,el("small","",role==="user"?"شما":"دبیر هوشمند"),el("div","chat-bubble-text",text||""));
+   add(bubble,el("small","",role==="user"?"شما":"دبیر هوشمند"),el("div","chat-bubble-text",secretaryDisplayText(role,text)));
    add(chat,bubble);
    if(options.summary){
     const details=el("details","chat-summary-details"),summary=el("summary","","خلاصه اطلاعات استخراج‌شده");
