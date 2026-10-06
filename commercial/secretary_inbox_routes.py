@@ -91,6 +91,17 @@ def register(app,authorized,csrf):
           'form':runtime.form(t),'context':context,'missing':assistant['missing'],'assistant':assistant,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
 
+ def committed_turn_response(s,p,t,row,text,submitted_revision):
+  """Replay the persisted result when a previous identical turn already committed."""
+  if int(row.get('revision') or 0)!=int(submitted_revision)+1:return None
+  history=list(row.get('history') or [])
+  if len(history)<2:return None
+  user=history[-2] if isinstance(history[-2],dict) else {}
+  assistant=history[-1] if isinstance(history[-1],dict) else {}
+  if user.get('role')!='user' or assistant.get('role')!='assistant':return None
+  if str(user.get('text') or '').strip()!=str(text or '').strip():return None
+  return response(s,p,t,row)
+
  def session_response(s,p,row,t):
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
@@ -157,6 +168,9 @@ def register(app,authorized,csrf):
    def model_run():
     with run_slot((str(p.tenant_id),p.subject)):
      row=runtime.draft(s,p.subject,t)
+     replay=committed_turn_response(s,p,t,row,body.text,body.revision)
+     if replay is not None:
+      return {'result':replay,'intent':'replay','committed':True}
      if row['revision']!=body.revision:raise RevisionConflict()
      operation_active(p,body.request_id)
      vals,questions,reply,intent,pending_confirmation=runtime.converse(
@@ -182,17 +196,21 @@ def register(app,authorized,csrf):
        'can_submit':False,'message':'دستور صریح شما اجرا شد و پرونده به مرحله بعد فرایند منتقل شد.'
       }}
      return response(fresh_scope,p2,fresh,updated)
-    return access(value,source_id,commit)
-   result=guard_model(model_run)
+    return {'result':access(value,source_id,commit),'intent':intent,'committed':True}
+   outcome=guard_model(model_run)
+   result=outcome['result'];intent=outcome['intent']
    if intent=='resolved':
     event=('SECRETARY_AGENTIC_COMMAND_EXECUTED'
            if runtime.commands.command_kind(body.text,t.get('stage'))
            else 'SECRETARY_CONFIRMATION_RESOLVED')
-    ux.audit(str(p.tenant_id),p.subject,event,{
-     'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id,'pack_id':pack_id,
-     'process_uid':runtime.process_for(t['pack'],t['stage']),'result':'deterministic'
-    })
-   operation_finish(p,body.request_id,'completed',{'case_uid':case_uid,'stage':t.get('stage'),'result':'updated'})
+    try:
+     ux.audit(str(p.tenant_id),p.subject,event,{
+      'case_uid':case_uid,'stage':t.get('stage'),'source_id':source_id,'pack_id':pack_id,
+      'process_uid':runtime.process_for(t['pack'],t['stage']),'result':'deterministic'
+     })
+    except Exception:
+     logger.exception("Secretary post-commit audit failed request_id=%s event=%s",body.request_id,event)
+   operation_finish(p,body.request_id,'completed',{'case_uid':case_uid,'stage':t.get('stage'),'result':'idempotent_replay' if intent=='replay' else 'updated'})
    return result
   except ux.OperationCancelled as exc:
    operation_finish(p,body.request_id,'cancelled',{'case_uid':case_uid,'stage':t.get('stage')})
