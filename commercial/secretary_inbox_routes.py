@@ -85,10 +85,12 @@ def register(app,authorized,csrf):
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
   draft={k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments','last_error','recovery','failure_phase','upstream_status')}
-  if runtime._route_recovery_row(row):
+  if t.get('stage')=='minutes' and draft.get('status')=='reconciliation_required':
+   # Old builds trapped FR-MTG-003 failures in reconciliation_required. The
+   # rewritten minutes submit path safely re-runs the authoritative PM trigger.
+   draft['status']='draft';draft['recovery']='';draft['failure_phase']=''
+  elif runtime._route_recovery_row(row):
    draft['recovery']='route_only'
-  elif t.get('stage')=='minutes' and runtime._minutes_trigger_recovery_row(row):
-   draft['recovery']='trigger_retry'
   draft['pending_confirmation']=runtime.resolution.safe_public_pending(row.get('pending_confirmation'))
   return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},
           'draft':draft,
@@ -154,22 +156,12 @@ def register(app,authorized,csrf):
  @app.post(base+'/tasks/open')
  def open_task(source_id:str,body:Ref,value=Depends(csrf)):
   s,t=native(value,source_id,body)
-  def run(con,s,p):
-   current=runtime.task(con,s,body.case_uid,body.index,body.pack_id)
-   row=runtime.draft(s,p.subject,current)
-   # A rejected FR-MTG-003 AFTER trigger from a previous attempt is recoverable
-   # without replaying the trigger or creating another case. Opening the task is
-   # already an explicit user action, so restore the AVAN draft automatically and
-   # continue through the normal editor instead of forcing a separate recovery UI.
-   if current.get('stage')=='minutes' and runtime._minutes_trigger_recovery_row(row):
-    row=runtime.recover_minutes_trigger(s,p.subject,current,row['revision'],con=con)
-    current=runtime.task(con,s,body.case_uid,body.index,body.pack_id)
-   # BEFORE triggers are the native preparation step for the form. They run only
-   # after safe recovery so the refreshed draft is based on the current PM state.
-   runtime.prepare(current,s,p.subject)
-   fresh=runtime.task(con,s,body.case_uid,body.index,body.pack_id)
-   return response(s,p,fresh,runtime.draft(s,p.subject,fresh))
-  return access(value,source_id,run)
+  # Opening a task prepares only the native form. No recovery/verification flow
+  # is allowed to block the minutes editor.
+  access(value,source_id,lambda con,s,p:runtime.prepare(t,s,p.subject))
+  return access(value,source_id,lambda con,s,p:response(
+   s,p,(fresh:=runtime.task(con,s,body.case_uid,body.index,body.pack_id)),
+   runtime.draft(s,p.subject,fresh)))
  @app.post(base+'/tasks/load')
  def load_task(source_id:str,body:Ref,value=Depends(csrf)):
   return access(value,source_id,lambda con,s,p:response(s,p,(t:=runtime.task(con,s,body.case_uid,body.index,body.pack_id)),runtime.draft(s,p.subject,t)))
@@ -284,6 +276,30 @@ def register(app,authorized,csrf):
   except Exception as exc:
    operation_finish(p,request_id,'failed',{'case_uid':case_uid,'error_type':type(exc).__name__})
    raise
+
+ @app.post(base+'/tasks/{case_uid}/{index}/advance-minutes')
+ def advance_minutes(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
+  if not body.confirmed:raise HTTPException(422,'ارسال صورت‌جلسه را پس از بازبینی تأیید کنید.')
+  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
+  principal=value[2]
+  from .user_bpms_bindings import binding_for
+  binding=binding_for(principal.subject,source_id)
+  if not binding:
+   raise HTTPException(403,'این ProcessMaker به حساب AVAN شما Binding فعال ندارد.')
+  external_user_id=str(binding.get('external_user_id') or '')
+  if not external_user_id:
+   raise HTTPException(403,'کاربر ProcessMaker متناظر این حساب مشخص نیست.')
+  bearer=credentials.token_for_bound_source(str(principal.tenant_id),principal.subject,source_id)
+  try:
+   return runtime.advance_minutes_direct(
+    str(principal.tenant_id),principal.subject,source_id,external_user_id,
+    case_uid,index,pack_id,bearer)
+  except PermissionError as exc:
+   raise HTTPException(403,str(exc) or 'ارسال این صورت‌جلسه برای حساب فعلی مجاز نیست.')
+  except RevisionConflict:
+   raise HTTPException(409,'وظیفه ProcessMaker تغییر کرده است؛ کارتابل را تازه‌سازی کنید.')
+  except ValueError as exc:
+   raise HTTPException(422,str(exc))
 
  @app.post(base+'/tasks/{case_uid}/{index}/submit')
  def send_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
