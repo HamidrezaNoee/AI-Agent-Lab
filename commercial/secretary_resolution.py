@@ -22,7 +22,9 @@ CONFIRM_CUES=("تأیید کنید","تایید کنید","آیا","منظور",
 
 def normalize_text(value):
     text=str(value or "").strip().casefold().replace("\u200c"," ").replace("ي","ی").replace("ك","ک")
-    text=re.sub(r"[«»"'،,؟?!؛;:.()\[\]{}]+"," ",text)
+    text=text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩","01234567890123456789"))
+    text=text.replace("'"," ")
+    text=re.sub(r'[«»"\u060c,؟?!؛;:.()\[\]{}]+'," ",text)
     return re.sub(r"\s+"," ",text).strip()
 
 
