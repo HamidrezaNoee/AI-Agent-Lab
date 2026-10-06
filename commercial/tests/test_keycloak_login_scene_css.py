@@ -58,3 +58,12 @@ def test_keycloak_initial_login_challenge_injects_avan_captcha():
     assert "protected Response challenge(AuthenticationFlowContext context" in provider
     assert "prepareSecurity(form);" in provider
     assert "return form.createLoginUsernamePassword();" in provider
+
+
+def test_keycloak_theme_cache_is_disabled_for_runtime_appearance_volume():
+    compose = COMPOSE.read_text(encoding="utf-8")
+    assert "--spi-theme--static-max-age=-1" in compose
+    assert "--spi-theme--cache-themes=false" in compose
+    assert "--spi-theme--cache-templates=false" in compose
+    assert "rm -rf /opt/keycloak/data/tmp/kc-gzip-cache" in compose
+    assert "avan-ui:/opt/keycloak/themes/avan/login/resources/generated:ro" in compose
