@@ -204,6 +204,28 @@ def propose_identity_confirmation(reply,current,gaps,directory):
     }
 
 
+def _question_targets_path(text,path):
+    normalized=normalize_text(text)
+    path=str(path or "")
+    if not normalized or not path:return False
+    if path in str(text):return True
+    action=re.fullmatch(r"MTG_Actions\.(\d+)\.MTG_ActionOwnerUID",path)
+    if action:
+        row=action.group(1)
+        has_row=bool(re.search(r"(?:اقدام|ردیف)\s*0*"+re.escape(row)+r"\b",normalized))
+        has_owner=any(word in normalized for word in ("مسئول","اقدام کننده","اقدام‌کننده","owner"))
+        return has_row and has_owner
+    agenda=re.fullmatch(r"MTG_Agenda\.(\d+)\.MTG_AgendaPresenterUID",path)
+    if agenda:
+        row=agenda.group(1)
+        return bool(re.search(r"(?:دستور جلسه|ردیف)\s*0*"+re.escape(row)+r"\b",normalized)) and "ارائه" in normalized
+    if path=="MTG_ChairUserUID":
+        return "رئیس" in normalized or "رییس" in normalized
+    if path=="MTG_SecretaryUserUID":
+        return "دبیر" in normalized
+    return False
+
+
 def _remove_resolved_questions(questions,pending):
     path=str((pending or {}).get("field_path") or "")
     question=str((pending or {}).get("question") or "")
@@ -211,7 +233,7 @@ def _remove_resolved_questions(questions,pending):
     for item in questions or []:
         text=str(item)
         if question and text==question:continue
-        if path and path in text:continue
+        if _question_targets_path(text,path):continue
         result.append(text)
     return result
 
