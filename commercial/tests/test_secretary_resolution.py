@@ -170,7 +170,7 @@ def test_model_generated_confirmation_becomes_structured_pending_state(pack,monk
         ),"update"
     monkeypatch.setattr(runtime,"extract",fake_extract)
     result,questions,reply,intent,pending=runtime.converse(
-        "ادمین",task(pack,"minutes"),values,scope,
+        "پیشنهاد مسئول را بررسی کن",task(pack,"minutes"),values,scope,
         questions=["اقدام 1: MTG_ActionOwnerUID را تعیین کنید."])
     assert result==values and intent=="update"
     assert pending["field_path"]=="MTG_Actions.1.MTG_ActionOwnerUID"
