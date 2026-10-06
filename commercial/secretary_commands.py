@@ -52,6 +52,14 @@ _HELD_PHRASES = (
     "وضعیت جلسه تشکیل شده",
     "وضعیت جلسه تشکیل شد",
 )
+_NOT_HELD_PHRASES = (
+    "جلسه تشکیل نشد",
+    "جلسه تشکیل نشده",
+    "جلسه برگزار نشد",
+    "جلسه برگزار نشده",
+    "وضعیت جلسه تشکیل نشد",
+    "وضعیت جلسه تشکیل نشده",
+)
 _TEMPLATES = (
     "پیگیری موارد باز و ارائه نتیجه درباره «{topic}»",
     "بررسی وضعیت و ارائه گزارش جمع‌بندی درباره «{topic}»",
@@ -120,9 +128,37 @@ def is_explicit_batch_action_command(text, stage="minutes"):
     return stage == "minutes" and _explicit_command(text)
 
 
-def _meeting_was_explicitly_held(text):
+def _meeting_status(text):
     normalized = resolution.normalize_text(text)
-    return any(phrase in normalized for phrase in _HELD_PHRASES)
+    if any(phrase in normalized for phrase in _NOT_HELD_PHRASES):
+        return "NotHeld"
+    if any(phrase in normalized for phrase in _HELD_PHRASES):
+        return "Held"
+    return None
+
+
+def command_kind(text, stage="minutes"):
+    if stage != "minutes":
+        return None
+    if _explicit_command(text):
+        return "batch_actions"
+    if _meeting_status(text):
+        return "meeting_status"
+    return None
+
+
+def _meeting_was_explicitly_held(text):
+    return _meeting_status(text) == "Held"
+
+
+def _not_held_reason(text):
+    raw = str(text or "").strip()
+    for marker in ("به دلیل", "به علت", "علت:", "علت "):
+        if marker in raw:
+            reason = raw.split(marker, 1)[1].strip(" .،؛:")
+            if reason:
+                return reason[:4000]
+    return ""
 
 
 def _active_attendees(values, scope):
@@ -253,17 +289,33 @@ def _prune_questions(questions, values):
 
 
 def apply(text, current, task, scope, *, questions=(), now=None):
-    """Apply one explicit batch-action command to a minutes draft.
-
-    Returns None when the message is not a supported explicit command.
-    """
-    if not is_explicit_batch_action_command(text, task.get("stage")):
+    """Apply one explicit deterministic command to a minutes draft."""
+    kind = command_kind(text, task.get("stage"))
+    if not kind:
         return None
 
     normalized = resolution.normalize_text(text)
     values = copy.deepcopy(current)
-    if _meeting_was_explicitly_held(text):
+    status = _meeting_status(text)
+    if status == "Held":
         values["MTG_MeetingHeld"] = "Held"
+        values["MTG_NotHeldReason"] = ""
+    elif status == "NotHeld":
+        values["MTG_MeetingHeld"] = "NotHeld"
+        reason = _not_held_reason(text)
+        if reason:
+            values["MTG_NotHeldReason"] = reason
+
+    if kind == "meeting_status":
+        label = "جلسه تشکیل شد" if status == "Held" else "جلسه تشکیل نشد"
+        return {
+            "values": values,
+            "questions": _prune_questions(questions, values),
+            "intent": "resolved",
+            "pending_confirmation": None,
+            "reply": "وضعیت جلسه روی «" + label + "» ثبت شد.",
+            "resolution": "meeting_status",
+        }
 
     attendees = _active_attendees({**task.get("native", {}), **values}, scope)
     if not attendees:
