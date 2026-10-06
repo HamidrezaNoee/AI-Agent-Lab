@@ -1670,8 +1670,8 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    refreshConversationMeta();
    dirty=false;
    status.replaceChildren();
-   if(send)send.disabled=locked||(t.stage!=="minutes"&&missing.length>0)||!info.oauth_connected;
-   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||!info.oauth_connected;
+   if(send)send.disabled=locked||missing.length>0||!info.oauth_connected;
+   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected;
    if(app.preferences.secretary_auto_play_voice)await detachedSpeech();
 
    // If the form is currently open, tell the user that its values changed
@@ -1798,7 +1798,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
      editor.replaceChildren(note("صورت‌جلسه با موفقیت به مرحله «تأیید صورت‌جلسه» ارسال شد."));
      setTimeout(()=>load().catch(()=>{}),400);
     }finally{
-     if(chatMinutesSend?.isConnected)chatMinutesSend.disabled=locked||dirty||!info.oauth_connected;
+     if(chatMinutesSend?.isConnected)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected;
     }
    }),"button primary");
    chatMinutesSend.disabled=locked||dirty||!info.oauth_connected;
@@ -1863,7 +1863,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     else await load();
    }finally{send.disabled=locked||dirty}
   }),"button primary");
-  send.disabled=locked||(t.stage!=="minutes"&&missing.length>0)||!info.oauth_connected;
+  send.disabled=locked||missing.length>0||!info.oauth_connected;
   add(formBody,save,send,status);add(p,formDetails);
 
   if(!isSession&&t.stage==="monitoring")add(p,link("پیشنهاد جلسه پیگیری اقدامات باز",checked(async()=>{const row=await post(path+"/followup"+query);await session(row.id);await load()})));
