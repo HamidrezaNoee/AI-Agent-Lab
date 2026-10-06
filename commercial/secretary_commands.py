@@ -472,44 +472,63 @@ def apply(text, current, task, scope, *, questions=(), now=None):
 
     actions = copy.deepcopy(values.get("MTG_Actions")) if isinstance(values.get("MTG_Actions"), dict) else {}
     next_action = _next_code(actions, "MTG_ActionNo", "A")
-    created = []
+    unowned = [key for key,row in _rows(actions) if not row.get("MTG_ActionOwnerUID")]
+    changed = []
+    created_count = 0
+    reused_count = 0
+    action_number_cursor = next_action
     for offset, (_, participant, uid, person) in enumerate(selected):
         topic_no, topic = topics[offset % len(topics)]
         template_index = offset
         if random_requested:
             digest = hashlib.sha256((seed_material + "|" + uid + "|" + str(offset)).encode("utf-8")).digest()
             template_index = digest[0] % len(_TEMPLATES)
-        description = _TEMPLATES[template_index % len(_TEMPLATES)].format(topic=topic)
+        generated_description = _TEMPLATES[template_index % len(_TEMPLATES)].format(topic=topic)
         decision_no = decision_numbers[offset % len(decision_numbers)]
-        key = str(max([int(k) for k in actions if str(k).isdigit()] + [0]) + 1)
-        action_no = f"A-{next_action + offset:03d}"
-        row = {
-            "MTG_ActionDecisionNo": decision_no,
-            "MTG_ActionNo": action_no,
-            "MTG_ActionDescription": description,
-            "MTG_ActionOwnerUID": uid,
-            "MTG_ActionOwnerPosition": _position(participant, person),
-            "MTG_persiandate_ActionDueDateTime": due_date,
-            "MTG_ActionPriority": "Normal",
-        }
-        actions[key] = row
-        created.append((action_no, _person_label(uid, person), description))
+        if unowned:
+            key = unowned.pop(0)
+            row = actions[key]
+            reused_count += 1
+        else:
+            key = str(max([int(k) for k in actions if str(k).isdigit()] + [0]) + 1)
+            row = {}
+            actions[key] = row
+            created_count += 1
+        if not row.get("MTG_ActionNo"):
+            row["MTG_ActionNo"] = f"A-{action_number_cursor:03d}"
+            action_number_cursor += 1
+        if not row.get("MTG_ActionDescription"):
+            row["MTG_ActionDescription"] = generated_description
+        if not row.get("MTG_ActionDecisionNo"):
+            row["MTG_ActionDecisionNo"] = decision_no
+        row["MTG_ActionOwnerUID"] = uid
+        row["MTG_ActionOwnerPosition"] = _position(participant, person) or str(row.get("MTG_ActionOwnerPosition") or "")
+        if due_date:
+            row["MTG_persiandate_ActionDueDateTime"] = due_date
+        row["MTG_ActionPriority"] = str(row.get("MTG_ActionPriority") or "Normal")
+        changed.append((str(row["MTG_ActionNo"]), _person_label(uid, person), str(row["MTG_ActionDescription"])))
     values["MTG_Actions"] = actions
 
     requested_count = requested if requested is not None else len(selected)
     shortage = requested_count is not None and requested_count > len(selected)
     mode = "به‌صورت انتخاب خودکار از حاضرین" if random_requested else "از حاضرین جلسه"
-    reply = f"{len(created)} اقدام {mode} به پیش‌نویس اضافه شد."
+    if reused_count and created_count:
+        reply = f"{reused_count} اقدام موجود {mode} مسئول گرفت و {created_count} اقدام جدید برای نفرات باقی‌مانده ساخته شد."
+    elif reused_count:
+        reply = f"{reused_count} اقدام موجود {mode} به افراد انتخاب‌شده تخصیص داده شد؛ اقدام تکراری نساختم."
+    else:
+        reply = f"{created_count} اقدام {mode} به پیش‌نویس اضافه شد."
     if days is not None:
-        reply += f" مهلت همه اقدامات {days} روز از امروز، یعنی {due_date}، ثبت شد."
+        reply += f" مهلت اقدامات انتخاب‌شده {days} روز از امروز، یعنی {due_date}، ثبت شد."
     if shortage:
         reply += f" فقط {len(selected)} شرکت‌کننده واجد شرایط در جلسه موجود بود؛ بیشتر از این تعداد انتخاب نشد."
     if not had_decisions:
         reply += " برای حفظ ارتباط معتبر اقدام‌ها با ProcessMaker، مصوبه‌های مرتبط نیز به‌صورت پیش‌نویس ساخته شدند."
-    reply += "\n" + "\n".join(
-        f"{action_no} · {owner}: {description}" for action_no, owner, description in created
-    )
-    reply += "\n\nاین‌ها پیش‌نویس هستند و قبل از ارسال صورت‌جلسه قابل ویرایش‌اند."
+    if changed:
+        reply += "\n" + "\n".join(
+            f"{action_no} · {owner}: {description}" for action_no, owner, description in changed
+        )
+    reply += "\n\nاین تغییرات فقط در پیش‌نویس است و تا ارسال صریح صورت‌جلسه هیچ Case اقدامی ایجاد نمی‌شود."
 
     return {
         "values": values,
@@ -518,5 +537,6 @@ def apply(text, current, task, scope, *, questions=(), now=None):
         "pending_confirmation": None,
         "reply": reply,
         "resolution": "batch_actions",
-        "created_actions": len(created),
+        "created_actions": created_count,
+        "reused_actions": reused_count,
     }
