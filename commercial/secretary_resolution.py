@@ -266,7 +266,7 @@ def _question_targets_path(text,path):
     action=re.fullmatch(r"MTG_Actions\.(\d+)\.MTG_ActionOwnerUID",path)
     if action:
         row=action.group(1)
-        has_row=bool(re.search(r"(?:اقدام|ردیف)\s*0*"+re.escape(row)+r"\b",normalized))
+        has_row=bool(re.search(r"(?:اقدام|ردیف)\s*(?:a\s*-?\s*)?0*"+re.escape(row)+r"\b",normalized))
         has_owner=any(word in normalized for word in ("مسئول","اقدام کننده","اقدام‌کننده","owner"))
         return has_row and has_owner
     agenda=re.fullmatch(r"MTG_Agenda\.(\d+)\.MTG_AgendaPresenterUID",path)
