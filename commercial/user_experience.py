@@ -122,7 +122,8 @@ def logs(tenant_id,actor,role,*,limit=200,event=None,actor_id=None,
         }
         filter_values["actors"].add(item["actor_id"])
         if clean.get("source_id"):filter_values["sources"].add(str(clean["source_id"]))
-        if clean.get("process_uid"):filter_values["processes"].add(str(clean["process_uid"]))
+        process_value=clean.get("process_uid") or clean.get("pack_id")
+        if process_value:filter_values["processes"].add(str(process_value))
         if clean.get("stage"):filter_values["stages"].add(str(clean["stage"]))
         parsed.append(item)
 
@@ -137,7 +138,10 @@ def logs(tenant_id,actor,role,*,limit=200,event=None,actor_id=None,
     def keep(item):
         detail=item["detail"]
         for key,value in exact.items():
-            if value and str(detail.get(key) or "")!=value:return False
+            if not value:continue
+            if key=="process_uid":
+                if value not in (str(detail.get("process_uid") or ""),str(detail.get("pack_id") or "")):return False
+            elif str(detail.get(key) or "")!=value:return False
         if needle:
             hay=" ".join(str(x or "") for x in (
                 item["event_code"],item["actor_id"],detail.get("message"),detail.get("error"),
