@@ -18,6 +18,7 @@ def payload(stage):
  if stage=='invitation_approval':return {'MTG_InvitationApproval':'Approved'}
  if stage=='minutes':return {
   'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'گزارش بررسی شد',
+  'MTG_Participants':{'1':{'MTG_ParticipantUserUID':'c'*32,'MTG_AttendanceStatus':'Present','MTG_AttendanceTime':'10:00'}},
   'MTG_Decisions':{'1':{'MTG_DecisionNo':'D-001','MTG_DecisionText':'پیگیری شود'}},
   'MTG_Actions':{'1':{'MTG_ActionDecisionNo':'D-001','MTG_ActionNo':'A-001','MTG_ActionDescription':'پیگیری',
                        'MTG_ActionOwnerUID':'c'*32,'MTG_persiandate_ActionDueDateTime':'1405/07/20'}}
