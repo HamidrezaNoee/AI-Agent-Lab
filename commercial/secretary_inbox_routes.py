@@ -85,7 +85,9 @@ def register(app,authorized,csrf):
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
   draft={k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments','last_error','recovery','failure_phase','upstream_status')}
-  if t.get('stage')=='minutes' and runtime._minutes_trigger_recovery_row(row):
+  if runtime._route_recovery_row(row):
+   draft['recovery']='route_only'
+  elif t.get('stage')=='minutes' and runtime._minutes_trigger_recovery_row(row):
    draft['recovery']='trigger_retry'
   draft['pending_confirmation']=runtime.resolution.safe_public_pending(row.get('pending_confirmation'))
   return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},
