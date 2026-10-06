@@ -16,7 +16,7 @@ FORM_NAMES=list(CONTRACT['forms'])
 FORMS={s:CONTRACT['forms'][FORM_NAMES[i]] for s,i in [('invitation',0),('minutes',2),('monitoring',4)]}
 WRITE_FIELDS={
  'invitation':{'MTG_MeetingNo','MTG_MeetingTitle','MTG_Objective','MTG_Location','MTG_MeetingStartDateTime','MTG_MeetingStartTime','MTG_MeetingEndTime','MTG_SecretaryUserUID','MTG_ChairUserUID','MTG_Participants','MTG_Agenda'},
- 'minutes':{'MTG_MeetingHeld','MTG_NotHeldReason','MTG_MeetingDiscussionSummary','MTG_ParkingLot','MTG_Decisions','MTG_Actions','MTG_MeetingEndDateTime','MTG_MeetingEndTime','MTG_PlannedActionEndTime','MTG_Participants'},
+ 'minutes':{'MTG_MeetingHeld','MTG_NotHeldReason','MTG_MeetingDiscussionSummary','MTG_ParkingLot','MTG_Decisions','MTG_Actions','MTG_Participants'},
  'monitoring':{'MTG_ClosingNote'},
 }
 
@@ -146,10 +146,9 @@ def jalali_instant(day,clock):
 
 def missing(values,stage):
  required=['MTG_MeetingNo','MTG_MeetingTitle','MTG_Location','MTG_MeetingStartDateTime','MTG_MeetingStartTime','MTG_SecretaryUserUID','MTG_ChairUserUID'] if stage=='invitation' else ['MTG_MeetingHeld'] if stage=='minutes' else ['MTG_ClosingNote']
- if stage=='invitation':required+=['MTG_Participants','MTG_Agenda']
  if stage=='minutes':
   if values.get('MTG_MeetingHeld')=='NotHeld':required+=['MTG_NotHeldReason']
-  elif values.get('MTG_MeetingHeld')=='Held':required+=['MTG_MeetingDiscussionSummary','MTG_MeetingEndDateTime','MTG_MeetingEndTime','MTG_PlannedActionEndTime']
+  elif values.get('MTG_MeetingHeld')=='Held':required+=['MTG_MeetingDiscussionSummary']
  result=[{'field':k,'question':'لطفاً '+str(FORMS[stage][k]['label'] or k)+' را مشخص کنید.'} for k in required if not values.get(k)]
  if stage=='minutes' and values.get('MTG_MeetingHeld')=='Held':
   for i,r in enumerate(rows(values.get('MTG_Participants')),1):
@@ -166,7 +165,21 @@ def missing(values,stage):
    elif status=='Present' and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',attendance_time):
     result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceTime',
      'question':f'ساعت حضور شرکت‌کننده حاضر ردیف {i}{who} معتبر نیست؛ آن را به صورت HH:mm اصلاح کنید.'})
-  decisions={r.get('MTG_DecisionNo') for r in rows(values.get('MTG_Decisions')) if r.get('MTG_DecisionText')}
+  decision_rows=rows(values.get('MTG_Decisions'))
+  decisions=set()
+  decision_numbers=[]
+  for i,r in enumerate(decision_rows,1):
+   no=str(r.get('MTG_DecisionNo') or '').strip()
+   text=str(r.get('MTG_DecisionText') or '').strip()
+   if not no:
+    result.append({'field':f'MTG_Decisions.{i}.MTG_DecisionNo','question':f'شماره مصوبه ردیف {i} را مشخص کنید.'})
+   if not text:
+    result.append({'field':f'MTG_Decisions.{i}.MTG_DecisionText','question':f'متن مصوبه ردیف {i} را مشخص کنید.'})
+   if no:
+    decision_numbers.append(no)
+    if text:decisions.add(no)
+  if len(decision_numbers)!=len(set(decision_numbers)):
+   raise ValueError('شماره مصوبات تکراری است.')
   for i,r in enumerate(rows(values.get('MTG_Actions')),1):
    action_no=str(r.get('MTG_ActionNo') or ('ردیف '+str(i)))
    action_text=str(r.get('MTG_ActionDescription') or '').strip()
