@@ -116,6 +116,35 @@ def unique_person(raw,directory):
     return matches[0] if len(matches)==1 else None
 
 
+def strict_identity_mentions(text,directory):
+    """People explicitly evidenced by username/name/title/position in this text.
+
+    Unit-only overlap is deliberately insufficient: «کارشناس بازرگانی» must not
+    silently resolve to a «مدیر بازرگانی» merely because both belong to the
+    commercial unit.
+    """
+    normalized=normalize_text(text)
+    if not normalized:return []
+    found=[]
+    for uid,person in (directory or {}).items():
+        if not person.get("active"):continue
+        aliases=set()
+        for key in ("username","avan_username","name","avan_name","position","title"):
+            aliases.update(_identity_forms(person.get(key) or ""))
+        username=normalize_text(person.get("username") or person.get("avan_username") or "")
+        unit=normalize_text(person.get("unit") or person.get("department") or person.get("department_name") or "")
+        if username.startswith("mgr.") and unit:
+            cleaned=re.sub(r"^(?:واحد|مدیریت|اداره|دپارتمان|امور)\s+","",unit).strip()
+            for value in {unit,cleaned}:
+                if value:aliases.update(_identity_forms("مدیر "+value))
+        if username=="administrator":aliases.update({"admin","ادمین","administrator","مدیر سیستم","مدیرسیستم"})
+        if username=="ceo":aliases.update({"ceo","مدیرعامل","مدیر عامل"})
+        for alias in sorted((x for x in aliases if x),key=len,reverse=True):
+            if re.search(r"(?<![\w.])"+re.escape(alias)+r"(?![\w.])",normalized,re.UNICODE):
+                found.append(str(uid));break
+    return list(dict.fromkeys(found))
+
+
 def person_display(uid,directory):
     person=(directory or {}).get(str(uid)) or {}
     return str(person.get("username") or person.get("avan_username") or person.get("name") or person.get("avan_name") or uid)
