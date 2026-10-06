@@ -25,6 +25,8 @@ def normalize_text(value):
     text=text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩","01234567890123456789"))
     text=text.replace("'"," ")
     text=re.sub(r'[«»"\u060c,؟?!؛;:()\[\]{}]+'," ",text)
+    # Preserve dots inside usernames such as mgr.sales, but drop sentence dots.
+    text=re.sub(r"\.(?=\s|$)"," ",text)
     return re.sub(r"\s+"," ",text).strip()
 
 
