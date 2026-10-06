@@ -83,7 +83,7 @@ def _source(source_id:str)->dict:
     return source
 
 
-_DIRECTORY_FIELDS=("external_user_id","username","display_name","email","status","active","unit")
+_DIRECTORY_FIELDS=("external_user_id","username","display_name","email","status","active","unit","position")
 DIRECTORY_CACHE_SECONDS=300
 
 
@@ -137,7 +137,7 @@ def _pm_directory(source_id:str)->list[dict]:
         with open_production(config=mysql) as con:
             rows=query(con,
                 "SELECT u.USR_UID,u.USR_USERNAME,u.USR_FIRSTNAME,u.USR_LASTNAME,"
-                "u.USR_EMAIL,u.USR_STATUS,d.DEP_TITLE "
+                "u.USR_EMAIL,u.USR_STATUS,d.DEP_TITLE,u.USR_POSITION "
                 "FROM USERS u LEFT JOIN DEPARTMENT d ON d.DEP_UID=u.DEP_UID "
                 "ORDER BY u.USR_USERNAME")
     except ProductionUnavailable as exc:
@@ -161,6 +161,7 @@ def _pm_directory(source_id:str)->list[dict]:
             "status":status,
             "active":status=="ACTIVE",
             "unit":_clean_text(row[6],160) if len(row)>6 else "",
+            "position":_clean_text(row[7],160) if len(row)>7 else "",
         })
     return users
 
