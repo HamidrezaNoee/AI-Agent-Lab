@@ -215,7 +215,7 @@ def register(app,authorized,csrf):
      operation_active(p,request_id)
      fresh=runtime.task(con,fresh_scope,case_uid,index,pack_id)
      updated=runtime.update(fresh_scope,p2.subject,fresh,revision,vals,questions,
-      turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)
+      turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta,pending_confirmation=None)
      return response(fresh_scope,p2,fresh,updated)
     return access(value,source_id,commit)
    result=guard_model(model_run)
@@ -379,7 +379,7 @@ def register(app,authorized,csrf):
     current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
     if current['revision']!=revision:raise RevisionConflict()
     updated=runtime.session_update(fresh_scope,p.subject,identifier,revision,vals,questions,
-     turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta)
+     turn_text='فایل: '+meta['name'],turn_source='file',attachment=meta,pending_confirmation=None)
     return session_response(fresh_scope,p,updated,fresh_task)
    result=access(value,source_id,commit)
    operation_finish(principal,request_id,'completed',{'session_id':identifier,'filename':meta.get('name'),'result':'attachment_processed'})
