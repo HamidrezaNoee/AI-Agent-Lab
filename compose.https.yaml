@@ -7,7 +7,8 @@ services:
         export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
         export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
         export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
-        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=https://$${AVAN_AUTH_HOST} --hostname-backchannel-dynamic=true
+        rm -rf /opt/keycloak/data/tmp/kc-gzip-cache
+        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=https://${AVAN_AUTH_HOST} --hostname-backchannel-dynamic=true --spi-theme--static-max-age=-1 --spi-theme--cache-themes=false --spi-theme--cache-templates=false
     environment:
       AVAN_AUTH_HOST: ${AVAN_AUTH_HOST:?Set the authentication DNS name}
       AVAN_PUBLIC_ORIGIN: https://${AVAN_APP_HOST:?Set the application DNS name}
