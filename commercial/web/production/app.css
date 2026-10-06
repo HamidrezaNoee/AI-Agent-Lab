@@ -450,3 +450,15 @@ body.flow-snapshot-open{overflow:hidden}
 :root[data-theme='dark'] .meeting-flow-tooltip-floating[data-placement="bottom"]::after{
   border-bottom-color:#071621!important;
 }
+
+
+/* Stable chat viewport: old history must never animate from top to bottom or
+   propagate wheel/scroll anchoring to the whole AVAN page. */
+.secretary-chat{
+  scroll-behavior:auto!important;
+  overscroll-behavior:contain!important;
+  overflow-anchor:none!important;
+  scrollbar-gutter:stable;
+}
+.secretary-chat>.chat-bubble{overflow-anchor:none}
+.secretary-conversation{overflow-anchor:none}
