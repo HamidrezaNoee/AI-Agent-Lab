@@ -33,7 +33,7 @@ def ready():
 def test_contract_and_missing():
  assert f.PLAN=='4a6419a60141d7d36001ba9344db4eac'
  assert f.MINUTES=='a07e9ed93a4b3244aca40996c45eb227'
- assert len(f.missing({},'invitation'))==9
+ assert len(f.missing({},'invitation'))==7
  assert not f.missing(V,'invitation')
  assert f.missing({'MTG_MeetingHeld':'NotHeld'},'minutes')[0]['field']=='MTG_NotHeldReason'
 
@@ -152,17 +152,13 @@ def test_minutes_missing_questions_never_expose_internal_pmx_field_names():
  assert 'A-002' in owner['question']
 
 
-def test_minutes_requires_actual_meeting_end_time_and_allows_writing_it():
- values={
-  'MTG_MeetingHeld':'Held',
-  'MTG_MeetingDiscussionSummary':'جمع‌بندی جلسه',
-  'MTG_MeetingEndDateTime':'1405/07/24',
-  'MTG_PlannedActionEndTime':'17:00',
- }
- gaps=f.missing(values,'minutes')
- assert any(x['field']=='MTG_MeetingEndTime' for x in gaps)
- values['MTG_MeetingEndTime']='15:00'
- assert not any(x['field']=='MTG_MeetingEndTime' for x in f.missing(values,'minutes'))
+def test_minutes_does_not_request_locked_plan_or_end_fields():
+ values={'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'جمع‌بندی جلسه'}
+ fields={x['field'] for x in f.missing(values,'minutes')}
+ assert 'MTG_MeetingEndDateTime' not in fields
+ assert 'MTG_MeetingEndTime' not in fields
+ assert 'MTG_PlannedActionEndTime' not in fields
+ assert not ({'MTG_MeetingEndDateTime','MTG_MeetingEndTime','MTG_PlannedActionEndTime'} & f.WRITE_FIELDS['minutes'])
  f.validate(values,'minutes',S['directory'])
 
 
@@ -202,3 +198,27 @@ def test_minutes_rejects_invalid_present_time_and_time_for_absent_participant():
  base['MTG_Participants']['1']['MTG_AttendanceTime']='10:00'
  with pytest.raises(ValueError,match='نباید'):
   f.validate(base,'minutes',S['directory'])
+
+
+def test_latest_invitation_does_not_require_participants_or_agenda():
+ values={
+  'MTG_MeetingNo':'100','MTG_MeetingTitle':'جلسه','MTG_Location':'دفتر',
+  'MTG_MeetingStartDateTime':'1405/07/10','MTG_MeetingStartTime':'10:00',
+  'MTG_SecretaryUserUID':'s'*32,'MTG_ChairUserUID':'c'*32,
+ }
+ assert not f.missing(values,'invitation')
+
+
+def test_minutes_decisions_require_number_text_and_unique_number():
+ values={
+  'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'جمع‌بندی',
+  'MTG_Decisions':{
+   '1':{'MTG_DecisionNo':'D-001','MTG_DecisionText':''},
+   '2':{'MTG_DecisionNo':'D-001','MTG_DecisionText':'دوم'},
+  }
+ }
+ with pytest.raises(ValueError,match='تکراری'):
+  f.missing(values,'minutes')
+ values['MTG_Decisions']['2']['MTG_DecisionNo']='D-002'
+ gaps=f.missing(values,'minutes')
+ assert any(x['field']=='MTG_Decisions.1.MTG_DecisionText' for x in gaps)
