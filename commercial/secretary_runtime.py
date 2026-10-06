@@ -540,6 +540,17 @@ class ConversationExtraction(legacy.Extraction):
 def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,history=()):
  raw=_intent_text(notes)
 
+ # Backward-compatible recovery: drafts created before the structured resolver
+ # can reconstruct a safe pending proposal from the last assistant turn.
+ if not pending_confirmation:
+  last_assistant=next((
+   str(item.get('text') or '') for item in reversed(list(history or []))
+   if isinstance(item,dict) and item.get('role')=='assistant' and item.get('text')
+  ),'')
+  if last_assistant:
+   pending_confirmation=resolution.propose_identity_confirmation(
+    last_assistant,current,gaps(current,task),scope.get('directory',{}))
+
  # Layer 1: deterministic reference/confirmation resolution. No model call.
  resolved=resolution.resolve_pending(notes,current,questions,pending_confirmation,scope.get('directory',{}))
  if resolved:
