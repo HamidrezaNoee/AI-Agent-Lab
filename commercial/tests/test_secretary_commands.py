@@ -211,3 +211,47 @@ def test_not_held_status_and_reason_are_applied_together(pack, monkeypatch):
     assert intent == "resolved"
     assert not questions
     assert "جلسه تشکیل نشد" in reply
+
+
+def test_assign_action_owners_from_unique_role_or_unit_without_llm(pack, monkeypatch):
+    s, participants = scope()
+    s["directory"]["a"*32]["position"] = "کارشناس بازرگانی"
+    s["directory"]["a"*32]["unit"] = "بازرگانی"
+    s["directory"]["b"*32]["position"] = "کارشناس مجوزات"
+    s["directory"]["b"*32]["unit"] = "مجوزات"
+    values = minutes_values(participants)
+    values["MTG_MeetingHeld"] = "Held"
+    values["MTG_Decisions"] = {"1":{"MTG_DecisionNo":"D-001","MTG_DecisionText":"پیگیری شود"}}
+    values["MTG_Actions"] = {
+        "1":{"MTG_ActionNo":"A-001","MTG_ActionDescription":"پیگیری خرید",
+             "MTG_ActionOwnerPosition":"کارشناس بازرگانی","MTG_ActionDecisionNo":"D-001",
+             "MTG_persiandate_ActionDueDateTime":"1405/07/20"},
+        "2":{"MTG_ActionNo":"A-002","MTG_ActionDescription":"تکمیل مجوز",
+             "MTG_ActionOwnerPosition":"کارشناس مجوزات","MTG_ActionDecisionNo":"D-001",
+             "MTG_persiandate_ActionDueDateTime":"1405/07/20"},
+    }
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("role assignment must not call the LLM"))
+    result,questions,reply,intent,_=runtime.converse(
+        "با توجه به سمت‌هایی که در اقدامات گذاشتی آدم‌های مرتبط با اون سمت‌ها رو پیدا کن و بهشون وصل کن",
+        task(pack,"minutes",minutes_native()),values,s,
+        questions=["مسئول اصلی اقدام A-001 را مشخص کنید.","مسئول اصلی اقدام A-002 را مشخص کنید."],
+    )
+    assert intent=="resolved"
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]=="a"*32
+    assert result["MTG_Actions"]["2"]["MTG_ActionOwnerUID"]=="b"*32
+    assert not questions
+    assert "2 مسئول اقدام" in reply
+
+
+def test_role_assignment_keeps_ambiguous_matches_unassigned(pack):
+    s,participants=scope()
+    s["directory"]["a"*32]["unit"]="مجوزات"
+    s["directory"]["b"*32]["unit"]="مجوزات"
+    values=minutes_values(participants)
+    values["MTG_MeetingHeld"]="Held"
+    values["MTG_Actions"]={"1":{"MTG_ActionNo":"A-001","MTG_ActionDescription":"پیگیری مجوز","MTG_ActionOwnerPosition":"کارشناس مجوزات"}}
+    result=commands.apply("مسئول اقدام را بر اساس سمت افراد مرتبط پیدا کن و بهش وصل کن",
+                          values,task(pack,"minutes",minutes_native()),s)
+    assert not result["values"]["MTG_Actions"]["1"].get("MTG_ActionOwnerUID")
+    assert result["questions"]
+    assert "چند کاربر" in result["questions"][0]
