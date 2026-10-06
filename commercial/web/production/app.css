@@ -423,3 +423,30 @@ body.flow-snapshot-open{overflow:hidden}
 .case-process-map-integrated .case-git-graph-before .case-git-node.current:not(:last-child)::before{
   background:linear-gradient(90deg,#d4e0e4 0 50%,#159889 50% 100%)!important
 }
+
+
+/* Tooltips are rendered as a body-level fixed layer so scroll containers,
+   RTL logical offsets and rounded-card clipping cannot displace or hide them. */
+.meeting-flow-tooltip-floating{
+  display:block!important;
+  position:fixed!important;
+  inset:auto!important;
+  transform:none!important;
+  width:min(290px,calc(100vw - 24px))!important;
+  z-index:12050!important;
+  pointer-events:none!important;
+}
+.meeting-flow-tooltip-floating::after{
+  inset-inline-start:auto!important;
+  left:var(--flow-tooltip-arrow,50%)!important;
+  transform:translateX(-50%)!important;
+}
+.meeting-flow-tooltip-floating[data-placement="bottom"]::after{
+  top:auto!important;
+  bottom:100%!important;
+  border-top-color:transparent!important;
+  border-bottom-color:#102a3d!important;
+}
+:root[data-theme='dark'] .meeting-flow-tooltip-floating[data-placement="bottom"]::after{
+  border-bottom-color:#071621!important;
+}
