@@ -111,6 +111,37 @@ def _due_days(text):
     return _NUMBER_WORDS.get(match.group(1)) if match else None
 
 
+def _hour_value(text):
+    match=re.search(r"\b(\d{1,2})(?::([0-5]\d))?\b",text)
+    if match:
+        hour=int(match.group(1));minute=int(match.group(2) or 0)
+        if 0<=hour<=23:return hour,minute
+    for word,value in _NUMBER_WORDS.items():
+        if 1<=value<=12 and re.search(r"\b"+re.escape(word)+r"\b",text):
+            return value,0
+    return None
+
+
+def _clock_from_text(text):
+    normalized=resolution.normalize_text(text)
+    if not any(x in normalized for x in ("ساعت","صبح","ظهر","بعد از ظهر","عصر","شب")):
+        return None
+    parsed=_hour_value(normalized)
+    if not parsed:return None
+    hour,minute=parsed
+    if any(x in normalized for x in ("بعد از ظهر","عصر","شب")) and 1<=hour<12:hour+=12
+    if "ظهر" in normalized and hour==12:hour=12
+    if "صبح" in normalized and hour==12:hour=0
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _planning_window_command(text):
+    normalized=resolution.normalize_text(text)
+    days=_due_days(normalized)
+    relative=days is not None and any(x in normalized for x in ("آینده","دیگه","بعد","بگذار","بذار","قرار بده","مهلت"))
+    return relative or _clock_from_text(normalized) is not None
+
+
 def _jalali_after_days(days, now=None):
     instant = now or datetime.now(ZoneInfo("Asia/Tehran"))
     target = instant.date() + timedelta(days=int(days))
@@ -161,6 +192,8 @@ def command_kind(text, stage="minutes"):
         return "batch_actions"
     if _meeting_status(text):
         return "meeting_status"
+    if _planning_window_command(text):
+        return "planning_window"
     return None
 
 
@@ -365,6 +398,14 @@ def _prune_questions(questions, values):
             "علت عدم تشکیل" in normalized or "mtg_notheldreason" in text.casefold()
         ):
             continue
+        if values.get("MTG_MeetingEndDateTime") and (
+            "تاریخ پایان برنامه" in normalized or "mtg_meetingenddatetime" in text.casefold()
+        ):
+            continue
+        if values.get("MTG_PlannedActionEndTime") and (
+            "ساعت پایان برنامه" in normalized or "mtg_plannedactionendtime" in text.casefold()
+        ):
+            continue
         if values.get("MTG_Actions") and (
             "mtg_action" in text.casefold()
             or re.search(r"اقدام\s*\d+", normalized)
@@ -401,6 +442,26 @@ def apply(text, current, task, scope, *, questions=(), now=None):
             "pending_confirmation": None,
             "reply": "وضعیت جلسه روی «" + label + "» ثبت شد.",
             "resolution": "meeting_status",
+        }
+
+    if kind == "planning_window":
+        days=_due_days(normalized)
+        clock=_clock_from_text(normalized)
+        changed=[]
+        if days is not None:
+            planned_date=_jalali_after_days(days,now=now)
+            values["MTG_MeetingEndDateTime"]=planned_date
+            changed.append("تاریخ پایان برنامه‌ریزی روی "+planned_date)
+        if clock:
+            values["MTG_PlannedActionEndTime"]=clock
+            changed.append("ساعت پایان برنامه‌ریزی روی "+clock)
+        return {
+            "values":values,
+            "questions":_prune_questions(questions,values),
+            "intent":"resolved",
+            "pending_confirmation":None,
+            "reply":" و ".join(changed)+" تنظیم شد.",
+            "resolution":"planning_window",
         }
 
     if kind == "role_assignment":
