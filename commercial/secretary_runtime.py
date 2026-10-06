@@ -835,13 +835,12 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
     raise PermissionError('پیش‌نویس این صورت‌جلسه متعلق به حساب فعلی نیست.')
    values=copy.deepcopy((row or {}).get('values') or {})
 
-  # If AVAN has a persisted draft, send exactly that draft. If the previous
-  # attempt already wrote variables to PM and AVAN has no draft, leave the
-  # native values untouched and continue with the authoritative trigger.
+  # No GET /variables preflight here. Some ProcessMaker deployments allow the
+  # assigned user to write/route a case but forbid reading all case variables.
+  # Re-sending the persisted AVAN draft to the same native case is intentional
+  # and avoids turning a harmless read-permission difference into a blocker.
   if values:
-   native_values=normalize(pm.variables(case_uid)) if hasattr(pm,'variables') else {}
-   if not _submitted_subset(native_values,values):
-    pm.set_variables(case_uid,native_index,values,operation='ثبت نهایی صورت‌جلسه')
+   pm.set_variables(case_uid,native_index,values,operation='ثبت نهایی صورت‌جلسه')
 
   for trigger in stage['after']:
    pm.execute_trigger(case_uid,trigger,operation='کنترل نهایی صورت‌جلسه')
