@@ -362,3 +362,10 @@ def test_dotted_username_with_spaces_resolves_against_latest_assistant_action(pa
 @pytest.mark.parametrize("typed",["mgr .licensing","mgr. licensing","mgr . licensing","MGR .LICENSING"])
 def test_normalize_dotted_username_spacing(typed):
     assert resolution.normalize_text(typed)=="mgr.licensing"
+
+
+def test_spoken_dotted_username_without_dot_is_unique_alias():
+    scope=scope_with_people()
+    uid="c"*32
+    scope["directory"][uid]={"active":True,"username":"mgr.licensing","name":"مدیر مجوزات"}
+    assert resolution.unique_person("mgr licensing",scope["directory"])==uid
