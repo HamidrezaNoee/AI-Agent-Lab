@@ -1223,24 +1223,26 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   const top=el("div","meeting-flow-case-head"),title=el("div","meeting-flow-case-heading");
   add(title,el("span","meeting-flow-case-kicker","پرونده "+fmt(row.case_number)+" · جلسه "+row.meeting_no),el("strong","meeting-flow-case-title",row.title),el("small","muted",(row.meeting_date?"تاریخ "+dateOnlyText(row.meeting_date)+" · ":"")+"آخرین مرحله: "+row.current_stage_title));
   const state=badge(row.status_label,"status-"+row.status);add(top,title,state);
-
   const meta=el("div","meeting-flow-meta");
   add(meta,badge("نقش: "+(row.my_role_label||"مشارکت")),badge("مرحله جاری: "+row.current_stage_title,"current"),badge("الان دست: "+row.current_owner_label,"owner"));
-  if(row.actions?.total)add(meta,badge("اقدام‌ها: "+fmt(row.actions.total)+" · باز "+fmt(row.actions.open+row.actions.review)+" · بسته "+fmt(row.actions.closed),"actions"));
-
-  const graphShell=el("div","meeting-flow-graph-shell"),map=el("div","case-process-map");
+  const planned=Number(row.actions?.planned||0),materialized=Number(row.actions?.total||0);
+  if(planned||materialized)add(meta,badge("اقدام‌ها: "+fmt(planned||materialized)+(materialized?" · پرونده ساخته‌شده "+fmt(materialized):" · هنوز پرونده اقدام ساخته نشده"),"actions"));
+  const graphShell=el("div","meeting-flow-graph-shell"),map=el("div","case-process-map case-process-map-integrated");
   map.setAttribute("aria-label","مسیر پیشرفت و شاخه‌های پرونده "+row.case_number);
-  const before=el("div","case-git-graph case-git-graph-before");
-  const trunk=(row.nodes||[]).filter(node=>["invitation","invitation_approval","minutes","minutes_approval"].includes(node.key));
-  for(const node of trunk)add(before,stageNodeButton(node,row));
-  add(map,before);
-  const branches=actionBranches(row);if(branches)add(map,branches);
-  const monitoring=(row.nodes||[]).find(node=>node.key==="monitoring");
-  if(monitoring){
-   const after=el("div","case-git-graph case-git-graph-after");add(after,stageNodeButton(monitoring,row));add(map,after);
+  const branches=row.action_branches||[];
+  if(!branches.length){
+   const linear=el("div","case-git-graph case-git-graph-linear");
+   for(const node of row.nodes||[])add(linear,stageNodeButton(node,row));
+   add(map,linear);
+  }else{
+   const before=el("div","case-git-graph case-git-graph-before");
+   for(const node of (row.nodes||[]).filter(node=>["invitation","invitation_approval","minutes","minutes_approval"].includes(node.key)))add(before,stageNodeButton(node,row));
+   add(map,before);
+   const corridor=actionBranches(row);if(corridor)add(map,corridor);
+   const monitoring=(row.nodes||[]).find(node=>node.key==="monitoring");
+   if(monitoring){const after=el("div","case-git-graph case-git-graph-after");add(after,stageNodeButton(monitoring,row));add(map,after)}
   }
   add(graphShell,map);
-
   const progress=el("div","meeting-flow-progress");
   const label=el("div","meeting-flow-progress-label");add(label,el("span","","پیشرفت پرونده"),el("strong","",fmt(row.progress_percent)+"٪"));
   const bar=el("div","meeting-flow-progress-bar"),fill=el("span");fill.style.width=Math.max(0,Math.min(100,row.progress_percent||0))+"%";add(bar,fill);add(progress,label,bar);
