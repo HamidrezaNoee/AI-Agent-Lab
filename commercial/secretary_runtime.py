@@ -805,7 +805,7 @@ def _minutes_trigger_recovery_row(row):
  return row.get('recovery') in ('','manual',None) and 'اجرای Trigger بعد از فرم' in detail and 'HTTP 400' in detail
 
 
-def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
+def recover_minutes_trigger(scope,actor,task,revision,*,pm=None,con=None):
  # Recovery is limited to the reviewed FR-MTG-003 AFTER trigger. No trigger is
  # executed here; the persisted draft is reopened only after native state and
  # the installed PMX have been verified.
@@ -820,7 +820,7 @@ def recover_minutes_trigger(scope,actor,task,revision,*,pm=None):
   raise PermissionError('فرایند صورت‌جلسه با نسخه بازبینی‌شده AVAN یکسان نیست.')
  if trigger not in (reviewed['meeting'].get('trigger_hashes') or {}):
   raise PermissionError('Hash مرجع Trigger صورت‌جلسه در AVAN موجود نیست.')
- catalog.verify_installed(scope['source_id'],reviewed)
+ catalog.verify_installed(scope['source_id'],reviewed,con=con)
  owned=pm is None
  if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
  try:
