@@ -129,3 +129,24 @@ def test_structured_model_helpers_support_current_pydantic_api():
  assert schema['type']=='object'
  parsed=f.validate_model_json(f.Extraction,'{"assignments":[],"questions":[]}')
  assert parsed.assignments==[] and parsed.questions==[]
+
+
+def test_minutes_missing_questions_never_expose_internal_pmx_field_names():
+ values={
+  'MTG_MeetingHeld':'Held',
+  'MTG_MeetingDiscussionSummary':'جمع‌بندی',
+  'MTG_MeetingEndDateTime':'1405/07/20',
+  'MTG_PlannedActionEndTime':'17:00',
+  'MTG_Decisions':{'1':{'MTG_DecisionNo':'D-001','MTG_DecisionText':'پیگیری شود'}},
+  'MTG_Actions':{'1':{
+   'MTG_ActionNo':'A-002',
+   'MTG_ActionDescription':'تکمیل مدارک ثبت سفارش',
+   'MTG_ActionDecisionNo':'D-001',
+   'MTG_persiandate_ActionDueDateTime':'1405/07/25',
+  }},
+ }
+ gaps=f.missing(values,'minutes')
+ owner=next(x for x in gaps if x['field'].endswith('MTG_ActionOwnerUID'))
+ assert 'MTG_ActionOwnerUID' not in owner['question']
+ assert 'مسئول اصلی اقدام' in owner['question']
+ assert 'A-002' in owner['question']
