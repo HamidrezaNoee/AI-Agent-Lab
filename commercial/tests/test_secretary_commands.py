@@ -255,3 +255,30 @@ def test_role_assignment_keeps_ambiguous_matches_unassigned(pack):
     assert not result["values"]["MTG_Actions"]["1"].get("MTG_ActionOwnerUID")
     assert result["questions"]
     assert "چند کاربر" in result["questions"][0]
+
+
+def test_batch_command_reuses_existing_unowned_actions_before_creating_new_ones(pack, monkeypatch):
+    s,participants=scope()
+    values=minutes_values(participants)
+    values["MTG_MeetingHeld"]="Held"
+    values["MTG_Decisions"]={"1":{"MTG_DecisionNo":"D-001","MTG_DecisionText":"پیگیری شود"}}
+    values["MTG_Actions"]={
+        str(i):{
+            "MTG_ActionNo":f"A-{i:03d}",
+            "MTG_ActionDescription":f"اقدام موجود {i}",
+            "MTG_ActionDecisionNo":"D-001",
+            "MTG_persiandate_ActionDueDateTime":"1405/07/30",
+        } for i in range(1,7)
+    }
+    monkeypatch.setattr(commands,"_jalali_after_days",lambda days,now=None:"1405/07/18")
+    result=commands.apply(
+        "برای هر کسی که توی جلسه شرکت کرده یک اقدام ایجاد کن و پنج روز مهلت بده",
+        values,task(pack,"minutes",minutes_native()),s,
+    )
+    actions=result["values"]["MTG_Actions"]
+    assert len(actions)==6
+    assert result["reused_actions"]==6
+    assert result["created_actions"]==0
+    assert all(row.get("MTG_ActionOwnerUID") for row in actions.values())
+    assert all(row["MTG_persiandate_ActionDueDateTime"]=="1405/07/18" for row in actions.values())
+    assert "اقدام تکراری نساختم" in result["reply"]
