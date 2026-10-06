@@ -624,3 +624,10 @@ def test_trusted_runtime_pack_carries_reviewed_trigger_hashes():
  trigger='fe88e8afc98ca69585ab0f5fb16bbf74'
  assert trusted['meeting']['trigger_hashes'][trigger]==reference['meeting']['trigger_hashes'][trigger]
  assert trusted['action']['trigger_hashes']==reference['action']['trigger_hashes']
+
+
+def test_processmaker_mojibake_repair_restores_persian():
+ from commercial.secretary_processmaker import _repair_mojibake
+ original="برای شرکت‌کننده حاضر، ساعت حضور را با قالب HH:mm وارد کنید."
+ mojibake=original.encode("utf-8").decode("latin1")
+ assert _repair_mojibake(mojibake)==original
