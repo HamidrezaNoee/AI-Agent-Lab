@@ -15,7 +15,7 @@ DEFAULT_PREFERENCES={
 _SAFE_DETAIL_KEYS={
     "request_id","path","method","status","page","source_id","operation","kind",
     "case_uid","stage","session_id","error","error_type","message","duration_ms",
-    "result","filename","event","retryable","model","question_hash","coverage_complete",
+    "result","filename","event","retryable","code","model","question_hash","coverage_complete",
     "input_tokens","output_tokens","total_tokens","meeting_id","action_id","pack_id",
     "revision","del_index","process_uid","secretary_auto_play_voice",
     "voice_auto_transcribe","voice_auto_send",
