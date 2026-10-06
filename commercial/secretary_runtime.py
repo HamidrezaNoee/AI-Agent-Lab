@@ -792,12 +792,18 @@ def submit(scope,actor,task,revision,*,pm=None):
    detail=_session_failure_text(exc)
    phase=str(getattr(exc,'pm_phase','') or '')
    upstream_status=getattr(exc,'upstream_status',None)
-   if phase=='route':
-    recovery='route_only'
+   safe_validation_retry=(
+    phase=='variables'
+    or (phase=='after_trigger' and upstream_status in (400,422)
+        and task['stage'] in ('invitation','invitation_approval','action_execution','action_review'))
+   )
+   if safe_validation_retry:
+    row.update(status='draft',last_error=detail,recovery='',
+               failure_phase=phase,upstream_status=upstream_status)
    else:
-    recovery='manual'
-   row.update(status='reconciliation_required',last_error=detail,recovery=recovery,
-              failure_phase=phase,upstream_status=upstream_status)
+    recovery='route_only' if phase=='route' else 'manual'
+    row.update(status='reconciliation_required',last_error=detail,recovery=recovery,
+               failure_phase=phase,upstream_status=upstream_status)
    with agent_storage.transaction() as tx:tx.put(key,row)
    raise
   with agent_storage.transaction() as tx:
