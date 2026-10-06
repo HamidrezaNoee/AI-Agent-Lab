@@ -324,3 +324,41 @@ def test_semantic_duplicate_owner_question_is_removed_after_confirmation(pack,mo
         questions=questions,pending_confirmation=pending)
     assert intent=="resolved"
     assert remaining==["سؤال دیگری باقی بماند"]
+
+
+def test_dotted_username_with_spaces_resolves_against_latest_assistant_action(pack,monkeypatch):
+    scope=scope_with_people()
+    licensing_uid="c"*32
+    scope["directory"][licensing_uid]={
+        "active":True,
+        "username":"mgr.licensing",
+        "name":"مدیر مجوزات",
+    }
+    values=minutes_values()
+    values["MTG_Actions"]["2"]={
+        "MTG_ActionNo":"A-002",
+        "MTG_ActionDescription":"تکمیل مدارک ثبت سفارش مدل HEV 2026",
+        "MTG_ActionOwnerUID":"",
+        "MTG_persiandate_ActionDueDateTime":"1405/07/18",
+        "MTG_ActionDecisionNo":"D-001",
+    }
+    question1="مسئول اصلی اقدام A-001 را مشخص کنید."
+    question2="مسئول اصلی اقدام A-002 را مشخص کنید."
+    history=[
+        {"role":"assistant","text":"فعلاً روی اقدام A-002 مانده‌ایم. مسئول اصلی A-002 چه کسی است؟ لطفاً نام دقیق یا UID را بفرمایید."}
+    ]
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("dotted username must not call model"))
+    result,questions,reply,intent,pending=runtime.converse(
+        "mgr .licensing",task(pack,"minutes"),values,scope,
+        questions=[question1,question2],pending_confirmation=None,history=history)
+    assert result["MTG_Actions"]["2"]["MTG_ActionOwnerUID"]==licensing_uid
+    assert result["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]==""
+    assert question2 not in questions
+    assert question1 in questions
+    assert intent=="resolved" and pending is None
+    assert "mgr.licensing" in reply
+
+
+@pytest.mark.parametrize("typed",["mgr .licensing","mgr. licensing","mgr . licensing","MGR .LICENSING"])
+def test_normalize_dotted_username_spacing(typed):
+    assert resolution.normalize_text(typed)=="mgr.licensing"
