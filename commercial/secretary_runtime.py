@@ -180,9 +180,9 @@ def gaps(values,task):
    for i,r in (values.get('MTG_Agenda') or {}).items():
     for k,title in [('MTG_AgendaPresenterUID','ارائه‌دهنده'),('MTG_AgendaPlannedMinutes','زمان صحبت به دقیقه')]:
      if r.get(k) in (None,''):result.append({'field':k,'question':f'{title} دستور جلسه ردیف {i} چیست؟'})
-  elif values.get('MTG_MeetingHeld')=='Held':
-   for k,title in [('MTG_MeetingEndDateTime','تاریخ پایان برنامه‌ریزی'),('MTG_PlannedActionEndTime','ساعت پایان برنامه‌ریزی')]:
-    if not values.get(k):result.append({'field':k,'question':title+' را مشخص کنید.'})
+  # legacy.missing() is the canonical source for minutes scalar gaps.
+  # Adding end-date/time questions again here produced duplicate pending items
+  # with slightly different wording and incorrect "N items remaining" counts.
   return result
  if stage=='invitation_approval':required=['MTG_InvitationApproval'];comment='MTG_InvitationChairComment';decision='MTG_InvitationApproval'
  elif stage=='minutes_approval':required=['MTG_MinutesApproval'];comment='MTG_ChairComment';decision='MTG_MinutesApproval'
