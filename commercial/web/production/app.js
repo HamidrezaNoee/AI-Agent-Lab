@@ -1576,12 +1576,20 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   function renderMessageError(error,text,fromVoice,errorBubble=null){
    if(errorBubble)errorBubble.remove();
    const stopped=error?.code==="ABORTED";
+   const message=String(error?.message||"");
+   const externalMutation=!stopped&&/ProcessMaker/.test(message)&&/(Trigger بعد از فرم|ثبت نهایی اطلاعات مرحله|ارسال پرونده به مرحله بعد)/.test(message);
    const bubble=addChatBubble("assistant",stopped?"پردازش به درخواست شما متوقف شد.":"خطا در پردازش پیام: "+errorDescription(error),stopped?"cancelled":"error");
    const actions=el("div","chat-error-actions");
-   const retryButton=link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true,bubble),"button secondary");
+   if(externalMutation){
+    add(actions,link("↻ بررسی وضعیت پرونده",checked(async()=>{
+     if(isSession)await session(d.id);else await open(t,false);
+    }),"button secondary"));
+   }else{
+    add(actions,link("↻ تلاش مجدد",()=>sendTurn(text,fromVoice,true,bubble),"button secondary"));
+   }
    const editButton=link("✎ ویرایش پیام",()=>{notes.value=text;autosize();notes.focus()},"button secondary");
    const logsButton=link("☷ مشاهده لاگ",()=>{app.pendingLogRequestId=error?.requestId||"";select("support-logs")},"button secondary");
-   add(actions,retryButton,editButton,logsButton);add(bubble,actions);
+   add(actions,editButton,logsButton);add(bubble,actions);
    return bubble;
   }
   function thinkingBubble(label="دبیر در حال بررسی پیام شماست"){
@@ -1807,18 +1815,37 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     link("پیشنهاد دبیر براساس گزارش و اسناد",checked(async()=>{const result=await post(path+"/advice"+query);advice.replaceChildren(el("p","",result.summary),note("پیشنهاد برای تصمیم شما: "+result.proposal),el("small","muted","تعداد اسناد خوانده‌شده: "+result.document_count));for(const q of result.quotes)add(advice,el("blockquote","",q));for(const q of result.missing)add(advice,note(q));})),advice);add(p,evidence);
   }
   if(!isSession&&d.status==="reconciliation_required"){
-   const recovery=card("ادامه همان پرونده","ثبت فرم و Triggerهای این وظیفه انجام شده‌اند اما انتقال مرحله کامل نشده است. AVAN برای جلوگیری از اجرای دوباره Triggerها فقط Route همین پرونده را تکرار می‌کند.");
-   if(d.last_error)add(recovery,note("آخرین خطا: "+d.last_error,true));
-   const routeOnly=link("ادامه Route همین پرونده",checked(async()=>{
-    routeOnly.disabled=true;
-    try{
-     await post(path+"/reconcile-route"+query,{revision:d.revision,confirmed:true});
-     editor.dataset.editing="false";
-     editor.replaceChildren(note("همان پرونده بدون اجرای دوباره Triggerها به مرحله بعد ارسال شد."));
-     await load();
-    }finally{routeOnly.disabled=!info.oauth_connected}
-   }),"button primary");
-   routeOnly.disabled=!info.oauth_connected;add(recovery,routeOnly);add(p,recovery);
+   let recovery;
+   if(d.recovery==="route_only"){
+    recovery=card("ادامه امن همان پرونده","اطلاعات و Trigger این مرحله ثبت شده‌اند و فقط Route نهایی کامل نشده است. برای جلوگیری از اجرای دوباره Triggerها، AVAN فقط انتقال همین پرونده را تکرار می‌کند.");
+    if(d.last_error)add(recovery,note("آخرین خطا: "+d.last_error,true));
+    const routeOnly=link("ادامه Route همین پرونده",checked(async()=>{
+     routeOnly.disabled=true;
+     try{
+      await post(path+"/reconcile-route"+query,{revision:d.revision,confirmed:true});
+      editor.dataset.editing="false";
+      editor.replaceChildren(note("همان پرونده بدون اجرای دوباره Triggerها به مرحله بعد ارسال شد."));
+      await load();
+     }finally{routeOnly.disabled=!info.oauth_connected}
+    }),"button primary");
+    routeOnly.disabled=!info.oauth_connected;add(recovery,routeOnly);
+   }else if(d.recovery==="trigger_retry"){
+    recovery=card("اصلاح خطای صورت‌جلسه","ProcessMaker اطلاعات فرم را دریافت کرده اما Trigger بعد از فرم یکی از کنترل‌های صورت‌جلسه را رد کرده است. AVAN ابتدا همان Case را بدون اجرای Trigger دوباره به حالت ویرایش برمی‌گرداند تا مورد ناقص اصلاح شود.");
+    if(d.last_error)add(recovery,note("علت ثبت‌شده: "+d.last_error,true));
+    const reopen=link("بازگشت امن به تکمیل صورت‌جلسه",checked(async()=>{
+     reopen.disabled=true;
+     try{
+      const result=await post(path+"/recover-trigger"+query,{revision:d.revision,confirmed:true});
+      render(result,false);
+     }finally{reopen.disabled=!info.oauth_connected}
+    }),"button primary");
+    reopen.disabled=!info.oauth_connected;add(recovery,reopen);
+   }else{
+    recovery=card("نیازمند بررسی پرونده","بخشی از عملیات ProcessMaker شروع شده اما نقطه توقف برای اجرای خودکار دوباره قطعی نیست. برای جلوگیری از ثبت تکراری، ارسال مجدد خودکار غیرفعال است.");
+    if(d.last_error)add(recovery,note("آخرین خطا: "+d.last_error,true));
+    add(recovery,link("☷ مشاهده لاگ مرتبط",()=>select("support-logs"),"button secondary"));
+   }
+   add(p,recovery);
   }
   add(editor,p);editor.scrollIntoView({behavior:"smooth"});
  }
