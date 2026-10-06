@@ -131,16 +131,18 @@ def _latest_assistant_text(history):
 
 def _clock_target(text,history=()):
     normalized=resolution.normalize_text(text)
-    if ("پایان واقعی" in normalized or "ساعت پایان جلسه" in normalized) and "برنامه" not in normalized:
-        return "actual"
-    if "پایان برنامه" in normalized:
-        return "planned"
+    explicit_actual=max(normalized.rfind("ساعت پایان واقعی جلسه"),normalized.rfind("ساعت پایان جلسه"))
+    explicit_planned=max(normalized.rfind("ساعت پایان برنامه"),normalized.rfind("پایان برنامه"))
+    if explicit_actual>=0 or explicit_planned>=0:
+        return "actual" if explicit_actual>explicit_planned else "planned"
     previous=resolution.normalize_text(_latest_assistant_text(history))
     if previous:
-        if ("ساعت پایان واقعی جلسه" in previous or "ساعت پایان جلسه" in previous) and "برنامه" not in previous:
-            return "actual"
-        if "ساعت پایان برنامه" in previous:
-            return "planned"
+        # The latest assistant turn can contain an earlier status sentence plus
+        # the next question. The phrase nearest the end is the active target.
+        actual=max(previous.rfind("ساعت پایان واقعی جلسه"),previous.rfind("ساعت پایان جلسه"))
+        planned=max(previous.rfind("ساعت پایان برنامه"),previous.rfind("پایان برنامه"))
+        if actual>=0 or planned>=0:
+            return "actual" if actual>planned else "planned"
     return None
 
 
