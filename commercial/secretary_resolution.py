@@ -152,8 +152,10 @@ def resolve_direct_identity(text,current,questions,gaps,directory):
     This intentionally rejects questions and negations; those continue through
     normal conversation handling instead of being treated as edits.
     """
-    raw=normalize_text(text)
+    original=str(text or "")
+    raw=normalize_text(original)
     if not raw or is_affirmative(raw) or is_negative(raw):return None
+    if "؟" in original or "?" in original:return None
     if any(token in raw for token in ("آیا","کیه","کی هست","چه کسی","کدام کاربر","کدوم کاربر","نیست","نباشد")):
         return None
     path,question=_select_missing_uid_path(gaps,text)
