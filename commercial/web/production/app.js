@@ -1012,6 +1012,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   const names=(items||[]).map(miniPerson).filter(Boolean);
   return names.length?names.join("، "):"فردی برای این مرحله ثبت نشده است";
  }
+ let activeFlowTooltip=null;
  function flowTooltip(node,row,branch=null){
   const tip=el("span","meeting-flow-tooltip");
   add(tip,el("strong","",node.title||node.stage_title||"مرحله فرایند"));
@@ -1027,6 +1028,28 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   add(tip,el("small","","برای مشاهده آخرین اطلاعات کل پرونده کلیک کنید."));
   return tip;
  }
+ function hideFlowTooltip(){
+  if(activeFlowTooltip){activeFlowTooltip.remove();activeFlowTooltip=null}
+ }
+ function showFlowTooltip(anchor,node,row,branch=null){
+  hideFlowTooltip();
+  const tip=flowTooltip(node,row,branch);
+  tip.classList.add("meeting-flow-tooltip-floating");
+  document.body.appendChild(tip);
+  const rect=anchor.getBoundingClientRect(),gap=12,margin=12;
+  const width=tip.offsetWidth,height=tip.offsetHeight;
+  let left=rect.left+(rect.width/2)-(width/2);
+  left=Math.max(margin,Math.min(left,window.innerWidth-width-margin));
+  let top=rect.top-height-gap,placement="top";
+  if(top<margin){top=rect.bottom+gap;placement="bottom"}
+  const arrow=Math.max(18,Math.min(width-18,(rect.left+rect.width/2)-left));
+  tip.style.left=Math.round(left)+"px";
+  tip.style.top=Math.round(top)+"px";
+  tip.style.setProperty("--flow-tooltip-arrow",Math.round(arrow)+"px");
+  tip.dataset.placement=placement;
+  activeFlowTooltip=tip;
+ }
+
  function snapshotSection(title,subtitle=""){
   const section=el("section","flow-snapshot-section"),head=el("div","flow-snapshot-section-head");
   add(head,el("h4","",title));if(subtitle)add(head,el("small","muted",subtitle));add(section,head);return section;
@@ -1163,8 +1186,11 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   n.type="button";n.dataset.stage=node.key;n.setAttribute("aria-label",(node.title||"مرحله")+"؛ برای مشاهده جزئیات کلیک کنید");
   if(compact)add(n,el("span","branch-mini-label",node.title));
   else add(n,el("span","case-git-dot"),el("span","case-git-label",node.title),el("small","",node.role));
-  add(n,flowTooltip(node,row,branch));
-  n.addEventListener("click",()=>openSnapshot(row,node.key,branch?.action_no||""));
+  n.addEventListener("mouseenter",()=>showFlowTooltip(n,node,row,branch));
+  n.addEventListener("mouseleave",hideFlowTooltip);
+  n.addEventListener("focus",()=>showFlowTooltip(n,node,row,branch));
+  n.addEventListener("blur",hideFlowTooltip);
+  n.addEventListener("click",()=>{hideFlowTooltip();openSnapshot(row,node.key,branch?.action_no||"")});
   return n;
  }
  function actionBranches(row){
