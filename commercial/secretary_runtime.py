@@ -839,7 +839,7 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
   # attempt already wrote variables to PM and AVAN has no draft, leave the
   # native values untouched and continue with the authoritative trigger.
   if values:
-   native_values=normalize(pm.variables(case_uid))
+   native_values=normalize(pm.variables(case_uid)) if hasattr(pm,'variables') else {}
    if not _submitted_subset(native_values,values):
     pm.set_variables(case_uid,native_index,values,operation='ثبت نهایی صورت‌جلسه')
 
