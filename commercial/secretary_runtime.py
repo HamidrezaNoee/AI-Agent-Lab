@@ -630,7 +630,12 @@ def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,h
   return values,remaining,reply,command['intent'],command.get('pending_confirmation')
 
  # Layer 2: deterministic read-only questions about current draft.
- if len(raw)<180 and any(x in raw for x in ('کجا گیریم','کجا گیر کردیم','کجا هستیم','چی مونده','چه چیزی مونده','چه چیزهایی مونده','مرحله بعد چیه')):
+ if len(raw)<180 and any(x in raw for x in (
+  'کجا گیریم','کجا گیر کردیم','کجا هستیم','کجا موندی','کجا ماندی','الان کجا موندی','الان کجا ماندی',
+  'چی مونده','چی باقی مونده','چی باقی مانده','چه چیزی مونده','چه چیزی باقی مونده','چه چیزی باقی مانده',
+  'چه چیزهایی مونده','چه چیزهایی باقی مونده','چه مواردی باقی مونده','چه مواردی باقی مانده',
+  'الان چه مواردی باقی مانده','مرحله بعد چیه','مرحله بعد چیست'
+ )):
   pending=gaps(current,task)
   state=assistant_state(current,task,scope,questions)
   if not pending:
