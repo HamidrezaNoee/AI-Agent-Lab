@@ -1462,7 +1462,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
   const query=isSession?"":"?pack_id="+encodeURIComponent(t.pack_id);
   const status=el("div"),controls=[],locked=d.status!=="draft"&&!(t.stage==="minutes"&&d.status==="reconciliation_required");let dirty=false;
-  let send,chatMinutesSend=null;
+  let send;
   function changed(){
    dirty=true;
    if(send)send.disabled=true;
@@ -1553,7 +1553,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   requestAnimationFrame(()=>{if(chat.isConnected){chat.scrollTop=chat.scrollHeight;chatPinned=true}});
   add(conversation,chat);
 
-  let missing=assistant.missing||r.missing||[];
+  let missing=assistant.missing||r.missing||[],chatMinutesSend=null,chatMinutesHint=null;
   const progress=el("div","secretary-progress");
   add(conversation,progress);
   const contextSummary=el("details","secretary-context-summary"),summaryTitle=el("summary","",["invitation_approval","minutes_approval"].includes(t.stage)?"خلاصه برای تصمیم شما":"خلاصه اطلاعات استخراج‌شده"),summaryBody=el("pre");
@@ -1562,6 +1562,11 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    progress.textContent=missing.length?("برای تکمیل این مرحله "+missing.length+" مورد باقی مانده؛ دبیر آن‌ها را یکی‌یکی می‌پرسد."):"اطلاعات این مرحله کامل است.";
    summaryBody.textContent=assistant.summary||"";
    contextSummary.hidden=!assistant.summary;
+   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected;
+   if(chatMinutesHint){
+    chatMinutesHint.textContent=missing.length?(missing.length+" مورد باید قبل از ارسال تکمیل شود؛ دبیر آن‌ها را یکی‌یکی می‌پرسد."):"صورت‌جلسه کامل است و آماده ارسال برای تأیید است.";
+    chatMinutesHint.classList.toggle("ok",!missing.length);
+   }
   }
   refreshConversationMeta();
 
