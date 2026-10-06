@@ -563,6 +563,19 @@ def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,h
    reply+='\n\n'+next_state['message']
   return values,remaining,reply,intent,resolved.get('pending_confirmation')
 
+ # Layer 1b: deterministic explicit identity answer for one unambiguous
+ # missing UID path. This avoids unnecessary model calls for exact usernames,
+ # known safe aliases, or phrases such as "مسئول اقدام ۲ mgr.sales باشد".
+ direct=resolution.resolve_direct_identity(
+  notes,current,questions,gaps(current,task),scope.get('directory',{}))
+ if direct:
+  values=direct['values'];remaining=direct['questions']
+  next_state=assistant_state(values,task,scope,remaining)
+  reply=direct['reply']
+  if next_state['message'] and next_state['message'] not in reply:
+   reply+='\n\n'+next_state['message']
+  return values,remaining,reply,'resolved',None
+
  # Layer 2: deterministic read-only questions about current draft.
  if len(raw)<180 and 'ردیف' in raw and any(x in raw for x in ('چیه','چیست','کدام','کدوم','موضوعش')):
   match=re.search(r'ردیف\s*(\d+)',raw)
@@ -582,11 +595,12 @@ def converse(notes,task,current,scope,*,questions=(),pending_confirmation=None,h
 
  # Layer 3: structured LLM extraction for genuinely new facts.
  values,remaining,reply,intent=extract(notes,task,current,scope,questions=questions,with_reply=True)
- pending=None
- if intent=='update':
-  pending=resolution.propose_identity_confirmation(
-   reply,values,gaps(values,task),scope.get('directory',{})
-  )
+ # A model clarification may itself contain a concrete canonical candidate
+ # ("منظور administrator است؟"). Persist that proposal structurally even when
+ # the model classified the turn as a question.
+ pending=resolution.propose_identity_confirmation(
+  reply,values,gaps(values,task),scope.get('directory',{})
+ )
  return values,remaining,reply,intent,pending
 
 def extract(notes,task,current,scope,*,questions=(),client=None,model=None,with_reply=False):
