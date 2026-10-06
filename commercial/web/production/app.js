@@ -1427,7 +1427,29 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
 
  }
- async function open(t,prepare=true){const r=await post(prepare?"/tasks/open":"/tasks/load",{case_uid:t.case_uid,index:t.index,pack_id:t.pack_id});render(r,false)}
+ async function open(t,prepare=true){
+  try{
+   const r=await post(prepare?"/tasks/open":"/tasks/load",{case_uid:t.case_uid,index:t.index,pack_id:t.pack_id});
+   render(r,false);
+  }catch(e){
+   if(t.stage!=="minutes"||e.status!==503||!info?.oauth_connected)throw e;
+   // The write path for FR-MTG-003 no longer depends on the read-only PM MySQL
+   // adapter. If reporting/read access is temporarily unavailable, allow the
+   // already-saved native case to continue through PM REST.
+   editor.replaceChildren();editor.dataset.editing="true";out.hidden=true;
+   add(editor,link("← بازگشت به میز کار",()=>{editor.replaceChildren();editor.dataset.editing="false";out.hidden=false},"button secondary secretary-back"));
+   const fallback=card("ارسال صورت‌جلسه ثبت‌شده","اتصال خواندنی گزارش‌های ProcessMaker در دسترس نیست، اما این مرحله برای ارسال به تأیید صورت‌جلسه فقط از REST و مجوز شخصی همان حساب استفاده می‌کند.");
+   add(fallback,note("پرونده "+fmt(t.number)+" · همان Case موجود؛ پرونده جدید ساخته نمی‌شود."));
+   const advance=link("ارسال همین صورت‌جلسه به تأیید",checked(async()=>{
+    advance.disabled=true;
+    try{
+     await post("/tasks/"+encodeURIComponent(t.case_uid)+"/"+encodeURIComponent(t.index)+"/advance-minutes?pack_id="+encodeURIComponent(t.pack_id),{revision:1,confirmed:true});
+     editor.replaceChildren(note("صورت‌جلسه ثبت‌شده با موفقیت به مرحله «تأیید صورت‌جلسه» ارسال شد."));
+    }finally{advance.disabled=false}
+   }),"button primary");
+   add(fallback,advance);add(editor,fallback);
+  }
+ }
  async function session(id){const r=await request(base+"/sessions/"+encodeURIComponent(id));render({...r,draft:r.session,task:{stage:"invitation",title:r.session.values.MTG_MeetingTitle||"جلسه جدید"}},true)}
  function render(r,isSession){
   editor.replaceChildren();editor.dataset.editing="true";out.hidden=true;
@@ -1439,7 +1461,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   stages.forEach(([key,label],i)=>{const step=el("span",key===t.stage?"is-current":"",fmt(i+1)+" · "+label);if(key===t.stage)step.setAttribute("aria-current","step");add(stageProgress,step)});add(editor,stageProgress);
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
   const query=isSession?"":"?pack_id="+encodeURIComponent(t.pack_id);
-  const status=el("div"),controls=[],locked=d.status!=="draft";let dirty=false;
+  const status=el("div"),controls=[],locked=d.status!=="draft"&&!(t.stage==="minutes"&&d.status==="reconciliation_required");let dirty=false;
   let send;
   function changed(){dirty=true;if(send)send.disabled=true;status.replaceChildren(note("تغییرات فرم ذخیره نشده‌اند؛ ابتدا ذخیره کنید."))}
   function workflowDateKey(key){
@@ -1805,8 +1827,18 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const context=el("details");add(context,el("summary","","شرح ثبت‌شده در فرایند"));
   for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+workflowDisplayValue(k,v)))}add(formBody,context);
   const save=link("ذخیره اصلاحات",checked(async()=>{await post(path+"/edit"+query,{revision:d.revision,values});if(isSession)await session(d.id);else await open(t,false)}));save.disabled=locked;
-  send=link("تأیید بازبینی و ارسال به مرحله بعد",checked(async()=>{send.disabled=true;try{await post(path+"/submit"+query,{revision:d.revision,confirmed:true});editor.dataset.editing="false";editor.replaceChildren(note("اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));await load()}finally{send.disabled=locked||dirty}}),"button primary");
-  send.disabled=locked||missing.length>0||!info.oauth_connected;
+  send=link(t.stage==="minutes"?"ارسال صورت‌جلسه به تأیید":"تأیید بازبینی و ارسال به مرحله بعد",checked(async()=>{
+   send.disabled=true;
+   try{
+    const endpoint=t.stage==="minutes"?(path+"/advance-minutes"+query):(path+"/submit"+query);
+    await post(endpoint,{revision:d.revision||1,confirmed:true});
+    editor.dataset.editing="false";
+    editor.replaceChildren(note(t.stage==="minutes"?"صورت‌جلسه با موفقیت به مرحله «تأیید صورت‌جلسه» ارسال شد.":"اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));
+    if(t.stage==="minutes"){setTimeout(()=>load().catch(()=>{}),500)}
+    else await load();
+   }finally{send.disabled=locked||dirty}
+  }),"button primary");
+  send.disabled=locked||(t.stage!=="minutes"&&missing.length>0)||!info.oauth_connected;
   add(formBody,save,send,status);add(p,formDetails);
 
   if(!isSession&&t.stage==="monitoring")add(p,link("پیشنهاد جلسه پیگیری اقدامات باز",checked(async()=>{const row=await post(path+"/followup"+query);await session(row.id);await load()})));
@@ -1815,7 +1847,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    add(evidence,link("دریافت اسناد پرونده",checked(async()=>{const docs=await post(path+"/documents"+query);list.replaceChildren();for(const doc of docs.documents)add(list,link(doc.app_doc_filename+" · نسخه "+doc.app_doc_version,checked(async()=>{if(dirty)throw Error("ابتدا اصلاحات را ذخیره کنید.");await post(path+"/evidence"+query,{revision:d.revision,doc_id:doc.app_doc_uid,version:Number(doc.app_doc_version)});await open(t,false)})));if(!docs.documents.length)add(list,note("سندی با مجوز فعلی در دسترس نیست؛ نبود سند به معنی تکمیل اقدام نیست."))})),list,
     link("پیشنهاد دبیر براساس گزارش و اسناد",checked(async()=>{const result=await post(path+"/advice"+query);advice.replaceChildren(el("p","",result.summary),note("پیشنهاد برای تصمیم شما: "+result.proposal),el("small","muted","تعداد اسناد خوانده‌شده: "+result.document_count));for(const q of result.quotes)add(advice,el("blockquote","",q));for(const q of result.missing)add(advice,note(q));})),advice);add(p,evidence);
   }
-  if(!isSession&&d.status==="reconciliation_required"){
+  if(!isSession&&d.status==="reconciliation_required"&&t.stage!=="minutes"){
    let recovery;
    if(d.recovery==="route_only"){
     recovery=card("ادامه امن همان پرونده","اطلاعات و Trigger این مرحله ثبت شده‌اند و فقط Route نهایی کامل نشده است. برای جلوگیری از اجرای دوباره Triggerها، AVAN فقط انتقال همین پرونده را تکرار می‌کند.");
