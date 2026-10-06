@@ -282,3 +282,22 @@ def test_batch_command_reuses_existing_unowned_actions_before_creating_new_ones(
     assert all(row.get("MTG_ActionOwnerUID") for row in actions.values())
     assert all(row["MTG_persiandate_ActionDueDateTime"]=="1405/07/18" for row in actions.values())
     assert "اقدام تکراری نساختم" in result["reply"]
+
+
+def test_progress_question_reports_human_next_gap_without_llm(pack, monkeypatch):
+    s,participants=scope()
+    values=minutes_values(participants)
+    values["MTG_MeetingHeld"]="Held"
+    values["MTG_Decisions"]={"1":{"MTG_DecisionNo":"D-001","MTG_DecisionText":"پیگیری شود"}}
+    values["MTG_Actions"]={"1":{
+        "MTG_ActionNo":"A-002","MTG_ActionDescription":"تکمیل مدارک",
+        "MTG_ActionDecisionNo":"D-001","MTG_persiandate_ActionDueDateTime":"1405/07/25",
+    }}
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("progress question must not call LLM"))
+    result,_,reply,intent,_=runtime.converse(
+        "کجا گیریم؟",task(pack,"minutes",minutes_native()),values,s
+    )
+    assert result==values
+    assert intent=="question"
+    assert "مسئول اصلی اقدام A-002" in reply
+    assert "MTG_ActionOwnerUID" not in reply
