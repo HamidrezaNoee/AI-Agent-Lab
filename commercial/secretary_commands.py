@@ -30,6 +30,13 @@ _ACTION_VERBS = (
     "بذار", "قرار بده", "ثبت کن", "ایجاد کن",
 )
 _RANDOM_WORDS = ("رندوم", "تصادفی", "random")
+_ROLE_ASSIGN_PHRASES = (
+    "بر اساس سمت", "براساس سمت", "با توجه به سمت", "از روی سمت",
+    "مرتبط با اون سمت", "مرتبط با آن سمت", "آدمهای مرتبط با",
+    "آدم های مرتبط با", "افراد مرتبط با", "مسئول ها رو پیدا",
+    "مسئول‌ها رو پیدا", "مسئولان را پیدا", "بهشون وصل کن",
+    "به آنها وصل کن", "بهشون اختصاص بده",
+)
 _ALL_ATTENDEE_PHRASES = (
     "هر کسی که تو جلسه شرکت کرده",
     "هر کسی که توی جلسه شرکت کرده",
@@ -137,9 +144,19 @@ def _meeting_status(text):
     return None
 
 
+def _role_assignment_command(text):
+    normalized = resolution.normalize_text(text)
+    return (
+        any(phrase in normalized for phrase in _ROLE_ASSIGN_PHRASES)
+        and any(word in normalized for word in ("سمت", "مسئول", "اقدام", "مرتبط"))
+    )
+
+
 def command_kind(text, stage="minutes"):
     if stage != "minutes":
         return None
+    if _role_assignment_command(text):
+        return "role_assignment"
     if _explicit_command(text):
         return "batch_actions"
     if _meeting_status(text):
@@ -271,6 +288,71 @@ def _person_label(uid, person):
     )
 
 
+def _match_role_candidates(target, directory):
+    """Find active people whose unit/title/name best matches an explicit action role."""
+    target_norm = resolution.normalize_text(target)
+    if not target_norm:
+        return []
+    target_tokens = {x for x in target_norm.split() if len(x) > 1}
+    scored = []
+    for uid, person in (directory or {}).items():
+        if not person.get("active"):
+            continue
+        fields = [
+            person.get("position"), person.get("title"), person.get("unit"),
+            person.get("department"), person.get("department_name"),
+            person.get("name"), person.get("display_name"),
+            person.get("avan_name"), person.get("username"), person.get("avan_username"),
+        ]
+        best = 0
+        for raw in fields:
+            value = resolution.normalize_text(raw)
+            if not value:
+                continue
+            if value == target_norm:
+                best = max(best, 100)
+                continue
+            if value in target_norm or target_norm in value:
+                best = max(best, 88)
+            tokens = {x for x in value.split() if len(x) > 1}
+            common = target_tokens & tokens
+            if common:
+                coverage = len(common) / max(1, min(len(target_tokens), len(tokens)))
+                best = max(best, round(50 + 35 * coverage))
+        if best >= 70:
+            scored.append((best, str(uid), person))
+    scored.sort(key=lambda x: (-x[0], _person_label(x[1], x[2]).casefold(), x[1]))
+    if not scored:
+        return []
+    top = scored[0][0]
+    return [row for row in scored if row[0] == top]
+
+
+def _assign_action_owners_by_role(values, scope):
+    actions = copy.deepcopy(values.get("MTG_Actions")) if isinstance(values.get("MTG_Actions"), dict) else {}
+    assigned, unresolved = [], []
+    for key, row in _rows(actions):
+        if row.get("MTG_ActionOwnerUID"):
+            continue
+        target = str(row.get("MTG_ActionOwnerPosition") or "").strip()
+        action_no = str(row.get("MTG_ActionNo") or ("ردیف " + key))
+        description = str(row.get("MTG_ActionDescription") or "").strip()
+        if not target:
+            unresolved.append((action_no, description, "سمت مسئول برای این اقدام ثبت نشده است."))
+            continue
+        matches = _match_role_candidates(target, scope.get("directory") or {})
+        if len(matches) == 1:
+            _, uid, person = matches[0]
+            row["MTG_ActionOwnerUID"] = uid
+            assigned.append((action_no, target, uid, _person_label(uid, person)))
+        elif len(matches) > 1:
+            names = "، ".join(_person_label(uid, person) for _, uid, person in matches[:5])
+            unresolved.append((action_no, description, "برای سمت «" + target + "» چند کاربر هم‌امتیاز پیدا شد: " + names))
+        else:
+            unresolved.append((action_no, description, "برای سمت «" + target + "» کاربر فعال یکتا پیدا نشد."))
+    return actions, assigned, unresolved
+
+
 def _prune_questions(questions, values):
     result = []
     status = values.get("MTG_MeetingHeld")
@@ -319,6 +401,35 @@ def apply(text, current, task, scope, *, questions=(), now=None):
             "pending_confirmation": None,
             "reply": "وضعیت جلسه روی «" + label + "» ثبت شد.",
             "resolution": "meeting_status",
+        }
+
+    if kind == "role_assignment":
+        actions, assigned, unresolved = _assign_action_owners_by_role(values, scope)
+        values["MTG_Actions"] = actions
+        remaining = _prune_questions(questions, values)
+        # Replace stale raw owner questions with focused ambiguity questions only.
+        remaining = [q for q in remaining if "مسئول اصلی اقدام" not in resolution.normalize_text(q)]
+        remaining.extend(reason for _, _, reason in unresolved)
+        if assigned:
+            lines = [
+                action_no + " · " + role + " ← " + person
+                for action_no, role, _, person in assigned
+            ]
+            reply = str(len(assigned)) + " مسئول اقدام با تطبیق سمت/واحد کاربران فعال BPMS ثبت شد.\n" + "\n".join(lines)
+        else:
+            reply = "برای اقدام‌های بدون مسئول، تطبیق یکتای قابل اتکا از روی سمت/واحد پیدا نشد."
+        if unresolved:
+            reply += "\n\n" + str(len(unresolved)) + " مورد هنوز مبهم است؛ فقط همین موارد نیاز به تعیین دستی دارند."
+        else:
+            reply += "\n\nهمه اقدام‌های دارای سمت مشخص، مسئول یکتا گرفتند."
+        return {
+            "values": values,
+            "questions": list(dict.fromkeys(remaining)),
+            "intent": "resolved",
+            "pending_confirmation": None,
+            "reply": reply,
+            "resolution": "role_assignment",
+            "assigned_owners": len(assigned),
         }
 
     attendees = _active_attendees({**task.get("native", {}), **values}, scope)
