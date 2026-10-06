@@ -162,7 +162,7 @@ def register(app,authorized,csrf):
    # already an explicit user action, so restore the AVAN draft automatically and
    # continue through the normal editor instead of forcing a separate recovery UI.
    if current.get('stage')=='minutes' and runtime._minutes_trigger_recovery_row(row):
-    row=runtime.recover_minutes_trigger(s,p.subject,current,row['revision'])
+    row=runtime.recover_minutes_trigger(s,p.subject,current,row['revision'],con=con)
     current=runtime.task(con,s,body.case_uid,body.index,body.pack_id)
    # BEFORE triggers are the native preparation step for the form. They run only
    # after safe recovery so the refreshed draft is based on the current PM state.
@@ -296,7 +296,7 @@ def register(app,authorized,csrf):
   Ref(case_uid=case_uid,index=index,pack_id=pack_id)
   def run(con,s,p):
    t=runtime.task(con,s,case_uid,index,pack_id)
-   row=runtime.recover_minutes_trigger(s,p.subject,t,body.revision)
+   row=runtime.recover_minutes_trigger(s,p.subject,t,body.revision,con=con)
    fresh=runtime.task(con,s,case_uid,index,pack_id)
    return response(s,p,fresh,row)
   return access(value,source_id,run)
