@@ -521,3 +521,74 @@ def test_route_only_recovery_does_not_replay_variables_or_triggers(pack,store):
  assert result['status']=='sent'
  assert ('route',t['case_uid'],t['index']) in calls
  assert all(x not in calls for x in ('set_variables','execute_trigger'))
+
+
+def test_processmaker_rejection_exposes_safe_trigger_message_and_phase():
+ from types import SimpleNamespace
+ from commercial import secretary_processmaker as transport
+ class Client:
+  def request(self,*args,**kwargs):
+   return SimpleNamespace(status_code=400,content=b'x',json=lambda:{'error':{'message':'برای شرکت‌کننده حاضر، ساعت حضور را با قالب HH:mm وارد کنید.'}})
+ pm=object.__new__(transport.PM);pm.base='https://pm/api/1.0/workflow';pm.client=Client()
+ with pytest.raises(transport.PMRejected) as caught:
+  pm.execute_trigger('a'*32,'f'*32,operation='اجرای Trigger بعد از فرم')
+ assert caught.value.upstream_status==400
+ assert 'ساعت حضور' in str(caught.value.detail)
+ class StagePM:
+  def assigned(self,*args):return 1
+  def set_variables(self,*args,**kwargs):pass
+  def execute_trigger(self,*args,**kwargs):raise transport.PMRejected('اجرای Trigger بعد از فرم',400,'رد شد')
+  def route(self,*args):pytest.fail('route must not run after rejected trigger')
+ stage_pm=StagePM()
+ stage={'task_uid':'t'*32,'after':['f'*32]}
+ with pytest.raises(transport.PMRejected) as phase:
+  transport.PM.submit_stage(stage_pm,'a'*32,stage,'s'*32,{},1)
+ assert phase.value.pm_phase=='after_trigger'
+
+
+def test_minutes_submit_preflight_refuses_missing_locked_plan(pack,store):
+ native={'MTG_MeetingHeld':'Held'}
+ t=task(pack,'minutes',native);row=r.draft(S,'actor',t)
+ class PM:
+  def assigned(self,*args):return 1
+  def variables(self,*args):return copy.deepcopy(native)
+  def submit_stage(self,*args):pytest.fail('ProcessMaker must not be mutated before locked-plan preflight')
+ with pytest.raises(ValueError,match='آماده'):
+  r.submit(S,'actor',t,row['revision'],pm=PM())
+
+
+def test_existing_minutes_http400_trigger_failure_can_reopen_without_replaying_trigger(pack,store,monkeypatch):
+ native={
+  'MTG_LockedPlan':{'MTG_MeetingStartDateTime':'1405/07/10'},
+  'MTG_MeetingHeld':'Held',
+  'MTG_MeetingDiscussionSummary':'جمع‌بندی',
+  'MTG_MeetingEndDateTime':'1405/07/24',
+  'MTG_MeetingEndTime':'15:00',
+  'MTG_PlannedActionEndTime':'17:00',
+  'MTG_Participants':{'1':{
+   'MTG_ParticipantUserUID':'c'*32,
+   'MTG_ParticipantPosition':'مدیر مجوزات',
+   'MTG_AttendanceStatus':'Present',
+   'MTG_AttendanceTime':'',
+  }},
+ }
+ t=task(pack,'minutes',copy.deepcopy(native));row=r.draft(S,'actor',t)
+ key=r.task_key(S,t['case_uid'],t['index'])
+ with r.agent_storage.transaction() as tx:
+  saved=tx.get(key,lock=True)
+  saved.update(status='reconciliation_required',recovery='manual',
+   last_error='ProcessMaker عملیات «اجرای Trigger بعد از فرم» را نپذیرفت (HTTP 400).')
+  tx.put(key,saved)
+ monkeypatch.setattr(c,'verify_installed',lambda *a:True)
+ calls=[]
+ class PM:
+  def assigned(self,*args):calls.append('assigned');return 1
+  def variables(self,*args):calls.append('variables');return copy.deepcopy(native)
+  def execute_trigger(self,*args):pytest.fail('recovery must not execute trigger')
+  def route(self,*args):pytest.fail('recovery must not route')
+ reopened=r.recover_minutes_trigger(S,'actor',t,row['revision'],pm=PM())
+ assert reopened['status']=='draft'
+ assert reopened['revision']==row['revision']+1
+ assert reopened['values']['MTG_Participants']['1']['MTG_AttendanceTime']==''
+ assert calls==['assigned','variables']
+ assert any(x['field'].endswith('MTG_AttendanceTime') for x in r.gaps(reopened['values'],{**t,'native':native}))
