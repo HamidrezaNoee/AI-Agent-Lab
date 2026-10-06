@@ -161,6 +161,16 @@ def _clock_from_text(text,allow_bare=False):
     return f"{hour:02d}:{minute:02d}"
 
 
+def _all_present_command(text):
+    normalized=resolution.normalize_text(text)
+    phrases=(
+        "همه شرکت کنندگان حاضر","همه شرکت‌کنندگان حاضر",
+        "تمام شرکت کنندگان حاضر","تمام شرکت‌کنندگان حاضر",
+        "همه افراد حاضر بودند","همه حاضر بودند","همه حاضر بودن",
+    )
+    return any(p in normalized for p in phrases)
+
+
 def _attendance_time_command(text):
     normalized=resolution.normalize_text(text)
     if not any(phrase in normalized for phrase in _ALL_ATTENDEE_PHRASES):
@@ -229,6 +239,8 @@ def command_kind(text, stage="minutes", history=()):
         return "batch_actions"
     if _meeting_status(text):
         return "meeting_status"
+    if _all_present_command(text):
+        return "all_present"
     if _attendance_time_command(text):
         return "attendance_time"
     if _planning_window_command(text,history):
@@ -493,6 +505,30 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
             "pending_confirmation": None,
             "reply": "وضعیت جلسه روی «" + label + "» ثبت شد.",
             "resolution": "meeting_status",
+        }
+
+    if kind == "all_present":
+        clock=_clock_from_text(normalized,allow_bare=True)
+        participants=values.get("MTG_Participants") or {}
+        changed=0
+        for _,row in _rows(participants):
+            row["MTG_AttendanceStatus"]="Present"
+            if clock:row["MTG_AttendanceTime"]=clock
+            changed+=1
+        remaining=_prune_questions(questions,values)
+        if clock:
+            remaining=[q for q in remaining if "حضور شرکت‌کننده" not in resolution.normalize_text(q) and "ساعت حضور" not in resolution.normalize_text(q)]
+            reply=f"وضعیت {changed} شرکت‌کننده روی «حاضر» و ساعت حضور همه روی {clock} ثبت شد."
+        else:
+            remaining=[q for q in remaining if "وضعیت حضور" not in resolution.normalize_text(q)]
+            reply=f"وضعیت {changed} شرکت‌کننده روی «حاضر» ثبت شد؛ ساعت حضور افراد حاضر هنوز باید مشخص شود."
+        return {
+            "values":values,
+            "questions":remaining,
+            "intent":"resolved",
+            "pending_confirmation":None,
+            "reply":reply,
+            "resolution":"all_present",
         }
 
     if kind == "attendance_time":
