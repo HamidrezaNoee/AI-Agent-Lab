@@ -369,3 +369,50 @@ def test_spoken_dotted_username_without_dot_is_unique_alias():
     uid="c"*32
     scope["directory"][uid]={"active":True,"username":"mgr.licensing","name":"مدیر مجوزات"}
     assert resolution.unique_person("mgr licensing",scope["directory"])==uid
+
+
+def test_finance_manager_role_alias_resolves_current_action_without_model(pack,monkeypatch):
+    scope=scope_with_people()
+    finance_uid="f"*32
+    scope["directory"][finance_uid]={
+        "active":True,
+        "username":"mgr.finance",
+        "name":"کاربر مالی",
+        "unit":"مالی",
+        "position":"مدیر مالی",
+    }
+    values=minutes_values()
+    values["MTG_Actions"]["2"]={
+        "MTG_ActionNo":"A-002",
+        "MTG_ActionDescription":"تکمیل مدارک",
+        "MTG_ActionOwnerUID":"a"*32,
+        "MTG_persiandate_ActionDueDateTime":"1405/07/18",
+        "MTG_ActionDecisionNo":"D-001",
+    }
+    values["MTG_Actions"]["3"]={
+        "MTG_ActionNo":"A-003",
+        "MTG_ActionDescription":"تهیه برنامه پرداخت ارزی هفتگی",
+        "MTG_ActionOwnerUID":"",
+        "MTG_ActionOwnerPosition":"مدیر مالی",
+        "MTG_persiandate_ActionDueDateTime":"1405/07/18",
+        "MTG_ActionDecisionNo":"D-001",
+    }
+    history=[{"role":"assistant","text":"مسئول اصلی اقدام A-003 «تهیه برنامه پرداخت ارزی هفتگی» را مشخص کنید."}]
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("known finance manager must not call model"))
+    result,questions,reply,intent,pending=runtime.converse(
+        "مدیر مالی",task(pack,"minutes"),values,scope,
+        questions=["مسئول اصلی اقدام A-003 را مشخص کنید."],
+        history=history,
+    )
+    assert result["MTG_Actions"]["3"]["MTG_ActionOwnerUID"]==finance_uid
+    assert intent=="resolved" and pending is None
+    assert "mgr.finance" in reply
+
+
+def test_compact_persian_role_alias_is_exact_and_unique():
+    directory={
+        "f"*32:{"active":True,"username":"mgr.finance","unit":"مالی","position":"مدیر مالی"},
+        "x"*32:{"active":True,"username":"finance01","unit":"مالی","position":"کارشناس مالی"},
+    }
+    assert resolution.unique_person("مدیرمالی",directory)=="f"*32
+    assert resolution.unique_person("مدیر مالی",directory)=="f"*32
