@@ -1572,6 +1572,14 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(isSession)render({...result,draft:result.session,task:result.task||{stage:"invitation",title:result.session?.values?.MTG_MeetingTitle||"جلسه جدید"}},true);
    else render(result,false);
   }
+  async function latestConversationState(){
+   if(isSession){
+    const fresh=await request(base+"/sessions/"+encodeURIComponent(d.id),{audit:false});
+    return {revision:fresh.session?.revision||d.revision,payload:fresh};
+   }
+   const fresh=await post("/tasks/load",{case_uid:t.case_uid,index:t.index,pack_id:t.pack_id},{audit:false});
+   return {revision:fresh.draft?.revision||d.revision,payload:fresh};
+  }
   async function sendTurn(textValue=null,fromVoice=false,retry=false,errorBubble=null){
    if(locked||sending)return false;
    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
@@ -1579,12 +1587,29 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(!retry){notes.value="";autosize();addChatBubble("user",text)}
    if(errorBubble)errorBubble.remove();
    thinkingBubble(retry?"دبیر دوباره در حال بررسی همین پیام است":"دبیر در حال بررسی پیام شماست");
-   const operation=beginOperation("secretary_turn");
+   let operation=beginOperation("secretary_turn");
    setSending(true,retry?"در حال تلاش مجدد...":"در حال پردازش پیام... برای توقف از دکمه «توقف» استفاده کنید.");
-   try{
-    const result=await post(path+"/turn"+query,{
-     revision:d.revision,text,auto_advance:!!info.oauth_connected,request_id:operation.id
+   const submit=async revision=>post(path+"/turn"+query,{
+     revision,text,auto_advance:!!info.oauth_connected,request_id:operation.id
     },{signal:operation.controller.signal,requestId:operation.id});
+   try{
+    let result;
+    try{
+     result=await submit(d.revision);
+    }catch(e){
+     const conflict=e?.status===409&&/پیش.?نویس.*تغییر|revision|نسخه/i.test(String(e?.message||""));
+     if(!conflict||e?.code==="ABORTED")throw e;
+     // A stale browser revision must not trap the conversation in repeated 409s.
+     // The failed attempt did not mutate the draft, so refresh the current draft
+     // and replay this same user message once with a new operation id.
+     const wait=chat.querySelector(".chat-bubble.thinking");if(wait)wait.remove();
+     thinkingBubble("پیش‌نویس تازه شد؛ همان پیام را روی نسخه جدید اعمال می‌کنم");
+     clearOperation(operation.id);
+     const fresh=await latestConversationState();
+     operation=beginOperation("secretary_turn_resync");
+     currentOperationId=operation.id;currentController=operation.controller;
+     result=await submit(fresh.revision);
+    }
     await applyResult(result,fromVoice);return true;
    }catch(e){
     const wait=chat.querySelector(".chat-bubble.thinking");if(wait)wait.remove();
