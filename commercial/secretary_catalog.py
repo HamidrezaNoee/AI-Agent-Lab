@@ -367,26 +367,33 @@ def discover(source_id):
  with open_production(processmaker_profile(source_id)['mysql']) as con:
   return [{'process_uid':str(r[0]),'title':str(r[1] or r[0])} for r in query(con,'SELECT PRO_UID,PRO_TITLE FROM PROCESS ORDER BY PRO_TITLE')]
 
-def verify_installed(source_id,pack):
+def _verify_installed_on_connection(con,pack):
+ from .processmaker_store import query
+ for process in ('meeting','action'):
+  expected=pack[process]
+  actual=_installed_process(con,expected['process_uid'])
+  if set(actual['stages'])!=set(expected['stages']):
+   raise ValueError('مراحل PMX با فرایند نصب‌شده یکسان نیستند.')
+  for name,stage in expected['stages'].items():
+   installed=actual['stages'][name]
+   # A matching task ID alone is insufficient: changes in field contracts,
+   # trigger order, extra triggers or conditional triggers affect REST routing.
+   if any(installed[key]!=stage[key] for key in ('task_uid','form_uid','fields','before','after')):
+    raise ValueError('فرم یا ترتیب تریگر مرحله '+name+' با PMX یکسان نیست؛ نسخه نصب‌شده را بررسی کنید.')
+  if expected.get('trigger_hashes'):
+   rows=query(con,'SELECT TRI_UID,TRI_WEBBOT FROM TRIGGERS WHERE PRO_UID=%s',(expected['process_uid'],))
+   hashes={str(uid):hashlib.sha256(str(code or '').replace('\r\n','\n').strip().encode()).hexdigest() for uid,code in rows}
+   if any(hashes.get(uid)!=digest for uid,digest in expected['trigger_hashes'].items()):
+    raise ValueError('کد تریگر نصب‌شده با PMX بازبینی‌شده یکسان نیست؛ نسخه صحیح را در ProcessMaker نصب کنید.')
+
+
+def verify_installed(source_id,pack,*,con=None):
+ if con is not None:
+  return _verify_installed_on_connection(con,pack)
  from .user_bpms_bindings import processmaker_profile
- from .processmaker_store import open_production,query
- with open_production(processmaker_profile(source_id)['mysql']) as con:
-  for process in ('meeting','action'):
-   expected=pack[process]
-   actual=_installed_process(con,expected['process_uid'])
-   if set(actual['stages'])!=set(expected['stages']):
-    raise ValueError('مراحل PMX با فرایند نصب‌شده یکسان نیستند.')
-   for name,stage in expected['stages'].items():
-    installed=actual['stages'][name]
-    # A matching task ID alone is insufficient: changes in field contracts,
-    # trigger order, extra triggers or conditional triggers affect REST routing.
-    if any(installed[key]!=stage[key] for key in ('task_uid','form_uid','fields','before','after')):
-     raise ValueError('فرم یا ترتیب تریگر مرحله '+name+' با PMX یکسان نیست؛ نسخه نصب‌شده را بررسی کنید.')
-   if expected.get('trigger_hashes'):
-    rows=query(con,'SELECT TRI_UID,TRI_WEBBOT FROM TRIGGERS WHERE PRO_UID=%s',(expected['process_uid'],))
-    hashes={str(uid):hashlib.sha256(str(code or '').replace('\r\n','\n').strip().encode()).hexdigest() for uid,code in rows}
-    if any(hashes.get(uid)!=digest for uid,digest in expected['trigger_hashes'].items()):
-     raise ValueError('کد تریگر نصب‌شده با PMX بازبینی‌شده یکسان نیست؛ نسخه صحیح را در ProcessMaker نصب کنید.')
+ from .processmaker_store import open_production
+ with open_production(processmaker_profile(source_id)['mysql']) as owned:
+  return _verify_installed_on_connection(owned,pack)
 
 
 def install_reviewed(source_id,actor,expected_revisions):
