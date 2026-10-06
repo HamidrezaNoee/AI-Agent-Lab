@@ -76,7 +76,14 @@ def audit(tenant_id,actor,event,detail=None):
         tx.audit(str(tenant_id),str(actor),code,_clean_detail(detail or {}))
 
 
-def logs(tenant_id,actor,role,*,limit=200,event=None):
+def logs(tenant_id,actor,role,*,limit=200,event=None,actor_id=None,
+         source_id=None,process_uid=None,case_uid=None,stage=None,request_id=None,q=None):
+    """Return tenant/user scoped audit rows with operational filters.
+
+    Detail fields are parsed server-side after the tenant/actor authorization
+    predicate. This keeps filters useful without exposing arbitrary JSON search
+    or weakening the non-admin self-only boundary.
+    """
     limit=max(1,min(int(limit),500))
     admin=role in ("SysAdmin","GodAdmin")
     con=agent_storage.connect()
@@ -86,25 +93,71 @@ def logs(tenant_id,actor,role,*,limit=200,event=None):
         where=["TenantID=?"]
         if not admin:
             where.append("ActorID=?");params.append(str(actor))
+        elif actor_id:
+            where.append("ActorID=?");params.append(str(actor_id))
         if event:
             where.append("EventCode=?");params.append(str(event)[:80])
-        sql=("SELECT TOP "+str(limit)+" EventID,TenantID,ActorID,EventCode,HappenedAt,Detail "
+        # Fetch a bounded tenant/user window, then apply structured JSON filters.
+        # AgentAudit.Detail is already size-bounded by audit(); parsing avoids
+        # database-specific JSON_VALUE behavior for old malformed audit rows.
+        fetch_limit=max(500,min(5000,limit*20))
+        sql=("SELECT TOP "+str(fetch_limit)+" EventID,TenantID,ActorID,EventCode,HappenedAt,Detail "
              "FROM dbo.AgentAudit WHERE "+" AND ".join(where)+" ORDER BY HappenedAt DESC,EventID DESC")
         rows=cur.execute(sql,*params).fetchall()
     finally:
         con.close()
-    result=[]
+
+    parsed=[]
+    filter_values={"actors":set(),"sources":set(),"processes":set(),"stages":set()}
     for row in rows:
         try:detail=json.loads(row[5]) if row[5] else {}
         except (ValueError,TypeError):detail={"message":"جزئیات لاگ قابل خواندن نیست."}
-        result.append({
+        if not isinstance(detail,dict):detail={}
+        clean=_clean_detail(detail)
+        item={
             "id":str(row[0]),"tenant_id":str(row[1]),"actor_id":str(row[2]),
             "event_code":str(row[3]),
             "happened_at":row[4].replace(tzinfo=timezone.utc).isoformat() if isinstance(row[4],datetime) and row[4].tzinfo is None else str(row[4]),
-            "detail":_clean_detail(detail if isinstance(detail,dict) else {}),
-        })
-    return {"scope":"tenant" if admin else "self","logs":result,"limit":limit}
+            "detail":clean,
+        }
+        filter_values["actors"].add(item["actor_id"])
+        if clean.get("source_id"):filter_values["sources"].add(str(clean["source_id"]))
+        if clean.get("process_uid"):filter_values["processes"].add(str(clean["process_uid"]))
+        if clean.get("stage"):filter_values["stages"].add(str(clean["stage"]))
+        parsed.append(item)
 
+    exact={
+        "source_id":str(source_id or "").strip(),
+        "process_uid":str(process_uid or "").strip(),
+        "case_uid":str(case_uid or "").strip(),
+        "stage":str(stage or "").strip(),
+        "request_id":str(request_id or "").strip(),
+    }
+    needle=str(q or "").strip().casefold()
+    def keep(item):
+        detail=item["detail"]
+        for key,value in exact.items():
+            if value and str(detail.get(key) or "")!=value:return False
+        if needle:
+            hay=" ".join(str(x or "") for x in (
+                item["event_code"],item["actor_id"],detail.get("message"),detail.get("error"),
+                detail.get("path"),detail.get("source_id"),detail.get("process_uid"),
+                detail.get("case_uid"),detail.get("stage"),detail.get("request_id"),
+            )).casefold()
+            if needle not in hay:return False
+        return True
+    result=[item for item in parsed if keep(item)][:limit]
+    return {
+        "scope":"tenant" if admin else "self",
+        "logs":result,"limit":limit,
+        "filters":{
+            "actors":sorted(filter_values["actors"]),
+            "sources":sorted(filter_values["sources"]),
+            "processes":sorted(filter_values["processes"]),
+            "stages":sorted(filter_values["stages"]),
+        },
+        "truncated":len(rows)>=fetch_limit,
+    }
 
 def _operations_key(tenant_id,actor):
     return user_key("operations",_scope(tenant_id),str(actor))
