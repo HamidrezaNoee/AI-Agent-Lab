@@ -455,3 +455,23 @@ def test_strict_identity_evidence_does_not_match_manager_from_unit_only():
     }
     assert resolution.strict_identity_mentions("کارشناس بازرگانی",directory)==["e"*32]
     assert resolution.strict_identity_mentions("مدیر بازرگانی",directory)==["m"*32]
+
+
+def test_model_uid_evidence_cannot_map_expert_role_to_manager_by_unit_only():
+    manager_uid="m"*32
+    expert_uid="e"*32
+    directory={
+        manager_uid:{"active":True,"username":"mgr.commercial","name":"مدیر بازرگانی","unit":"بازرگانی","position":"مدیر بازرگانی"},
+        expert_uid:{"active":True,"username":"commercial01","name":"کارشناس بازرگانی","unit":"بازرگانی","position":"کارشناس بازرگانی"},
+    }
+    spec={"label":"مسئول اصلی","type":"suggest","options":[]}
+    resolved,issues=runtime.resolve_extracted_people(
+        "MTG_ActionOwnerUID",manager_uid,spec,directory,evidence="کارشناس بازرگانی"
+    )
+    assert resolved==""
+    assert issues
+    resolved2,issues2=runtime.resolve_extracted_people(
+        "MTG_ActionOwnerUID",expert_uid,spec,directory,evidence="کارشناس بازرگانی"
+    )
+    assert resolved2==expert_uid
+    assert not issues2
