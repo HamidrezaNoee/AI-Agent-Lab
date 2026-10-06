@@ -119,8 +119,11 @@ def test_personal_oauth_matches_binding_and_invalidates_endpoint(store,monkeypat
  from fastapi import HTTPException
  with pytest.raises(HTTPException):credentials.token(S,'actor')
 
-def test_agenda_timing_questions(pack):
- gaps=r.gaps(V,task(pack,'invitation'));assert {x['field'] for x in gaps}>={'MTG_AgendaPresenterUID','MTG_AgendaPlannedMinutes'}
+def test_latest_invitation_does_not_invent_agenda_timing_requirements(pack):
+ gaps=r.gaps(V,task(pack,'invitation'))
+ fields={x['field'] for x in gaps}
+ assert 'MTG_AgendaPresenterUID' not in fields
+ assert 'MTG_AgendaPlannedMinutes' not in fields
 
 def test_followup_asks_for_date_location(pack,store):
  t=task(pack,'monitoring',{'MTG_ChairUserUID':'c'*32,'MTG_MeetingTitle':'قبلی','MTG_Actions':{'1':{'MTG_ActionNo':'1','MTG_ActionOwnerUID':'c'*32,'MTG_ActionDescription':'انجام نشده'}}})
@@ -631,3 +634,38 @@ def test_processmaker_mojibake_repair_restores_persian():
  original="برای شرکت‌کننده حاضر، ساعت حضور را با قالب HH:mm وارد کنید."
  mojibake=original.encode("utf-8").decode("latin1")
  assert _repair_mojibake(mojibake)==original
+
+
+def test_action_stage_requirements_match_latest_action_pmx(pack):
+ execution=task(pack,'action_execution')
+ gaps=r.gaps({
+  'MTGA_SubmissionType':'CompletionClaim',
+  'MTGA_ProgressPercent':'100',
+  'MTGA_ExecutionDescription':'کار انجام شد',
+ },execution)
+ fields={x['field'] for x in gaps}
+ assert 'MTGA_ActualEffortMinutes' not in fields
+ assert 'MTGA_ActualCompletionDateTime' not in fields
+ assert 'MTGA_ActualCompletionTime' not in fields
+
+ review=task(pack,'action_review')
+ gaps=r.gaps({
+  'MTGA_ReviewStatus2':'Closed',
+  'MTGA_SecretaryProgressPercent2':'100',
+ },review)
+ fields={x['field'] for x in gaps}
+ assert 'MTGA_SecretaryActualEffortMinutes2' not in fields
+ assert 'MTGA_SecretaryActualCompletionDateTime2' not in fields
+ assert 'MTGA_SecretaryActualCompletionTime2' not in fields
+
+
+def test_minutes_approval_requires_at_least_one_action_when_approved(pack):
+ t=task(pack,'minutes_approval',{
+  'MTG_MeetingHeld':'Held',
+  'MTG_MeetingDiscussionSummary':'جمع‌بندی',
+  'MTG_Participants':{},
+  'MTG_Decisions':{},
+  'MTG_Actions':{},
+ })
+ gaps=r.gaps({'MTG_MinutesApproval':'Approved'},t)
+ assert any(x['field']=='MTG_Actions' for x in gaps)
