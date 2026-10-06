@@ -24,13 +24,13 @@ def normalize_text(value):
     text=str(value or "").strip().casefold().replace("\u200c"," ").replace("ي","ی").replace("ك","ک")
     text=text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩","01234567890123456789"))
     text=text.replace("'"," ")
-    text=re.sub(r'[«»"\u060c,؟?!؛;:.()\[\]{}]+'," ",text)
+    text=re.sub(r'[«»"\u060c,؟?!؛;:()\[\]{}]+'," ",text)
     return re.sub(r"\s+"," ",text).strip()
 
 
 def _compact_confirmation_text(value):
     text=normalize_text(value)
-    for prefix in ("بله ","آره ","اره ","اوکی ","باشه ","تایید ","تأیید "):
+    for prefix in ("بله ","آره ","اره ","اوکی ","باشه ","تایید ","تأیید ","نه ","خیر "):
         if text.startswith(prefix) and len(text)>len(prefix):
             # Keep phrases such as "بله همان است" as affirmative, but expose
             # explicit corrections like "بله administrator" to identity lookup.
