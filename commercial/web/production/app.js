@@ -1168,29 +1168,30 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
  function actionBranches(row){
   const branches=row.action_branches||[];
   if(!branches.length)return null;
-  const box=el("section","case-branches case-branches-topology");
-  const header=el("div","case-branches-head");
-  add(header,el("strong","","شاخه‌های موازی اقدامات"),el("small","muted",fmt(branches.length)+" شاخه واقعی از مصوبات جلسه"));add(box,header);
-  const topology=el("div","case-branch-topology");
-  const split=el("div","case-branch-junction split"),splitDot=el("i");
-  add(split,splitDot,el("span","","انشعاب اقدامات"));
-  const lanes=el("div","case-branch-list");
+  const corridor=el("section","case-branch-corridor");
+  const split=el("div","case-branch-hub split");add(split,el("i"),el("span","","انشعاب اقدامات"));
+  const lanes=el("div","case-branch-lanes");
   for(const branch of branches){
-   const lane=el("article","case-branch "+branch.state),content=el("div","case-branch-content");
-   const titleButton=el("button","case-branch-title-button");titleButton.type="button";
-   add(titleButton,el("strong","","اقدام "+branch.action_no+" · "+branch.title),badge(branch.stage_label,"branch-state "+branch.state));
-   titleButton.addEventListener("click",()=>openSnapshot(row,branch.stage||"action_execution",branch.action_no));
-   const ownerText=branch.current_owner?miniPerson(branch.current_owner):branch.owner?miniPerson(branch.owner):"مسئول ثبت نشده";
-   const details=el("div","case-branch-meta");
-   add(details,badge("مسئول: "+ownerText),branch.case_number?badge("پرونده اقدام: "+fmt(branch.case_number)):"");
-   const track=el("div","case-branch-track");
-   for(const node of branch.nodes||[])add(track,stageNodeButton(node,row,branch,true));
-   const progress=el("div","case-branch-progress"),fill=el("span");fill.style.width=Math.max(0,Math.min(100,branch.progress_percent||0))+"%";add(progress,fill);
-   add(content,titleButton,details,track,progress);add(lane,content);add(lanes,lane);
+   const historyStages=(branch.history||[]).map(x=>x.stage);
+   const reworked=historyStages.filter(x=>x==="action_execution").length>1;
+   const lane=el("article","case-branch-lane "+branch.state+(reworked?" has-rework":""));
+   const head=el("button","case-branch-lane-head");head.type="button";
+   add(head,el("strong","",branch.action_no||"اقدام"),el("span","",branch.title||"اقدام جلسه"));
+   head.addEventListener("click",()=>openSnapshot(row,branch.stage||"action_execution",branch.action_no));
+   const owner=branch.current_owner||branch.owner;
+   const route=el("div","case-branch-route");
+   const execution=(branch.nodes||[]).find(x=>x.key==="action_execution")||{key:"action_execution",title:"اجرای اقدام",state:"future",role:"اقدام‌کننده"};
+   const review=(branch.nodes||[]).find(x=>x.key==="action_review")||{key:"action_review",title:"بررسی اقدام",state:"future",role:"دبیر"};
+   add(route,stageNodeButton(execution,row,branch,true),el("span","case-branch-link"),stageNodeButton(review,row,branch,true));
+   if(reworked)add(route,el("span","case-rework-loop","↶ اصلاح و اجرای مجدد"));
+   const foot=el("div","case-branch-lane-foot");
+   add(foot,el("span","",owner?miniPerson(owner):"مسئول ثبت نشده"),
+    el("span","",branch.case_number?"پرونده اقدام "+fmt(branch.case_number):"در انتظار ایجاد پرونده"),
+    badge(branch.stage_label||"در انتظار","branch-state "+branch.state));
+   add(lane,head,route,foot);add(lanes,lane);
   }
-  const merge=el("div","case-branch-junction merge"),mergeDot=el("i");
-  add(merge,mergeDot,el("span","",row.topology?.all_branches_closed?"همه شاخه‌ها بسته شده‌اند":"ادغام پس از بسته‌شدن شاخه‌ها"));
-  add(topology,split,lanes,merge);add(box,topology);return box;
+  const merge=el("div","case-branch-hub merge");add(merge,el("i"),el("span","",row.topology?.all_branches_closed?"ادغام شاخه‌ها":"انتظار برای تکمیل شاخه‌ها"));
+  add(corridor,split,lanes,merge);return corridor;
  }
  function historyDetails(row){
   const d=el("details","meeting-flow-details"),summary=el("summary","","جزئیات جریان پرونده");
