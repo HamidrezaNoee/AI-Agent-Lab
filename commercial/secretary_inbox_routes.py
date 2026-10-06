@@ -178,6 +178,17 @@ def register(app,authorized,csrf):
     # Workflow commands are deterministic. Never ask the language model whether
     # an explicit "send" command should advance a completed minutes task.
     if t.get('stage')=='minutes' and body.auto_advance and runtime.explicit_advance_intent(body.text,'minutes'):
+     row=runtime.draft(s,p.subject,t)
+     if row['revision']!=body.revision:raise RevisionConflict()
+     pending=runtime.gaps(row['values'],t)
+     if pending:
+      first=str(pending[0].get('question') or 'موارد ناقص صورت‌جلسه را تکمیل کنید.')
+      reply='هنوز '+str(len(pending))+' مورد برای تکمیل صورت‌جلسه باقی مانده است.\n\n'+first
+      updated=runtime.update(
+       s,p.subject,t,body.revision,row['values'],
+       [str(x.get('question') or x) for x in pending],
+       turn_text=body.text,reply=reply,pending_confirmation=None)
+      return {'result':response(s,p,t,updated),'intent':'resolved','committed':True}
      bearer=credentials.token(s,p.subject)
      sent=runtime.advance_minutes_direct(
       str(p.tenant_id),p.subject,source_id,s['external_user_id'],
@@ -209,7 +220,7 @@ def register(app,authorized,csrf):
       turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation)
      assistant=runtime.assistant_state(updated['values'],fresh,fresh_scope,updated.get('questions',[]))
      operation_active(p,body.request_id)
-     can_advance_now=(fresh['stage']=='minutes' or not assistant['missing'])
+     can_advance_now=not assistant['missing']
      if intent=='update' and body.auto_advance and advance and can_advance_now:
       if fresh['stage']=='minutes':
        bearer=credentials.token(fresh_scope,p2.subject)
