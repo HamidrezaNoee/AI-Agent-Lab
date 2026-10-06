@@ -781,8 +781,6 @@ def submit(scope,actor,task,revision,*,pm=None):
    upstream_status=getattr(exc,'upstream_status',None)
    if phase=='route':
     recovery='route_only'
-   elif phase=='after_trigger' and task['stage']=='minutes' and upstream_status==400:
-    recovery='trigger_retry'
    else:
     recovery='manual'
    row.update(status='reconciliation_required',last_error=detail,recovery=recovery,
@@ -841,7 +839,9 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
   # attempt already wrote variables to PM and AVAN has no draft, leave the
   # native values untouched and continue with the authoritative trigger.
   if values:
-   pm.set_variables(case_uid,native_index,values,operation='ثبت نهایی صورت‌جلسه')
+   native_values=normalize(pm.variables(case_uid))
+   if not _submitted_subset(native_values,values):
+    pm.set_variables(case_uid,native_index,values,operation='ثبت نهایی صورت‌جلسه')
 
   for trigger in stage['after']:
    pm.execute_trigger(case_uid,trigger,operation='کنترل نهایی صورت‌جلسه')
