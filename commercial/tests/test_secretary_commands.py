@@ -52,6 +52,7 @@ def minutes_values(participants):
         "MTG_MeetingHeld": "",
         "MTG_MeetingDiscussionSummary": "جمع‌بندی توسعه و تحویل",
         "MTG_MeetingEndDateTime": "1405/07/20",
+        "MTG_MeetingEndTime": "16:00",
         "MTG_PlannedActionEndTime": "17:00",
         "MTG_Participants": participants,
         "MTG_Decisions": {},
@@ -325,3 +326,50 @@ def test_relative_planning_date_and_spoken_time_are_deterministic(pack, monkeypa
     assert result2["MTG_PlannedActionEndTime"]=="17:00"
     assert intent2=="resolved"
     assert "17:00" in reply2
+
+
+def test_actual_end_time_uses_latest_question_context_and_never_calls_llm(pack, monkeypatch):
+    s, participants = scope()
+    values = minutes_values(participants)
+    values["MTG_MeetingHeld"] = "Held"
+    values["MTG_MeetingEndTime"] = ""
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("contextual clock answer must not call LLM"))
+    history=[{"role":"assistant","text":"ساعت پایان واقعی جلسه چه ساعتی بود؟"}]
+    result,questions,reply,intent,_=runtime.converse(
+        "17",task(pack,"minutes",minutes_native()),values,s,
+        questions=["ساعت پایان واقعی جلسه چه ساعتی بود؟"],history=history,
+    )
+    assert result["MTG_MeetingEndTime"]=="17:00"
+    assert result["MTG_PlannedActionEndTime"]=="17:00"
+    assert intent=="resolved"
+    assert "ساعت پایان واقعی جلسه روی 17:00" in reply
+    assert not any("پایان واقعی" in q for q in questions)
+
+
+def test_actual_end_time_does_not_overwrite_planned_time(pack, monkeypatch):
+    s, participants = scope()
+    values = minutes_values(participants)
+    values["MTG_MeetingHeld"] = "Held"
+    values["MTG_MeetingEndTime"] = ""
+    values["MTG_PlannedActionEndTime"] = "18:30"
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("actual end time must be deterministic"))
+    history=[{"role":"assistant","text":"ساعت پایان واقعی جلسه چه ساعتی بود؟"}]
+    result,_,_,_,_=runtime.converse(
+        "این هم ساعت 15",task(pack,"minutes",minutes_native()),values,s,history=history
+    )
+    assert result["MTG_MeetingEndTime"]=="15:00"
+    assert result["MTG_PlannedActionEndTime"]=="18:30"
+
+
+def test_planned_end_time_context_still_targets_planned_field(pack, monkeypatch):
+    s, participants = scope()
+    values = minutes_values(participants)
+    values["MTG_PlannedActionEndTime"] = ""
+    monkeypatch.setattr(runtime,"extract",lambda *a,**kw:pytest.fail("planned clock answer must not call LLM"))
+    history=[{"role":"assistant","text":"ساعت پایان برنامه‌ریزی‌شده را اعلام کنید."}]
+    result,_,reply,_,_=runtime.converse(
+        "ساعت 17",task(pack,"minutes",minutes_native()),values,s,history=history
+    )
+    assert result["MTG_PlannedActionEndTime"]=="17:00"
+    assert result["MTG_MeetingEndTime"]=="16:00"
+    assert "ساعت پایان برنامه‌ریزی روی 17:00" in reply
