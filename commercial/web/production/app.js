@@ -1404,7 +1404,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   add(editor,link("← بازگشت به میز کار",checked(async()=>{editor.replaceChildren();editor.dataset.editing="false";out.hidden=false;await load()}),"button secondary secretary-back"));
   const d=r.draft,t=r.task,values=structuredClone(d.values||{}),assistant=r.assistant||{};
   const stageLabels={invitation:"دعوت‌نامه",invitation_approval:"تأیید دعوت‌نامه",minutes:"صورت‌جلسه",minutes_approval:"تأیید صورت‌جلسه",action_execution:"گزارش اجرای اقدام",action_review:"بررسی اقدام",monitoring:"پایش و اختتام"};
-  const p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+(stageLabels[t.stage]||t.stage));
+  const p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+(stageLabels[t.stage]||t.stage));p.classList.add("secretary-editor-card");
   const stageProgress=el("div","secretary-editor-progress");stageProgress.setAttribute("aria-label","مرحله جاری پرونده");
   stages.forEach(([key,label],i)=>{const step=el("span",key===t.stage?"is-current":"",fmt(i+1)+" · "+label);if(key===t.stage)step.setAttribute("aria-current","step");add(stageProgress,step)});add(editor,stageProgress);
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
@@ -1426,7 +1426,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    return String(value);
   }
   function control(key,spec,value,change){
-   const baseLabel=spec.label||key,label=workflowDateKey(key)?baseLabel+" ("+calendarName()+")":baseLabel,wrap=el("label","field");add(wrap,el("span","",label));let input;
+   const baseLabel=spec.label||key,label=workflowDateKey(key)?baseLabel+" ("+calendarName()+")":baseLabel,wrap=el("label","field secretary-field");wrap.classList.add("field-"+String(spec.type||"text"));add(wrap,el("span","",label));let input;
    let options=spec.options||[];
    if(key.endsWith("UID"))options=(r.people||[]).map(x=>({value:x.uid,label:x.name}));
    if(key==="MTG_InvitationApproval"||key==="MTG_MinutesApproval")options=[{value:"Approved",label:"تأیید"},{value:"NeedsRevision",label:"نیاز به اصلاح"}];
@@ -1652,17 +1652,21 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
   add(conversation,composer);add(p,conversation);
 
-  const formDetails=el("details","secretary-form-details"),formSummary=el("summary","","مشاهده / اصلاح فرم استخراج‌شده"),formBody=el("div","secretary-form-body");
-  add(formDetails,formSummary,formBody);
+  const formDetails=el("details","secretary-form-details"),formSummary=el("summary","","مشاهده / اصلاح فرم استخراج‌شده"),formBody=el("div","secretary-form-body"),scalarGrid=el("div","secretary-form-grid");
+  add(formDetails,formSummary,formBody);add(formBody,scalarGrid);
   for(const [key,spec] of Object.entries(r.form||{})){
    if(spec.type==="grid"){
-    const box=card(spec.label||key),rows=el("div");let data=values[key]&&typeof values[key]==="object"?values[key]:{};values[key]=data;
+    const box=card(spec.label||key),rows=el("div","secretary-grid-rows");box.classList.add("secretary-grid-card");
+    let data=values[key]&&typeof values[key]==="object"?values[key]:{};values[key]=data;
     function draw(){rows.replaceChildren();for(const [no,row] of Object.entries(data)){
-     const item=card("ردیف "+no);for(const col of spec.columns||[])add(item,control(col.id,col,row[col.id]||"",v=>row[col.id]=v));
-     if(key!=="MTG_ActionSummary")add(item,link("حذف ردیف",()=>{delete data[no];changed();draw()}));add(rows,item);
+     const item=card("ردیف "+no);item.classList.add("secretary-grid-row");
+     const fields=el("div","secretary-grid-row-fields");
+     for(const col of spec.columns||[])add(fields,control(col.id,col,row[col.id]||"",v=>row[col.id]=v));
+     add(item,fields);
+     if(key!=="MTG_ActionSummary")add(item,link("حذف ردیف",()=>{delete data[no];changed();draw()},"button secondary compact-action"));add(rows,item);
     }}draw();add(box,rows);
-    if(key!=="MTG_ActionSummary"&&!locked)add(box,link("افزودن ردیف",()=>{const n=String(Math.max(0,...Object.keys(data).map(Number))+1);data[n]={};draw();changed()}));add(formBody,box);
-   }else add(formBody,control(key,spec,values[key],v=>values[key]=v));
+    if(key!=="MTG_ActionSummary"&&!locked)add(box,link("+ افزودن ردیف",()=>{const n=String(Math.max(0,...Object.keys(data).map(Number))+1);data[n]={};draw();changed()},"button secondary compact-action"));add(formBody,box);
+   }else add(scalarGrid,control(key,spec,values[key],v=>values[key]=v));
   }
   const context=el("details");add(context,el("summary","","شرح ثبت‌شده در فرایند"));
   for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+workflowDisplayValue(k,v)))}add(formBody,context);
