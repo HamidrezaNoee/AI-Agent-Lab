@@ -5,7 +5,7 @@ import pytest
 
 from commercial import secretary_commands as commands
 from commercial import secretary_runtime as runtime
-from commercial.tests.test_secretary_inbox import task
+from commercial.tests.test_secretary_inbox import pack, task
 
 
 def scope():
@@ -259,6 +259,8 @@ def test_batch_command_reuses_existing_unowned_actions_before_creating_new_ones(
     s,participants=scope()
     values=minutes_values(participants)
     values["MTG_MeetingHeld"]="Held"
+    for row in participants.values():
+        if row["MTG_AttendanceStatus"]=="Present":row["MTG_AttendanceTime"]="10:00"
     values["MTG_Decisions"]={"1":{"MTG_DecisionNo":"D-001","MTG_DecisionText":"پیگیری شود"}}
     values["MTG_Actions"]={
         str(i):{
@@ -286,6 +288,8 @@ def test_progress_question_reports_human_next_gap_without_llm(pack, monkeypatch)
     s,participants=scope()
     values=minutes_values(participants)
     values["MTG_MeetingHeld"]="Held"
+    for row in participants.values():
+        if row["MTG_AttendanceStatus"]=="Present":row["MTG_AttendanceTime"]="10:00"
     values["MTG_Decisions"]={"1":{"MTG_DecisionNo":"D-001","MTG_DecisionText":"پیگیری شود"}}
     values["MTG_Actions"]={"1":{
         "MTG_ActionNo":"A-002","MTG_ActionDescription":"تکمیل مدارک",

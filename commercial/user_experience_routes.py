@@ -91,7 +91,7 @@ def register(app,authorized,csrf):
   if body.password!=body.confirmation:
    raise HTTPException(422,"تکرار رمز عبور با رمز جدید یکسان نیست.")
   from . import user_accounts
-  if is_godadmin(principal):
+  if principal.subject=='bootstrap-godadmin':
    from . import setup_console as setup
    if not body.current:
     raise HTTPException(422,"برای تغییر رمز GodAdmin، رمز فعلی لازم است.")

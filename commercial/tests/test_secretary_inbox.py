@@ -295,6 +295,7 @@ def test_failed_new_meeting_reconciles_same_processmaker_case_without_duplicate(
     values['MTG_Agenda']['1'].update(MTG_AgendaPresenterUID='c'*32,MTG_AgendaPlannedMinutes='20')
     draft=r.session_update(S,'actor',draft['id'],draft['revision'],values)
     class FailingPM:
+        def variables(self,case):return {}
         def create_for(self,task,payload):return 'a'*32
         def assigned(self,*args):return 1
         def set_variables(self,*args,**kwargs):raise RuntimeError('trigger transport stopped after create')
@@ -378,7 +379,7 @@ def test_secretary_asks_missing_information_one_question_at_a_time(pack):
  state=r.assistant_state({},t,S)
  assert missing[0]['question'] in state['message']
  assert missing[1]['question'] not in state['message']
- assert 'مرحله‌به‌مرحله' in state['message']
+ assert 'مورد باقی‌مانده' in state['message']
 
 
 def test_assignment_evidence_allows_persian_unicode_and_spacing_normalization():
@@ -568,6 +569,7 @@ def test_minutes_direct_advance_uses_rest_only_and_routes_same_case(pack,store,m
   'MTG_MeetingDiscussionSummary':'جمع‌بندی',
   'MTG_MeetingEndTime':'17:00',
  })
+ native['MTG_Participants']['1'].update(MTG_AttendanceStatus='Present',MTG_AttendanceTime='10:00')
  t=task(pack,'minutes',native)
  row=r.draft(S,'actor',t)
  trusted=c._trusted_meeting_pack()
@@ -684,3 +686,4 @@ def test_latest_reviewed_pmx_pair_is_the_only_runtime_contract():
  assert trusted['action']['stages']['action_review']['task_uid']=='1bc65198c9b4cf2fae5d3ffbfeea3c00'
  assert 'MTG002_MeetingAttachment' in trusted['meeting']['stages']['minutes_approval']['fields']
  assert 'MTG_MeetingFile' not in trusted['meeting']['stages']['minutes_approval']['fields']
+

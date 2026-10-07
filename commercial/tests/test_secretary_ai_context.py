@@ -140,7 +140,7 @@ def test_username_resolution_and_unknown_people_preserve_agenda(pack):
  assert values['MTG_Agenda']['2']['MTG_AgendaTitle']=='بررسی مالی'
  assert values['MTG_Agenda']['2']['MTG_AgendaPresenterUID']==''
  assert any('not-found' in q for q in questions)
- assert any('2' in q['question'] for q in r.gaps(values,task(pack,'invitation')))
+ assert not any(q['field'].startswith('MTG_Agenda.') for q in r.gaps(values,task(pack,'invitation')))  # Optional in current PMX
 
 def test_ambiguous_and_inactive_people_not_assigned():
  directory={'a':{'active':True,'name':'علی رضایی'},'b':{'active':True,'name':'علی رضایی'},'c':{'active':False,'username':'ceo'}}
@@ -194,3 +194,4 @@ def test_bound_avan_display_name_can_resolve_processmaker_identity(pack):
  assert data['directory'][uid]['avan_name']=='مدیر فروش'
  value,questions=r.resolve_extracted_people('MTG_ChairUserUID','مدیر فروش',{},scope['directory'])
  assert value==uid and questions==[]
+

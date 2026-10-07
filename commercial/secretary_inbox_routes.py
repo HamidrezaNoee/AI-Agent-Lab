@@ -192,7 +192,7 @@ def register(app,authorized,csrf):
      bearer=credentials.token(s,p.subject)
      sent=runtime.advance_minutes_direct(
       str(p.tenant_id),p.subject,source_id,s['external_user_id'],
-      case_uid,index,pack_id,bearer)
+      case_uid,index,pack_id,bearer,revision=row['revision'])
      return {'result':{'advanced':True,'status':sent['status'],'assistant':{
       'stage':'minutes','summary':'','missing':[],'can_submit':False,
       'message':'صورت‌جلسه به مرحله «تأیید صورت‌جلسه» ارسال شد.'
@@ -226,7 +226,7 @@ def register(app,authorized,csrf):
        bearer=credentials.token(fresh_scope,p2.subject)
        sent=runtime.advance_minutes_direct(
         str(p2.tenant_id),p2.subject,source_id,fresh_scope['external_user_id'],
-        case_uid,index,pack_id,bearer)
+        case_uid,index,pack_id,bearer,revision=updated['revision'])
       else:
        sent=runtime.submit(fresh_scope,p2.subject,fresh,updated['revision'])
       return {'advanced':True,'status':sent['status'],'assistant':{
@@ -322,7 +322,7 @@ def register(app,authorized,csrf):
   try:
    return runtime.advance_minutes_direct(
     str(principal.tenant_id),principal.subject,source_id,external_user_id,
-    case_uid,index,pack_id,bearer)
+    case_uid,index,pack_id,bearer,revision=body.revision)
   except PermissionError as exc:
    raise HTTPException(403,str(exc) or 'ارسال این صورت‌جلسه برای حساب فعلی مجاز نیست.')
   except RevisionConflict:

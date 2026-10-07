@@ -105,6 +105,10 @@ def rows(v):
  if not isinstance(v,dict) or len(v)>60 or any(not str(k).isdigit() or int(k)<1 for k in v):raise ValueError('ساختار گرید باید ردیف‌های شماره‌دار باشد.')
  return list(v.values())
 
+def indexed_rows(v):
+ rows(v)  # Validate without renumbering sparse ProcessMaker grid keys.
+ return sorted((v or {}).items(),key=lambda item:int(item[0]))
+
 
 def validate(values,stage,directory):
  allowed=WRITE_FIELDS[stage]
@@ -151,7 +155,7 @@ def missing(values,stage):
   elif values.get('MTG_MeetingHeld')=='Held':required+=['MTG_MeetingDiscussionSummary']
  result=[{'field':k,'question':'لطفاً '+str(FORMS[stage][k]['label'] or k)+' را مشخص کنید.'} for k in required if not values.get(k)]
  if stage=='minutes' and values.get('MTG_MeetingHeld')=='Held':
-  for i,r in enumerate(rows(values.get('MTG_Participants')),1):
+  for i,r in indexed_rows(values.get('MTG_Participants')):
    status=str(r.get('MTG_AttendanceStatus') or '').strip()
    attendance_time=str(r.get('MTG_AttendanceTime') or '').strip()
    participant=str(r.get('MTG_ParticipantPosition') or '').strip()
@@ -165,10 +169,10 @@ def missing(values,stage):
    elif status=='Present' and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',attendance_time):
     result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceTime',
      'question':f'ساعت حضور شرکت‌کننده حاضر ردیف {i}{who} معتبر نیست؛ آن را به صورت HH:mm اصلاح کنید.'})
-  decision_rows=rows(values.get('MTG_Decisions'))
+  decision_rows=indexed_rows(values.get('MTG_Decisions'))
   decisions=set()
   decision_numbers=[]
-  for i,r in enumerate(decision_rows,1):
+  for i,r in decision_rows:
    no=str(r.get('MTG_DecisionNo') or '').strip()
    text=str(r.get('MTG_DecisionText') or '').strip()
    if not no:
@@ -180,7 +184,7 @@ def missing(values,stage):
     if text:decisions.add(no)
   if len(decision_numbers)!=len(set(decision_numbers)):
    raise ValueError('شماره مصوبات تکراری است.')
-  for i,r in enumerate(rows(values.get('MTG_Actions')),1):
+  for i,r in indexed_rows(values.get('MTG_Actions')):
    action_no=str(r.get('MTG_ActionNo') or ('ردیف '+str(i)))
    action_text=str(r.get('MTG_ActionDescription') or '').strip()
    subject=(' «'+action_text[:110]+'»') if action_text else ''

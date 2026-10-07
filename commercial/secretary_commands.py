@@ -377,7 +377,8 @@ def _match_role_candidates(target, directory):
     target_norm = resolution.normalize_text(target)
     if not target_norm:
         return []
-    target_tokens = {x for x in target_norm.split() if len(x) > 1}
+    generic={'کارشناس','مدیر','مسئول','واحد','ارشد','اداره','بخش'}
+    target_tokens = {x for x in target_norm.split() if len(x) > 1} - generic
     scored = []
     for uid, person in (directory or {}).items():
         if not person.get("active"):
@@ -398,10 +399,10 @@ def _match_role_candidates(target, directory):
                 continue
             if value in target_norm or target_norm in value:
                 best = max(best, 88)
-            tokens = {x for x in value.split() if len(x) > 1}
+            tokens = {x for x in value.split() if len(x) > 1} - generic
             common = target_tokens & tokens
             if common:
-                coverage = len(common) / max(1, min(len(target_tokens), len(tokens)))
+                coverage = len(common) / max(1, len(target_tokens))
                 best = max(best, round(50 + 35 * coverage))
         if best >= 70:
             scored.append((best, str(uid), person))
@@ -650,6 +651,14 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
     actions = copy.deepcopy(values.get("MTG_Actions")) if isinstance(values.get("MTG_Actions"), dict) else {}
     next_action = _next_code(actions, "MTG_ActionNo", "A")
     unowned = [key for key,row in _rows(actions) if not row.get("MTG_ActionOwnerUID")]
+    # "One for everyone" describes the desired draft, not another duplicate
+    # for every retry. Explicit "another/new" requests still add an action.
+    additional=any(word in normalized for word in ("جدید","دیگر","دیگه","اضافی"))
+    owned={}
+    if not additional:
+        for key,row in _rows(actions):
+            if row.get("MTG_ActionOwnerUID"):
+                owned.setdefault(row["MTG_ActionOwnerUID"],key)
     changed = []
     created_count = 0
     reused_count = 0
@@ -662,7 +671,11 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
             template_index = digest[0] % len(_TEMPLATES)
         generated_description = _TEMPLATES[template_index % len(_TEMPLATES)].format(topic=topic)
         decision_no = decision_numbers[offset % len(decision_numbers)]
-        if unowned:
+        if uid in owned:
+            key=owned[uid]
+            row=actions[key]
+            reused_count+=1
+        elif unowned:
             key = unowned.pop(0)
             row = actions[key]
             reused_count += 1

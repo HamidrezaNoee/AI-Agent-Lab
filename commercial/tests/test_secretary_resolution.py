@@ -3,7 +3,7 @@ import pytest
 
 from commercial import secretary_resolution as resolution
 from commercial import secretary_runtime as runtime
-from commercial.tests.test_secretary_inbox import task
+from commercial.tests.test_secretary_inbox import pack, task
 from commercial.tests.test_secretary_workflow import S
 
 

@@ -80,9 +80,9 @@ def logs(tenant_id,actor,role,*,limit=200,event=None,actor_id=None,
          source_id=None,process_uid=None,case_uid=None,stage=None,request_id=None,q=None):
     """Return tenant/user scoped audit rows with operational filters.
 
-    Detail fields are parsed server-side after the tenant/actor authorization
-    predicate. This keeps filters useful without exposing arbitrary JSON search
-    or weakening the non-admin self-only boundary.
+    JSON predicates run inside the tenant/actor authorization boundary before
+    the result limit, so old matching cases remain searchable. Only safe detail
+    fields are returned; malformed legacy JSON is treated as an empty object.
     """
     limit=max(1,min(int(limit),500))
     admin=role in ("SysAdmin","GodAdmin")
@@ -97,10 +97,25 @@ def logs(tenant_id,actor,role,*,limit=200,event=None,actor_id=None,
             where.append("ActorID=?");params.append(str(actor_id))
         if event:
             where.append("EventCode=?");params.append(str(event)[:80])
-        # Fetch a bounded tenant/user window, then apply structured JSON filters.
-        # AgentAudit.Detail is already size-bounded by audit(); parsing avoids
-        # database-specific JSON_VALUE behavior for old malformed audit rows.
-        fetch_limit=max(500,min(5000,limit*20))
+        # Filter before TOP: an older matching case must not disappear behind
+        # unrelated recent traffic. CASE protects legacy malformed JSON rows.
+        safe_json="CASE WHEN ISJSON(Detail)=1 THEN Detail ELSE N'{}' END"
+        def detail_value(key):return "JSON_VALUE("+safe_json+", '$."+key+"')"
+        for key,value in (("source_id",source_id),("process_uid",process_uid),
+                          ("case_uid",case_uid),("stage",stage),("request_id",request_id)):
+            if not str(value or "").strip():continue
+            value=str(value).strip()
+            if key=="process_uid":
+                where.append("("+detail_value(key)+"=? OR "+detail_value("pack_id")+"=?)")
+                params.extend([value,value])
+            else:
+                where.append(detail_value(key)+"=?");params.append(value)
+        if str(q or "").strip():
+            searchable=["EventCode","ActorID"]+[detail_value(key) for key in
+                ("message","error","path","source_id","process_uid","case_uid","stage","request_id")]
+            where.append("CHARINDEX(LOWER(?),LOWER(CONCAT("+",N' ',".join(searchable)+")))>0")
+            params.append(str(q).strip())
+        fetch_limit=limit+1
         sql=("SELECT TOP "+str(fetch_limit)+" EventID,TenantID,ActorID,EventCode,HappenedAt,Detail "
              "FROM dbo.AgentAudit WHERE "+" AND ".join(where)+" ORDER BY HappenedAt DESC,EventID DESC")
         rows=cur.execute(sql,*params).fetchall()
@@ -191,7 +206,8 @@ def start_operation(tenant_id,actor,request_id,kind,detail=None):
         previous=rows.get(str(request_id),{})
         if previous.get("state")=="cancelled":
             raise OperationCancelled("پردازش توسط کاربر متوقف شده است.")
-        rows[str(request_id)]={"state":"running","kind":str(kind)[:80],"started_at":now,"updated_at":now}
+        rows[str(request_id)]={"state":"running","kind":str(kind)[:80],"started_at":now,"updated_at":now,
+                              "context":_clean_detail(detail or {})}
         tx.put(key,_prune_operations(rows))
         tx.audit(str(tenant_id),str(actor),"SECRETARY_PROCESSING_STARTED",{
             "request_id":request_id,"kind":kind,**_clean_detail(detail or {})
@@ -208,7 +224,7 @@ def cancel_operation(tenant_id,actor,request_id):
         rows[str(request_id)]=row
         tx.put(key,_prune_operations(rows))
         tx.audit(str(tenant_id),str(actor),"SECRETARY_PROCESSING_CANCELLED",{
-            "request_id":request_id,"kind":row.get("kind","secretary")
+            **row.get("context",{}),"request_id":request_id,"kind":row.get("kind","secretary")
         })
     return {"cancelled":True,"request_id":request_id}
 
@@ -244,6 +260,6 @@ def finish_operation(tenant_id,actor,request_id,state="completed",detail=None):
                 "cancelled":"SECRETARY_PROCESSING_CANCELLED",
             }.get(final_state,"SECRETARY_PROCESSING_FINISHED")
             tx.audit(str(tenant_id),str(actor),event,{
-                "request_id":request_id,"kind":row.get("kind","secretary"),**_clean_detail(detail or {})
+                **row.get("context",{}),"request_id":request_id,"kind":row.get("kind","secretary"),**_clean_detail(detail or {})
             })
 

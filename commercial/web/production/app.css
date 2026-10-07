@@ -462,3 +462,36 @@ body.flow-snapshot-open{overflow:hidden}
 }
 .secretary-chat>.chat-bubble{overflow-anchor:none}
 .secretary-conversation{overflow-anchor:none}
+
+
+/* Measured curved joins replace disconnected decorative branch arms. */
+.case-process-map.measured-flow{position:relative;isolation:isolate}
+.case-flow-connections{position:absolute;top:0;left:0;pointer-events:none;overflow:visible;z-index:-1}
+.case-flow-connections path{fill:none;stroke:#72b9ad;stroke-width:2;stroke-linecap:round}
+.measured-flow .case-branch-lane::before,.measured-flow .case-branch-lane::after,
+.measured-flow .case-branch-hub::after,.measured-flow .case-git-graph-before::after,
+.measured-flow .case-git-graph-after::before{display:none!important}
+.measured-flow .case-git-graph-before,.measured-flow .case-git-graph-after{padding-inline:12px}
+.case-branch-lane-head span{font-size:11px}.case-branch-lane-foot{font-size:10px}
+.case-rework-loop{font-size:9px;padding:3px 12px;top:31px}
+.case-branch-lane.has-rework{padding-bottom:24px}
+:root[data-theme='dark'] .meeting-flow-graph-shell,:root[data-theme='dark'] .case-branch-lane{background:var(--surface,#172333);border-color:var(--line,#294057)}
+:root[data-theme='dark'] .case-branch-lane-head{color:var(--text,#e2edf4)}
+/* Compact desk and complete branch corridor on ordinary desktop widths. */
+.secretary-hero{padding:24px;gap:18px;margin:16px 0}
+.secretary-step{min-height:126px;padding:12px 10px;gap:7px}
+.secretary-task-card{padding:16px;gap:10px}
+.case-process-map-integrated .case-git-graph-before .case-git-node,
+.case-process-map-integrated .case-git-graph-after .case-git-node{flex:1 0 80px!important;min-width:80px!important}
+.measured-flow .case-branch-corridor{grid-template-columns:32px minmax(360px,1fr) 32px;min-width:424px;max-width:500px;margin:0 2px}
+.measured-flow .case-branch-lane{grid-template-columns:minmax(104px,1fr) 140px minmax(88px,.8fr);gap:6px}
+.measured-flow .branch-mini-node{min-width:62px!important}
+.measured-flow .case-branch-link{width:16px}
+.measured-flow .case-branch-lane-foot{overflow-wrap:anywhere}
+.measured-flow .case-branch-hub{font-size:8px;text-align:center}
+@media(max-width:650px){.secretary-hero{padding:20px}.secretary-step{min-height:118px}.measured-flow .case-branch-corridor{min-width:424px}}
+.measured-flow .case-git-graph-before{align-items:flex-start!important}
+.measured-flow .case-branch-hub i{position:absolute;top:50%;transform:translateY(-50%)}
+.measured-flow .case-branch-hub>span{position:absolute;top:calc(50% + 13px);line-height:1.5;white-space:nowrap}
+.measured-flow .case-branch-route{align-items:flex-start}
+.measured-flow .case-branch-link{margin-top:9px}

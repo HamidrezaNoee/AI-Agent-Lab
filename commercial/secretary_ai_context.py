@@ -46,15 +46,21 @@ def calendar_context():
             'jalali_today':jdatetime.date.fromgregorian(date=now.date()).strftime('%Y/%m/%d'),
             'jalali_tomorrow':jdatetime.date.fromgregorian(date=tomorrow).strftime('%Y/%m/%d')}
 
-def build_context(notes, task, current, scope, fields, questions=()):
+def build_context(notes, task, current, scope, fields, questions=(), history=()):
     if not isinstance(notes,str) or not notes.strip() or len(notes)>18000:
         raise ValueError('متن را در بخش‌های حداکثر ۱۸ هزار نویسه ارسال کنید.')
+    # History supplies reference context, never new authority or assignment evidence.
+    conversation=[{'role':item['role'],'text':item['text'][-2000:]}
+                  for item in list(history or [])[-8:]
+                  if isinstance(item,dict) and item.get('role') in ('user','assistant')
+                  and isinstance(item.get('text'),str) and item['text'].strip()]
+    reference_text='\n'.join(item['text'] for item in conversation)+'\n'+notes
     stage_fields=task['pack']['stages'][task['stage']]['fields']
     native={k:v for k,v in task['native'].items() if k in stage_fields and
             not any(x in k for x in ('File','Evidence','Json','History')) and k not in current}
     # Keep all current values; never silently truncate grids or evidence.
-    referenced=set(re.findall(r'\b[a-fA-F0-9]{32}\b',json.dumps([current,native,notes])))
-    text=normalize(notes)
+    referenced=set(re.findall(r'\b[a-fA-F0-9]{32}\b',json.dumps([current,native,reference_text])))
+    text=normalize(reference_text)
     people={}
     candidates=[]
     for uid, person in scope['directory'].items():
@@ -64,9 +70,9 @@ def build_context(notes, task, current, scope, fields, questions=()):
         normalized=[normalize(x) for x in names if x]
         if uid in referenced:
             people[uid]={'name':person.get('name','') or person.get('avan_name','')}
-        elif (username_matches(person.get('username'), notes)
-              or username_matches(person.get('avan_username'), notes)
-              or any(name and ((' '+name+' ') in (' '+text+' ') or name_matches(name, notes)) for name in normalized)):
+        elif (username_matches(person.get('username'), reference_text)
+              or username_matches(person.get('avan_username'), reference_text)
+              or any(name and ((' '+name+' ') in (' '+text+' ') or name_matches(name, reference_text)) for name in normalized)):
             candidates.append((uid,person.get('name','') or person.get('avan_name','')))
     if len(people)+len(candidates)>MAX_PEOPLE:
         raise ValueError('افراد این درخواست زیاد هستند؛ اطلاعات را در چند بخش وارد کنید.')
@@ -83,6 +89,7 @@ def build_context(notes, task, current, scope, fields, questions=()):
     if len(active)<=MAX_PEOPLE:
         people=active
     payload={'calendar':calendar_context(),'notes':notes,'stage':task['stage'],'current':current,
+             'conversation':conversation,
              'previous_questions':list(questions)[-12:],'context':native,
              'fields':compact(fields),'directory':people,
              'directory_incomplete':len(people)<len(active)}

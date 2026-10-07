@@ -565,7 +565,7 @@ async function userSettingsPage(){
  let prefs;
  try{prefs=await request("/api/user/preferences",{audit:false})}catch(e){add(m,note(errorDescription(e),true));return}
  app.preferences={...app.preferences,...prefs};
- const isLocalGodAdmin=app.user?.role==="GodAdmin"||app.user?.bootstrap_mode===true;
+ const isLocalGodAdmin=app.user?.subject==="bootstrap-godadmin"||app.user?.bootstrap_mode===true;
 
  const identity=el("section","settings-identity-hero");
  const avatar=el("span","settings-avatar",(app.user?.name||app.user?.username||"U").trim().slice(0,1));
@@ -657,13 +657,15 @@ async function supportLogsPage(){
   for(const item of items||[]){const value=typeof item==="object"?item.id:item;option(select,value,labelOf(item))}
   if(Array.from(select.options).some(o=>o.value===keep))select.value=keep;
  }
- let filterOptionsLoaded=false;
+ let filterOptionsLoaded=false,logGeneration=0;
  async function load(){
+  const generation=++logGeneration;
   out.replaceChildren(note("در حال دریافت لاگ‌ها..."));
   try{
    const q=new URLSearchParams({limit:limit.value});
    for(const [key,control] of [["event",event],["actor_id",actor],["source_id",source],["process_uid",process],["stage",stage],["case_uid",caseUid],["request_id",requestId],["q",search]])if(control.value.trim())q.set(key,control.value.trim());
    const data=await request("/api/support/logs?"+q.toString(),{audit:false});
+   if(generation!==logGeneration||!out.isConnected)return;
    if(!filterOptionsLoaded){
     refill(actor,data.filters?.actors,"همه کاربران",x=>x.name||x.id);
     refill(source,data.filters?.sources,"همه اتصال‌ها");
@@ -691,9 +693,9 @@ async function supportLogsPage(){
     const details=el("details","support-log-detail");add(details,el("summary","","جزئیات فنی"),el("pre","",JSON.stringify(detail,null,2)),el("small","muted","شناسه رویداد: "+item.id));add(row,details);add(rows,row);
    }
    add(out,rows);
-  }catch(e){out.replaceChildren(note(errorDescription(e),true))}
+  }catch(e){if(generation===logGeneration&&out.isConnected)out.replaceChildren(note(errorDescription(e),true))}
  }
- function labelField(title,control,wide=false){const x=el("label","field"+(wide?" support-log-wide":""));add(x,el("span","",title),control);return x}
+ function labelField(title,control,wide=false){const x=el("label","field"+(wide?" support-log-wide":""));control.setAttribute("aria-label",title);add(x,el("span","",title),control);return x}
  const refresh=link("↻ تازه‌سازی",()=>{filterOptionsLoaded=false;load()},"button secondary");
  const clear=link("پاک‌کردن فیلترها",()=>{for(const x of [event,actor,source,process,stage])x.value="";for(const x of [caseUid,requestId,search])x.value="";load()},"button secondary");
  add(controls,labelField("جستجو",search,true),labelField("کاربر",actor),labelField("اتصال BPMS",source),labelField("فرایند",process),
@@ -1209,7 +1211,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   const branches=row.action_branches||[];
   if(!branches.length)return null;
   const corridor=el("section","case-branch-corridor");
-  const split=el("div","case-branch-hub split");add(split,el("i"),el("span","","انشعاب اقدامات"));
+  const split=el("div","case-branch-hub split");split.title="انشعاب پرونده‌های واقعی اقدام";add(split,el("i"),el("span","","اقدام‌ها"));
   const lanes=el("div","case-branch-lanes");
   for(const branch of branches){
    const historyStages=(branch.history||[]).map(x=>x.stage);
@@ -1230,7 +1232,7 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
     badge(branch.stage_label||"در انتظار","branch-state "+branch.state));
    add(lane,head,route,foot);add(lanes,lane);
   }
-  const merge=el("div","case-branch-hub merge");add(merge,el("i"),el("span","",row.topology?.all_branches_closed?"ادغام شاخه‌ها":"انتظار برای تکمیل شاخه‌ها"));
+  const merge=el("div","case-branch-hub merge");merge.title="تکمیل همه اقدامات و ادامه پایش جلسه";add(merge,el("i"),el("span","",row.topology?.all_branches_closed?"تکمیل":"انتظار"));
   add(corridor,split,lanes,merge);return corridor;
  }
  function historyDetails(row){
@@ -1286,7 +1288,36 @@ async function renderMeetingCaseFlowGraph(target,sourceId,packId){
   const progress=el("div","meeting-flow-progress");
   const label=el("div","meeting-flow-progress-label");add(label,el("span","","پیشرفت پرونده"),el("strong","",fmt(row.progress_percent)+"٪"));
   const bar=el("div","meeting-flow-progress-bar"),fill=el("span");fill.style.width=Math.max(0,Math.min(100,row.progress_percent||0))+"%";add(bar,fill);add(progress,label,bar);
-  add(article,top,meta,graphShell,progress,historyDetails(row));return article;
+  add(article,top,meta,graphShell,progress,historyDetails(row));
+  if(branches.length)connectCaseBranches(map);
+  return article;
+ }
+
+ function connectCaseBranches(map){
+  // Measure the rendered nodes: curved paths stay attached after resize, font
+  // loading and horizontal scrolling. Draft-only actions never enter this map.
+  map.classList.add("measured-flow");
+  const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.classList.add("case-flow-connections");svg.setAttribute("aria-hidden","true");map.prepend(svg);
+  let observer;
+  function draw(){
+   if(!map.isConnected){observer?.disconnect();return}
+   svg.replaceChildren();svg.setAttribute("width",map.scrollWidth);svg.setAttribute("height",map.scrollHeight);
+   const base=map.getBoundingClientRect();
+   const point=(element,side="center")=>{const b=element.getBoundingClientRect();return {x:(side==="right"?b.right:side==="left"?b.left:(b.left+b.right)/2)-base.left+map.scrollLeft,y:(b.top+b.bottom)/2-base.top}};
+   const path=(a,b)=>{const p=document.createElementNS(svg.namespaceURI,"path"),mid=(a.x+b.x)/2;
+    p.setAttribute("d",`M ${a.x} ${a.y} C ${mid} ${a.y}, ${mid} ${b.y}, ${b.x} ${b.y}`);svg.appendChild(p)};
+   const split=map.querySelector(".split i"),merge=map.querySelector(".merge i");
+   const before=map.querySelector(".case-git-graph-before .case-git-node:last-child .case-git-dot");
+   const after=map.querySelector(".case-git-graph-after .case-git-dot");
+   if(before&&split)path(point(before),point(split));
+   if(merge&&after)path(point(merge),point(after));
+   for(const lane of map.querySelectorAll(".case-branch-lane")){
+    if(split)path(point(split),point(lane,"right"));
+    if(merge)path(point(lane,"left"),point(merge));
+   }
+  }
+  requestAnimationFrame(()=>{draw();if(map.isConnected){observer=new ResizeObserver(draw);observer.observe(map);for(const lane of map.querySelectorAll(".case-branch-lane"))observer.observe(lane)}});
  }
 
  async function loadGraph(resetPage=false){
@@ -2263,4 +2294,3 @@ function refreshProcessMenu(sourceId,manifest){
  const target=Array.from(document.querySelectorAll('[data-process-menu]')).find(x=>x.dataset.processMenu===sourceId);if(!target)return;
  target.replaceChildren();for(const section of manifest.navigation){const b=link(section.label+(section.count?" · "+fmt(section.count):""),()=>{app.selectedSourceId=sourceId;app.processChoices[sourceId].section=section.id;select("source-process")});b.dataset.page="source-process";b.dataset.sourceId=sourceId;b.dataset.packId=manifest.process.id;b.dataset.section=section.id;b.classList.toggle("active",sourceId===app.selectedSourceId&&section.id===choice.section);add(target,b)}
 }
-

@@ -106,7 +106,11 @@
         "commercial/tests/test_secretary_inbox.py",
         "commercial/tests/test_process_workspace.py",
         "commercial/tests/test_secretary_ai_context.py",
-        "commercial/tests/test_meeting_pair_execution.py"
+        "commercial/tests/test_meeting_pair_execution.py",
+        "commercial/tests/test_secretary_commands.py",
+        "commercial/tests/test_secretary_resolution.py",
+        "commercial/tests/test_secretary_conversation_regressions.py",
+        "commercial/tests/test_process_case_graph.py"
       ],
       "depends_on": [
         "bpms",

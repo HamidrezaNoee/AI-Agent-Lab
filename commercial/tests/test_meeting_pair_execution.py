@@ -31,7 +31,7 @@ def payload(stage):
 
 @pytest.mark.parametrize('stage',list(runtime.STAGE_LABELS))
 def test_each_stage_writes_then_runs_exact_after_triggers_then_routes(stage,pack,store):
- native={**copy.deepcopy(V),**payload('minutes')}
+ native={**copy.deepcopy(V),**payload('minutes'),'MTG_LockedPlan':copy.deepcopy(V)}
  t=task(pack,stage,native)
  row=runtime.draft(S,'actor',t)
  row=runtime.update(S,'actor',t,row['revision'],payload(stage))
@@ -130,3 +130,4 @@ def test_route_case_serializes_del_index_as_string_for_processmaker_33():
  assert captured['method']=='PUT'
  assert captured['path'].endswith('/route-case')
  assert captured['json']=={'del_index':'1'}
+

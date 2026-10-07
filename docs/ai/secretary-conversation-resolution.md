@@ -114,3 +114,14 @@ Action numbers continue after existing actions. If no valid decision exists, AVA
 creates linked draft decisions so the native ProcessMaker action contract remains
 valid. Those generated rows are explicitly described as drafts in the assistant
 response and still require the normal human review/submission step.
+
+
+## October 7 regression repair
+
+- Extraction receives the latest eight user/assistant turns (2,000 characters each), within the existing 48k total budget. Historical messages can resolve references but never replace evidence in NEW notes.
+- Missing grid fields retain native sparse row keys after deletion.
+- Repeated attendee batch requests reuse each selected person's existing draft action. Explicit additional/new action requests append. Generic role words alone cannot select an unrelated specialist.
+- Direct minutes submission checks the supplied revision and claims the stored draft before REST mutation. Concurrent sends/edits and foreign draft owners fail without overwriting the stored row.
+- Audit source/process/case filters execute before TOP, with malformed-JSON protection and tenant/actor predicates. Operation completion/failure retains its initial operational context.
+
+Latest uploaded meeting-10(1)/action-9(1) compile exactly to the current shipped pack; this repair does not replace their process IDs or trigger definitions.

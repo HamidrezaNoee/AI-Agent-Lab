@@ -92,7 +92,7 @@ def test_grid_labels_preserve_uids():
 def test_rest_transport_checks_assignment_and_runs_pmx_after_before_route(monkeypatch):
  from commercial.secretary_processmaker import PM,AFTER
  pm=object.__new__(PM);calls=[]
- def call(method,path,data=None):
+ def call(method,path,data=None,**kwargs):
   calls.append((method,path,data))
   if method=='GET':return {'pro_uid':f.CONTRACT['process_uid'],'current_task':[{'tas_uid':f.MINUTES,'usr_uid':'s'*32,'del_thread_status':'OPEN','del_index':3}]}
   return {}
@@ -100,7 +100,7 @@ def test_rest_transport_checks_assignment_and_runs_pmx_after_before_route(monkey
  pm.submit('a'*32,f.MINUTES,'s'*32,{'MTG_MeetingHeld':'Held'})
  assert calls[1][1].endswith('/variable?del_index=3')
  assert calls[2][1].endswith('/execute-trigger/'+AFTER[f.MINUTES])
- assert calls[3][1].endswith('/route-case') and calls[3][2]=={'del_index':3}
+ assert calls[3][1].endswith('/route-case') and calls[3][2]=={'del_index':'3'}
  calls.clear()
  with pytest.raises(ValueError):pm.submit('a'*32,f.MINUTES,'c'*32,{})
  assert len(calls)==1
@@ -222,3 +222,4 @@ def test_minutes_decisions_require_number_text_and_unique_number():
  values['MTG_Decisions']['2']['MTG_DecisionNo']='D-002'
  gaps=f.missing(values,'minutes')
  assert any(x['field']=='MTG_Decisions.1.MTG_DecisionText' for x in gaps)
+

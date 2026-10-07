@@ -206,3 +206,56 @@ def test_support_log_text_search_matches_safe_operational_context(memory_store):
     found=ux.logs("tenant-1","user-a","Expert",limit=100,q="processmaker")
     assert len(found["logs"])==1
     assert found["logs"][0]["detail"]["case_uid"]=="case-77"
+
+
+
+def test_operation_failure_retains_source_process_and_case_context(memory_store):
+    context={'source_id':'source-1','process_uid':'process-1','case_uid':'case-1','stage':'minutes'}
+    ux.start_operation('tenant-1','user-a','req-1234567890123456','secretary_turn',context)
+    ux.finish_operation('tenant-1','user-a','req-1234567890123456','failed',{'error':'timeout'})
+    detail=memory_store['audits'][-1]['detail']
+    assert all(detail[key]==value for key,value in context.items())
+    assert detail['error']=='timeout'
+
+
+def test_log_filters_are_parameterized_before_result_limit(monkeypatch):
+    captured={}
+    class Cursor:
+        def execute(self,sql,*params):captured.update(sql=sql,params=params);return self
+        def fetchall(self):return []
+    class Connection:
+        def cursor(self):return Cursor()
+        def close(self):pass
+    monkeypatch.setattr(agent_storage,'connect',Connection)
+    ux.logs('tenant','owner','Expert',limit=100,actor_id='other',
+        source_id='old-source',process_uid='old-process',case_uid='old-case',q="%' OR 1=1 --")
+    sql=captured['sql']
+    assert 'TOP 101' in sql and 'ISJSON(Detail)' in sql
+    assert "'$.case_uid')=?" in sql and "'$.pack_id')=?" in sql
+    assert 'CHARINDEX(LOWER(?),' in sql
+    assert 'old-case' not in sql and 'OR 1=1' not in sql
+    assert captured['params']==('tenant','owner','old-source','old-process','old-process','old-case',"%' OR 1=1 --")
+
+
+def test_bound_godadmin_changes_keycloak_password_not_local_recovery(monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from types import SimpleNamespace
+    from commercial import user_experience_routes as routes, user_accounts, setup_console
+    principal=SimpleNamespace(subject='bound-owner',tenant_id='tenant')
+    monkeypatch.setattr(routes,'is_godadmin',lambda p:True)
+    calls=[]
+    @contextmanager
+    def directory():
+        yield SimpleNamespace(password=lambda subject,password,revoke:(calls.append(subject),revoke()))
+    monkeypatch.setattr(user_accounts,'directory',directory)
+    monkeypatch.setattr(user_accounts,'revoke_sessions',lambda subject:calls.append('revoke:'+subject))
+    monkeypatch.setattr(setup_console,'change_password',lambda *a:pytest.fail('Bound OIDC account must not rotate the local recovery password'))
+    monkeypatch.setattr(ux,'audit',lambda *a:None)
+    app=FastAPI()
+    routes.register(app,lambda:('session',{},principal),lambda:('session',{},principal))
+    with TestClient(app) as client:
+        response=client.post('/api/user/password',json={'password':'strong-password-1234','confirmation':'strong-password-1234'})
+    assert response.status_code==200
+    assert response.json()['provider']=='keycloak'
+    assert calls==['bound-owner','revoke:bound-owner']

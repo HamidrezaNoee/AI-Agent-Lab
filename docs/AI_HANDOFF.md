@@ -99,3 +99,40 @@ agenda presenter. Payload includes actual pending fields and assistant prompt.
 Legacy extraction remains for file ingestion. Full suite: 486 passed before two
 additional regressions; focused final set: 66 passed including both additions.
 Model quality and production BPMS behavior are not established by fixture tests.
+
+
+## Secretary and desk regression repair — 2026-10-07
+
+Based on remote e76ec74, preserving the latest meeting/action contracts. Uploaded
+meeting-10(1) and action-9(1) compile exactly to secretary_pack_reference.json.
+Their SHA256 fingerprints are respectively
+153492224d92b8df34aa4502e92ff7a8b4c9ec76cc41acffed184db5e5d72015 and
+a44a7703546218ed84f32030822b6f14dccb92c7877ca7114badaa81235d8fdb.
+
+- Structured extraction receives bounded actual conversation history; NEW-message
+  evidence remains mandatory. Sparse grid row keys survive deletion and follow-ups.
+- Repeating a one-action-per-attendee command reuses assigned draft actions;
+  explicit additional/new requests append. Generic role overlap is insufficient.
+- Direct minutes send validates the supplied revision and claims the draft while
+  REST executes. Foreign/concurrent/stale requests cannot overwrite the draft.
+  Failed transport retains the draft revision for an explicit retry; successful
+  native routing is not rolled back because a later local audit fails.
+- Audit filters run in SQL before TOP, within tenant/actor scope. Completed/failed
+  operations retain source/process/case context. Late filter responses are ignored.
+- Bound OIDC GodAdmin password changes use Keycloak, not local recovery storage.
+- Real child-case branches have measured curved joins, compact desktop spacing and
+  visible rework loops; draft action rows remain unbranched. Existing compact form
+  and settings layouts retained; log controls have explicit accessible names.
+
+Validation: 594 Python tests + 55 subtests passed in the full local run; the sole
+remaining failure was the bundled-font presence check because binary WOFF2 assets
+could not be materialized through the connector (they remain in the remote tree).
+Two additional focused conversation regressions cover retry and historical evidence.
+Real Chromium with deterministic API fixtures exercised stage gates, branch rendering,
+mobile overflow, settings save and log filtering; screenshots visually inspected.
+This is not live PM/PHP trigger, SQL Server, Keycloak or paid-model validation.
+Full remote CI remains a release gate; previous upstream workflow runs already failed.
+
+Deploy only the AVAN service from the existing production checkout/compose project:
+`docker compose -p avan-production -f compose.yaml -f compose.pm-local.yaml up -d --build --no-deps avan`
+Do not regenerate secrets, reset ProcessMaker, or remove volumes.
