@@ -91,7 +91,10 @@
         "commercial/secretary_runtime.py",
         "commercial/secretary_catalog.py",
         "commercial/process_workspace.py",
-        "commercial/secretary_ai_context.py"
+        "commercial/secretary_ai_context.py",
+        "commercial/secretary_orchestrator.py",
+        "commercial/secretary_time.py",
+        "commercial/secretary_journal.py"
       ],
       "owns": [
         "commercial/secretary*",
@@ -110,7 +113,8 @@
         "commercial/tests/test_secretary_commands.py",
         "commercial/tests/test_secretary_resolution.py",
         "commercial/tests/test_secretary_conversation_regressions.py",
-        "commercial/tests/test_process_case_graph.py"
+        "commercial/tests/test_process_case_graph.py",
+        "commercial/tests/test_secretary_orchestrator.py"
       ],
       "depends_on": [
         "bpms",

@@ -27,6 +27,10 @@ class Turn(BaseModel):
  text:str=Field(min_length=1,max_length=18000)
  auto_advance:bool=True
  request_id:str|None=Field(None,min_length=16,max_length=80)
+class Undo(BaseModel):
+ model_config=ConfigDict(extra="forbid")
+ revision:int=Field(ge=1)
+
 class Submit(BaseModel):
  model_config=ConfigDict(extra='forbid')
  revision:int=Field(ge=1)
@@ -84,7 +88,8 @@ def register(app,authorized,csrf):
   context={k:v for k,v in t['native'].items() if k in t['pack']['stages'][t['stage']]['fields'] and not any(x in k for x in ('File','Evidence','Json','History'))}
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
-  draft={k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments','last_error','recovery','failure_phase','upstream_status')}
+  draft={k:row.get(k,[] if k in ('questions','history','attachments') else None) for k in ('values','revision','status','questions','history','attachments','last_error','recovery','failure_phase','upstream_status','last_change','agent_receipt')}
+  draft['can_undo']=runtime.journal.can_undo(row)
   if t.get('stage')=='minutes' and draft.get('status')=='reconciliation_required':
    # Old builds trapped FR-MTG-003 failures in reconciliation_required. The
    # rewritten minutes submit path safely re-runs the authoritative PM trigger.
@@ -108,12 +113,16 @@ def register(app,authorized,csrf):
   if str(user.get('text') or '').strip()!=str(text or '').strip():return None
   return response(s,p,t,row)
 
+ def public_session(row):
+  public={k:v for k,v in row.items() if k not in ('actor','scope','pending_confirmation','_undo_checkpoint')}
+  public['can_undo']=runtime.journal.can_undo(row)
+  public['pending_confirmation']=runtime.resolution.safe_public_pending(row.get('pending_confirmation'))
+  return public
+
  def session_response(s,p,row,t):
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
-  public_session={k:v for k,v in row.items() if k not in ('actor','scope','pending_confirmation')}
-  public_session['pending_confirmation']=runtime.resolution.safe_public_pending(row.get('pending_confirmation'))
-  return {'session':public_session,
+  return {'session':public_session(row),
           'task':{'stage':'invitation','title':row['values'].get('MTG_MeetingTitle') or 'جلسه جدید'},
           'form':runtime.form(t),'missing':assistant['missing'],'assistant':assistant,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
@@ -169,6 +178,10 @@ def register(app,authorized,csrf):
  def edit_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Edit,value=Depends(csrf)):
   ref=Ref(case_uid=case_uid,index=index,pack_id=pack_id)
   return access(value,source_id,lambda con,s,p:response(s,p,(t:=runtime.task(con,s,case_uid,index,pack_id)),runtime.update(s,p.subject,t,body.revision,body.values,pending_confirmation=None)))
+ @app.post(base+'/tasks/{case_uid}/{index}/undo')
+ def undo_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Undo,value=Depends(csrf)):
+  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
+  return access(value,source_id,lambda con,s,p:response(s,p,(t:=runtime.task(con,s,case_uid,index,pack_id)),runtime.undo_task(s,p.subject,t,body.revision)))
  @app.post(base+'/tasks/{case_uid}/{index}/turn')
  def task_turn(source_id:str,case_uid:str,index:int,pack_id:str,body:Turn,value=Depends(csrf)):
   s,t=native(value,source_id,Ref(case_uid=case_uid,index=index,pack_id=pack_id));p=value[2]
@@ -204,12 +217,13 @@ def register(app,authorized,csrf):
       return {'result':replay,'intent':'replay','committed':True}
      if row['revision']!=body.revision:raise RevisionConflict()
      operation_active(p,body.request_id)
-     vals,questions,reply,intent,pending_confirmation=runtime.converse(
+     turn_result=runtime.converse(
       body.text,t,row['values'],s,
       questions=row.get('questions',[]),
       pending_confirmation=row.get('pending_confirmation'),
       history=row.get('history',[]))
      operation_active(p,body.request_id)
+     vals,questions,reply,intent,pending_confirmation=turn_result
      decision=runtime.apply_explicit_decision(body.text,t['stage'],vals) if intent=='update' else None
      workflow_intent=runtime.apply_explicit_workflow_intent(body.text,t['stage'],vals) if intent=='update' else None
      advance=runtime.explicit_advance_intent(body.text,t['stage'],workflow_intent) or bool(decision)
@@ -217,7 +231,7 @@ def register(app,authorized,csrf):
      operation_active(p,body.request_id)
      fresh=runtime.task(con,fresh_scope,case_uid,index,pack_id)
      updated=runtime.update(fresh_scope,p2.subject,fresh,body.revision,vals,questions,
-      turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation)
+      turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation,agent_receipt=getattr(turn_result,'receipt',{}))
      assistant=runtime.assistant_state(updated['values'],fresh,fresh_scope,updated.get('questions',[]))
      operation_active(p,body.request_id)
      can_advance_now=not assistant['missing']
@@ -387,7 +401,10 @@ def register(app,authorized,csrf):
   return access(value,source_id,run)
  @app.post(base+'/sessions/{identifier}/edit')
  def edit_session(source_id:str,identifier:str,body:Edit,value=Depends(csrf)):
-  return access(value,source_id,lambda con,s,p:runtime.session_update(s,p.subject,identifier,body.revision,body.values,pending_confirmation=None))
+  return access(value,source_id,lambda con,s,p:public_session(runtime.session_update(s,p.subject,identifier,body.revision,body.values,pending_confirmation=None)))
+ @app.post(base+'/sessions/{identifier}/undo')
+ def undo_session(source_id:str,identifier:str,body:Undo,value=Depends(csrf)):
+  return access(value,source_id,lambda con,s,p:session_response(s,p,runtime.undo_session(s,p.subject,identifier,body.revision),runtime.session_load(s,p.subject,identifier)[1]))
  @app.post(base+'/sessions/{identifier}/turn')
  def session_turn(source_id:str,identifier:str,body:Turn,value=Depends(csrf)):
   principal=value[2]
@@ -408,13 +425,14 @@ def register(app,authorized,csrf):
       history=row.get('history',[]))
      operation_active(principal,body.request_id)
      return result
-   vals,questions,reply,intent,pending_confirmation=guard_model(model_only)
+   turn_result=guard_model(model_only)
+   vals,questions,reply,intent,pending_confirmation=turn_result
    def commit(con,fresh_scope,p):
     operation_active(principal,body.request_id)
     current,fresh_task=runtime.session_load(fresh_scope,p.subject,identifier)
     if current['revision']!=body.revision:raise RevisionConflict()
     updated=runtime.session_update(fresh_scope,p.subject,identifier,body.revision,vals,questions,
-     turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation)
+     turn_text=body.text,reply=reply,pending_confirmation=pending_confirmation,agent_receipt=getattr(turn_result,'receipt',{}))
     assistant=runtime.assistant_state(updated['values'],fresh_task,fresh_scope,updated.get('questions',[]))
     operation_active(principal,body.request_id)
     if intent=='update' and body.auto_advance and runtime.explicit_start_intent(body.text) and not assistant['missing']:
@@ -511,9 +529,9 @@ def register(app,authorized,csrf):
  @app.post(base+'/sessions/{identifier}/submit')
  def send_session(source_id:str,identifier:str,body:Submit,value=Depends(csrf)):
   if not body.confirmed:raise HTTPException(422,'دعوت‌نامه را بازبینی و ارسال را تأیید کنید.')
-  return access(value,source_id,lambda con,s,p:runtime.session_send(s,p.subject,identifier,body.revision))
+  return access(value,source_id,lambda con,s,p:public_session(runtime.session_send(s,p.subject,identifier,body.revision)))
 
  @app.post(base+'/sessions/{identifier}/reconcile')
  def reconcile_session(source_id:str,identifier:str,body:Submit,value=Depends(csrf)):
   if not body.confirmed:raise HTTPException(422,'ادامه همان پرونده ProcessMaker را صریحاً تأیید کنید.')
-  return access(value,source_id,lambda con,s,p:runtime.session_reconcile(s,p.subject,identifier,body.revision))
+  return access(value,source_id,lambda con,s,p:public_session(runtime.session_reconcile(s,p.subject,identifier,body.revision)))

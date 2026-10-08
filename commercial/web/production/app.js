@@ -5,7 +5,27 @@ function el(tag,klass,text){const n=document.createElement(tag);if(klass)n.class
 function add(parent,...children){for(const x of children.flat())if(x!==undefined&&x!==null)parent.append(x);return parent}
 function link(text,callback,klass="button secondary"){const b=el("button",klass,text);b.type="button";b.addEventListener("click",callback);return b}
 function card(title,subtitle){const s=el("section","panel");add(s,el("h2","",title),el("p","sub",subtitle||""));return s}
-function note(text,error=false){return el("div","notice"+(error?" error":""),text)}
+function note(text,error=false){
+ const box=el("div","notice"+(error?" error dismissible-notice":""));add(box,el("span","",text));
+ if(error){box.setAttribute("role","alert");const close=link("×",()=>box.remove(),"notice-close");close.setAttribute("aria-label","بستن پیام خطا");add(box,close)}
+ return box;
+}
+// Render a small, safe Markdown subset using text nodes only.
+function secretaryRichText(text){
+ const body=el("div","chat-bubble-text");let code=null;
+ for(const line of String(text).split("\n")){
+  if(line.trim().startsWith("```")){if(code)code=null;else{code=el("code");add(body,add(el("pre","chat-code"),code))}continue}
+  if(code){code.append(document.createTextNode(line+"\n"));continue}
+  const row=el("div",/^\s*[-*] /.test(line)?"chat-list-item":"");
+  for(const part of line.split(/(\*\*[^*]+\*\*|`[^`]+`)/g)){
+   if(part.startsWith("**")&&part.endsWith("**"))add(row,el("strong","",part.slice(2,-2)));
+   else if(part.startsWith("`")&&part.endsWith("`"))add(row,el("code","",part.slice(1,-1)));
+   else row.append(document.createTextNode(part));
+  }
+  if(!line)add(row,el("br"));add(body,row);
+ }
+ return body;
+}
 function heading(container,title,description){add(container,add(el("div","page-head"),el("h1","",title),el("p","",description)))}
 function root(){const m=$("main");m.replaceChildren();return m}
 function fmt(value){return new Intl.NumberFormat("fa-IR").format(value)}
@@ -1574,8 +1594,11 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
   function addChatBubble(role,text,extra="",options={}){
    const bubble=el("div","chat-bubble "+role+(extra?" "+extra:""));
-   add(bubble,el("small","",role==="user"?"شما":"دبیر هوشمند"),el("div","chat-bubble-text",secretaryDisplayText(role,text)));
-   add(chat,bubble);
+   add(bubble,el("small","",role==="user"?"شما":"دبیر هوشمند"),secretaryRichText(secretaryDisplayText(role,text)));
+   const messageTools=el("div","chat-message-tools");
+   add(messageTools,link("کپی",async()=>{try{await navigator.clipboard.writeText(text)}catch{toast("کپی خودکار ممکن نشد؛ متن را انتخاب و کپی کنید.")}},"button secondary compact-action"));
+   if(role==="user")add(messageTools,link("ویرایش و ارسال دوباره",()=>{notes.value=text;autosize();notes.focus()},"button secondary compact-action"));
+   add(bubble,messageTools);add(chat,bubble);
    if(options.summary){
     const details=el("details","chat-summary-details"),summary=el("summary","","خلاصه اطلاعات استخراج‌شده");
     add(details,summary,el("pre","chat-summary",options.summary));add(bubble,details);
@@ -1595,7 +1618,23 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   add(conversation,chat);
 
   let missing=assistant.missing||r.missing||[],chatMinutesSend=null,chatMinutesHint=null;
-  const progress=el("div","secretary-progress");
+  const progress=el("div","secretary-progress"),receiptPanel=el("details","secretary-change-receipt");
+  const undoButton=link("بازگردانی آخرین تغییر",checked(async()=>{
+   if(sending||dirty)throw Error("ابتدا پردازش یا اصلاحات دستی را تمام کنید.");
+   undoButton.disabled=true;
+   try{await applyResult(await post(path+"/undo"+query,{revision:d.revision}))}
+   finally{undoButton.disabled=locked||!d.can_undo}
+  }),"button secondary compact-action");
+  undoButton.classList.add("secretary-undo");
+  function refreshReceipt(){
+   receiptPanel.replaceChildren();const change=d.last_change||{};
+   receiptPanel.hidden=!change.count;
+   add(receiptPanel,el("summary","",(d.agent_receipt?.label||"تغییرات پیش‌نویس")+" · "+(change.count||0)+" تغییر"));
+   for(const item of change.items||[])add(receiptPanel,el("p","",item.label+": "+item.before+" ← "+item.after));
+   if(change.truncated)add(receiptPanel,el("p","","برای مشاهده همه تغییرات، فرم را باز کنید."));
+   undoButton.hidden=!d.can_undo;undoButton.disabled=locked||!d.can_undo;
+  }
+  refreshReceipt();add(conversation,receiptPanel,undoButton);
   add(conversation,progress);
   const contextSummary=el("details","secretary-context-summary"),summaryTitle=el("summary","",["invitation_approval","minutes_approval"].includes(t.stage)?"خلاصه برای تصمیم شما":"خلاصه اطلاعات استخراج‌شده"),summaryBody=el("pre");
   add(contextSummary,summaryTitle,summaryBody);add(conversation,contextSummary);
@@ -1710,8 +1749,10 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    d.history=serverHistory;d.questions=nextDraft.questions||[];
    d.attachments=nextDraft.attachments||[];d.pending_confirmation=nextDraft.pending_confirmation||null;
    d.values=nextDraft.values||{};
+   d.last_change=nextDraft.last_change;d.agent_receipt=nextDraft.agent_receipt;d.can_undo=nextDraft.can_undo;refreshReceipt();
    for(const key of Object.keys(values))delete values[key];
    Object.assign(values,structuredClone(nextDraft.values||{}));
+   renderFormFields();
    assistant=nextAssistant;
    missing=nextAssistant.missing||result.missing||[];
    refreshConversationMeta();
@@ -1880,8 +1921,10 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
   add(conversation,composer);add(p,conversation);
 
-  const formDetails=el("details","secretary-form-details"),formSummary=el("summary","","مشاهده / اصلاح فرم استخراج‌شده"),formBody=el("div","secretary-form-body"),scalarGrid=el("div","secretary-form-grid");
-  add(formDetails,formSummary,formBody);add(formBody,scalarGrid);
+  const formDetails=el("details","secretary-form-details"),formSummary=el("summary","","مشاهده / اصلاح فرم استخراج‌شده"),formBody=el("div","secretary-form-body"),fieldsHost=el("div","secretary-fields-host");
+  add(formDetails,formSummary,formBody);add(formBody,fieldsHost);
+  function renderFormFields(){
+  fieldsHost.replaceChildren();const scalarGrid=el("div","secretary-form-grid");add(fieldsHost,scalarGrid);
   for(const [key,spec] of Object.entries(r.form||{})){
    if(spec.type==="grid"){
     const box=card(spec.label||key),rows=el("div","secretary-grid-rows");box.classList.add("secretary-grid-card");
@@ -1893,9 +1936,11 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
      add(item,fields);
      if(key!=="MTG_ActionSummary")add(item,link("حذف ردیف",()=>{delete data[no];changed();draw()},"button secondary compact-action"));add(rows,item);
     }}draw();add(box,rows);
-    if(key!=="MTG_ActionSummary"&&!locked)add(box,link("+ افزودن ردیف",()=>{const n=String(Math.max(0,...Object.keys(data).map(Number))+1);data[n]={};draw();changed()},"button secondary compact-action"));add(formBody,box);
+    if(key!=="MTG_ActionSummary"&&!locked)add(box,link("+ افزودن ردیف",()=>{const n=String(Math.max(0,...Object.keys(data).map(Number))+1);data[n]={};draw();changed()},"button secondary compact-action"));add(fieldsHost,box);
    }else add(scalarGrid,control(key,spec,values[key],v=>values[key]=v));
   }
+  }
+  renderFormFields();
   const context=el("details");add(context,el("summary","","شرح ثبت‌شده در فرایند"));
   for(const [k,v] of Object.entries(r.context||{})){const label=r.form?.[k]?.label||k;add(context,el("p","",label+": "+workflowDisplayValue(k,v)))}add(formBody,context);
   const save=link("ذخیره اصلاحات",checked(async()=>{await post(path+"/edit"+query,{revision:d.revision,values});if(isSession)await session(d.id);else await open(t,false)}));save.disabled=locked;

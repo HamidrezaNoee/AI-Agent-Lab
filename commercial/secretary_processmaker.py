@@ -18,22 +18,33 @@ def _repair_mojibake(value):
   persian=sum(1 for ch in s if "\u0600"<=ch<="\u06ff")
   junk=sum(s.count(x) for x in ("Ø","Ù","Û","Ã","Â","�"))
   return persian*4-junk*3
- best=text
- for encoding in ("cp1252","latin1"):
+ # Legacy PHP responses can mix cp1252 characters with Latin-1 controls.
+ reverse={}
+ for byte in range(256):
+  try:reverse[bytes([byte]).decode('cp1252')]=byte
+  except UnicodeDecodeError:pass
+ def repair(match):
+  raw=match.group()
   try:
-   candidate=text.encode(encoding).decode("utf-8")
-  except (UnicodeEncodeError,UnicodeDecodeError):
-   continue
-  if score(candidate)>score(best):best=candidate
- return best
+   data=bytes(ord(ch) if ord(ch)<256 else reverse[ch] for ch in raw)
+   candidate=data.decode('utf-8')
+  except (KeyError,ValueError,UnicodeDecodeError):return raw
+  return candidate if score(candidate)>score(raw) else raw
+ pattern='['+re.escape(''.join(set(chr(i) for i in range(256))|set(reverse)))+']+'
+ for _ in range(2):
+  updated=re.sub(pattern,repair,text)
+  if updated==text:break
+  text=updated
+ return text
 
 class PMRejected(HTTPException):
  def __init__(self,operation,status,message=''):
   self.operation=str(operation or 'عملیات ProcessMaker')
   self.upstream_status=int(status)
-  self.upstream_message=str(message or '')
+  self.upstream_message=_repair_mojibake(message)
   detail=f'ProcessMaker عملیات «{self.operation}» را نپذیرفت (HTTP {self.upstream_status})'
   if self.upstream_message:detail+=': '+self.upstream_message
+  if 'ساعت حضور' in self.upstream_message:detail+=' راه‌حل: ساعت حضور افراد حاضر را در فرم تکمیل کنید؛ اگر همه به‌موقع آمدند، به دبیر بگویید «همه سر ساعت جلسه آمدند». سپس دوباره ارسال کنید.'
   super().__init__(502,detail)
 
 def uid(value):
@@ -150,3 +161,4 @@ class PM:
    try:exc.pm_phase='route'
    except Exception:pass
    raise
+

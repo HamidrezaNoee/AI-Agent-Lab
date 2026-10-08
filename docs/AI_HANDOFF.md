@@ -136,3 +136,41 @@ Full remote CI remains a release gate; previous upstream workflow runs already f
 Deploy only the AVAN service from the existing production checkout/compose project:
 `docker compose -p avan-production -f compose.yaml -f compose.pm-local.yaml up -d --build --no-deps avan`
 Do not regenerate secrets, reset ProcessMaker, or remove volumes.
+
+## Secretary orchestration and conversation repair — 2026-10-08
+
+Based on remote 419ddff and the same reviewed meeting/action PMX pair. The new
+`secretary_orchestrator` selects bounded confirmation, time/attendance, identity,
+draft-command, read and extraction tools. It does not persist or execute PM writes;
+existing scope, fresh-task, revision, cancellation and explicit-send gates remain.
+Legacy `secretary_agent` exports remain intact. `secretary_journal` records visible
+field changes and one private undo checkpoint; undo is draft-only and uses the
+same revision/native-task gates. Public API responses exclude checkpoint contents.
+
+Persian named dates never become clock hours; HH:mm preserves minutes. Minutes
+planning dates remain locked invitation context. Present attendance time is
+required by the current PM trigger: “everyone on time” copies the native meeting
+start clock to Present rows without changing absences. Short “حاضر بوده” resolves
+the latest explicit participant row. Resolved attendance/locked-field questions
+are removed from the assistant's outstanding question list.
+
+Model extraction has a shared budget of three attempts for validation failures or
+transient connection/429/5xx errors, with short bounded backoff for transport errors.
+Authentication/configuration failures are not retried. Unusable model output becomes
+an unchanged-draft clarification, retained in conversation, with concrete next steps.
+No automatic retry was added to ProcessMaker writes. Mixed cp1252/Latin-1 UTF-8
+mojibake is repaired; attendance rejection includes a useful corrective instruction.
+
+Chat uses text-node-only rich formatting, copy/edit actions, visible change receipts
+and draft undo. Fields rebuild from the returned server state after each turn, so
+open grids and scalar controls cannot keep stale references. Error notices dismiss;
+successful draft edits clear the historical submission error. Buttons respect hidden.
+
+Validation: 206 focused Python tests passed, including 24 new regressions. Real
+Chromium with mocked APIs verified chat-to-form synchronization, rich text, undo,
+responsive desk/graph, settings and logs; screenshots inspected. DOM integration
+also passes after updating its stale graph assertions and browser API stubs.
+The broad run reached 569 passed +55 subtests before the known missing local binary
+YekanBakh WOFF2 fixture failed; remote font assets are unchanged. Full remote CI
+remains the release gate. No live PM/SQL/Keycloak/model or production Docker access
+was available; do not claim deployment or live native routing verification.

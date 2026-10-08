@@ -149,16 +149,8 @@ def _clock_target(text,history=()):
 
 
 def _clock_from_text(text,allow_bare=False):
-    normalized=resolution.normalize_text(text)
-    if not allow_bare and not any(x in normalized for x in ("ساعت","صبح","ظهر","بعد از ظهر","عصر","شب")):
-        return None
-    parsed=_hour_value(normalized)
-    if not parsed:return None
-    hour,minute=parsed
-    if any(x in normalized for x in ("بعد از ظهر","عصر","شب")) and 1<=hour<12:hour+=12
-    if "ظهر" in normalized and hour==12:hour=12
-    if "صبح" in normalized and hour==12:hour=0
-    return f"{hour:02d}:{minute:02d}"
+    from .secretary_time import clock
+    return clock(text,allow_bare=allow_bare)
 
 
 def _all_present_command(text):
@@ -177,7 +169,7 @@ def _attendance_time_command(text):
         return False
     if not any(word in normalized for word in ("ساعت حضور","حضور","از ساعت","ساعت")):
         return False
-    return _clock_from_text(normalized,allow_bare=True) is not None
+    return _clock_from_text(text,allow_bare=True) is not None
 
 
 def _planning_window_command(text,history=()):
@@ -185,7 +177,7 @@ def _planning_window_command(text,history=()):
     days=_due_days(normalized)
     relative=days is not None and any(x in normalized for x in ("آینده","دیگه","بعد","بگذار","بذار","قرار بده","مهلت"))
     target=_clock_target(text,history)
-    clock=_clock_from_text(normalized,allow_bare=bool(target))
+    clock=_clock_from_text(text,allow_bare=bool(target))
     return relative or bool(clock and target)
 
 
@@ -509,7 +501,7 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
         }
 
     if kind == "all_present":
-        clock=_clock_from_text(normalized,allow_bare=True)
+        clock=_clock_from_text(text,allow_bare=True)
         participants=values.get("MTG_Participants") or {}
         changed=0
         for _,row in _rows(participants):
@@ -533,7 +525,7 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
         }
 
     if kind == "attendance_time":
-        clock=_clock_from_text(normalized,allow_bare=True)
+        clock=_clock_from_text(text,allow_bare=True)
         participants=values.get("MTG_Participants") or {}
         changed=0
         for _,row in _rows(participants):
@@ -560,7 +552,7 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
     if kind == "planning_window":
         days=_due_days(normalized)
         target=_clock_target(text,history)
-        clock=_clock_from_text(normalized,allow_bare=bool(target))
+        clock=_clock_from_text(text,allow_bare=bool(target))
         changed=[]
         if days is not None:
             planned_date=_jalali_after_days(days,now=now)

@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
 const dom=new JSDOM('<html dir="rtl"><body><main id="main"></main><div id="toast"></div></body></html>',{url:'https://avan.example',runScripts:'outside-only'}),w=dom.window;
-w.structuredClone=structuredClone;w.requestAnimationFrame=fn=>setTimeout(fn,0);w.HTMLMediaElement.prototype.pause=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
+w.ResizeObserver=class{observe(){} disconnect(){}};w.structuredClone=structuredClone;w.requestAnimationFrame=fn=>setTimeout(fn,0);w.HTMLMediaElement.prototype.pause=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLElement.prototype.scrollTo=()=>{};
 const source='1'.repeat(24),pack='2'.repeat(24),caseid='a'.repeat(32),calls=[];
 const task={case_uid:caseid,index:1,pack_id:pack,stage:'invitation_approval',stage_label:'تأیید دعوت‌نامه',title:'<script>unsafe</script>',number:'100',available:true};
 let row={values:{MTG_InvitationApproval:'',MTG_InvitationChairComment:''},revision:1,status:'draft',questions:[],history:[{role:'assistant',text:'دعوت‌نامه آماده تصمیم شماست.'}]},failTurn=false;
@@ -63,15 +63,16 @@ w.eval(code+'\nwindow.testAVAN={app,secretaryPage,cleanMedia};');w.testAVAN.app.
 const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
 (async()=>{
  await w.testAVAN.secretaryPage(source);await tick();
-  assert(w.document.body.textContent.includes('نقشه جریان پرونده‌ها'));
+  assert(w.document.querySelector('.meeting-flow-list'));
   assert.equal(w.document.querySelectorAll('.case-git-node').length,5);
   assert.equal(w.document.querySelectorAll('.branch-mini-node').length,2);
-  assert.equal(w.document.querySelectorAll('.meeting-flow-tooltip').length,7);
+  w.document.querySelector('.case-git-node').dispatchEvent(new w.Event('mouseenter'));
+  assert.equal(w.document.querySelectorAll('.meeting-flow-tooltip-floating').length,1);
   assert(w.document.body.textContent.includes('مدیرعامل'));
-  assert(w.document.body.textContent.includes('شاخه‌های موازی اقدامات'));
-  assert(w.document.body.textContent.includes('انشعاب اقدامات'));
-  assert(w.document.body.textContent.includes('ادغام پس از بسته‌شدن شاخه‌ها'));
-  assert.equal(w.document.querySelectorAll('.case-branch').length,1);
+  assert.equal(w.document.querySelectorAll('.case-branch-lane').length,1);
+  assert(w.document.querySelector('.case-branch-hub.split'));
+  assert(w.document.querySelector('.case-branch-hub.merge'));
+  assert.equal(w.document.querySelectorAll('.case-branch-lane').length,1);
   assert(w.document.body.textContent.includes('زمان ورود:'));
   assert(w.document.body.textContent.includes('رئیس جلسه: مدیرعامل'));
   assert(w.document.body.textContent.includes('نمای سریع'));
@@ -83,8 +84,6 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
   w.document.querySelector('.flow-snapshot-close').click();await tick();
   assert(!w.document.querySelector('.meeting-flow-snapshot-overlay'));
  assert(!w.document.body.textContent.includes('ارسال خودکار صوت'));
- const stopButton=Array.from(w.document.querySelectorAll('button')).find(b=>b.textContent.includes('توقف'));
- assert(stopButton);assert(stopButton.hidden);
  const buttons=()=>Array.from(w.document.querySelectorAll('button'));
  const steps=Array.from(w.document.querySelectorAll('.secretary-step'));
  assert.equal(steps.length,7);
@@ -95,6 +94,8 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
  assert.equal(w.document.querySelectorAll('[data-action="new-invitation"]').length,1);
  assert.equal(w.document.querySelectorAll('.secretary-step:disabled .secretary-step-count').length,0);
  w.document.querySelector('[data-case-uid]').click();await tick();
+ const stopButton=Array.from(w.document.querySelectorAll('button')).find(b=>b.textContent.includes('توقف'));
+ assert(stopButton);assert(stopButton.hidden);
  assert(w.document.body.textContent.includes('گفت‌وگو با دبیر هوشمند'));
  assert(w.document.querySelector('input[aria-label="افزودن فایل به گفت‌وگوی دبیر"]'));
  assert(buttons().some(b=>b.textContent.includes('تأیید و ارسال')));
@@ -125,4 +126,5 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
  assert(w.document.body.textContent.includes('به مرحله بعد ارسال شد'));
  w.testAVAN.cleanMedia();w.close();console.log('Secretary DOM integration passed: chair vote, dirty guard, revision, CSRF, source scope, text escaping.');
 })().catch(e=>{w.close();console.error(e);process.exitCode=1});
+
 
