@@ -1,6 +1,62 @@
 name: avan-production
 
 services:
+  ui-config-init:
+    image: alpine:3.21
+    restart: "no"
+    user: "0:0"
+    command: ["sh","-ec","mkdir -p /ui && chown -R 10001:10001 /ui && chmod 0755 /ui"]
+    volumes:
+      - avan-ui:/ui
+
+  agent-sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    entrypoint: ["/bin/bash","-ec"]
+    command:
+      - |
+        export MSSQL_SA_PASSWORD="$$(cat /run/secrets/avan_sql_sa_password)"
+        exec /opt/mssql/bin/sqlservr
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_MEMORY_LIMIT_MB: "1400"
+    secrets:
+      - avan_sql_sa_password
+    volumes:
+      - avan-agent-sql:/var/opt/mssql
+    mem_limit: 2304m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL","/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$(cat /run/secrets/avan_sql_sa_password)\" -C -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      start_period: 40s
+      retries: 20
+
+  agent-sql-init:
+    image: avan-enterprise:local
+    command: ["python","-m","commercial.bundled_sql"]
+    restart: "no"
+    environment:
+      AVAN_STATE_DIR: /var/lib/avan
+      AVAN_BUNDLED_SQL_SA_PASSWORD_PATH: /run/secrets/avan_sql_sa_password
+    secrets:
+      - avan_sql_sa_password
+    volumes:
+      - avan-state:/var/lib/avan
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,noexec,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      agent-sql:
+        condition: service_healthy
+
   keycloak-db:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -19,7 +75,10 @@ services:
       retries: 15
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.3
+    image: avan-keycloak:local
+    build:
+      context: .
+      dockerfile: infra/keycloak/Dockerfile
     restart: unless-stopped
     entrypoint: ["/bin/bash","-ec"]
     command:
@@ -27,7 +86,8 @@ services:
         export KC_DB_PASSWORD="$$(cat /run/secrets/keycloak_db_password)"
         export AVAN_BFF_CLIENT_SECRET="$$(cat /run/secrets/avan_bff_client_secret)"
         export AVAN_PROVISIONER_CLIENT_SECRET="$$(cat /run/secrets/avan_provisioner_client_secret)"
-        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true
+        rm -rf /opt/keycloak/data/tmp/kc-gzip-cache
+        exec /opt/keycloak/bin/kc.sh start --http-enabled=true --import-realm --hostname=http://auth.localhost:8181 --hostname-backchannel-dynamic=true --spi-theme--static-max-age=-1 --spi-theme--cache-themes=false --spi-theme--cache-templates=false
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://keycloak-db:5432/avan_keycloak
@@ -39,11 +99,17 @@ services:
       - keycloak_db_password
       - avan_bff_client_secret
       - avan_provisioner_client_secret
+      - avan_turnstile_site_key
+      - avan_turnstile_secret_key
     volumes:
       - ./infra/keycloak/avan-realm.json:/opt/keycloak/data/import/avan-realm.json:ro
+      - ./infra/keycloak/themes/avan:/opt/keycloak/themes/avan:ro
+      - avan-ui:/opt/keycloak/themes/avan/login/resources/generated:ro
     ports:
       - "127.0.0.1:8181:8080"
     depends_on:
+      ui-config-init:
+        condition: service_completed_successfully
       keycloak-db:
         condition: service_healthy
 
@@ -52,6 +118,8 @@ services:
     build:
       context: .
       dockerfile: commercial/Dockerfile.production
+      args:
+        PIP_INDEX_URL: ${AVAN_PIP_INDEX_URL:-https://pypi.org/simple}
     restart: unless-stopped
     init: true
     ports:
@@ -66,11 +134,15 @@ services:
       AVAN_BFF_CLIENT_SECRET_PATH: /run/secrets/avan_bff_client_secret
       AVAN_PROVISIONER_CLIENT_SECRET_PATH: /run/secrets/avan_provisioner_client_secret
       AVAN_DATA_TIMEZONE: Asia/Tehran
+      AVAN_UI_STATE_DIR: /var/lib/avan-ui
     secrets:
       - avan_bff_client_secret
       - avan_provisioner_client_secret
+      - avan_turnstile_site_key
+      - avan_turnstile_secret_key
     volumes:
       - avan-state:/var/lib/avan
+      - avan-ui:/var/lib/avan-ui
     extra_hosts:
       - "host.docker.internal:host-gateway"
       - "auth.localhost:host-gateway"
@@ -84,8 +156,12 @@ services:
     pids_limit: 192
     mem_limit: 768m
     depends_on:
+      ui-config-init:
+        condition: service_completed_successfully
       keycloak:
         condition: service_started
+      agent-sql-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD","python","-c","import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8188/health',timeout=3).status==200"]
       interval: 30s
@@ -100,7 +176,15 @@ secrets:
     file: ./.secrets/avan-bff-client-secret
   avan_provisioner_client_secret:
     file: ./.secrets/avan-provisioner-client-secret
+  avan_sql_sa_password:
+    file: ./.secrets/avan-sql-sa-password
+  avan_turnstile_site_key:
+    file: ./.secrets/avan-turnstile-site-key
+  avan_turnstile_secret_key:
+    file: ./.secrets/avan-turnstile-secret-key
 
 volumes:
+  avan-ui:
   avan-state:
   avan-keycloak-db:
+  avan-agent-sql:

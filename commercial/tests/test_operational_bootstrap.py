@@ -30,20 +30,55 @@ class GodAdminBootTests(unittest.TestCase):
             patch.object(setup,"PUBLIC",root/"license-public.pem"),
             patch.dict("os.environ",{"AVAN_PUBLIC_ORIGIN":"http://127.0.0.1:8188"}),
             patch.object(routes,"_local",return_value=True),
+            patch.object(routes,"_turnstile_check",return_value=True),
         ]
         for p in self.patches:p.start()
         routes._sessions.clear()
         routes._attempts.clear()
+        routes._pending_mfa.clear()
         setup.initialize()
         self.initial=setup.INITIAL.read_text(encoding="utf-8").strip()
         app=FastAPI()
         app.include_router(routes.router)
         self.client=TestClient(app,base_url="http://127.0.0.1:8188")
 
+    def test_existing_account_can_change_username_without_losing_mfa(self):
+        password='local-password-12345'
+        setup.change_password(self.initial,password)
+        secret=setup.totp_enrollment()
+        code=setup._totp(secret,int(time.time()))
+        setup.confirm_totp(code)
+        setup.update_godadmin_account('newadmin',password,'replacement-password-123',code)
+        self.assertEqual(setup.godadmin_username(),'newadmin')
+        self.assertTrue(setup.password_ok('replacement-password-123'))
+        self.assertFalse(setup.password_ok(password))
+        self.assertTrue(setup.password_state()['totp'])
+        denied=self.client.post('/admin/api/login',json={'username':'godadmin','password':'replacement-password-123','captcha_token':'x'})
+        self.assertEqual(denied.status_code,401)
+        allowed=self.client.post('/admin/api/login',json={'username':'newadmin','password':'replacement-password-123','captcha_token':'x'})
+        self.assertEqual(allowed.status_code,200)
+        self.assertTrue(allowed.json()['mfa_required'])
+
+    def test_invalid_otp_cannot_rename_local_godadmin(self):
+        password='local-password-12345'
+        setup.change_password(self.initial,password)
+        with self.assertRaises(setup.SetupError):
+            setup.update_godadmin_account('newadmin',password,'replacement-password-123','000000')
+        self.assertEqual(setup.godadmin_username(),'godadmin')
+        self.assertTrue(setup.password_ok(password))
+
     def tearDown(self):
+        routes._pending_mfa.clear()
         self.client.close()
         for p in reversed(self.patches):p.stop()
         self.tmp.cleanup()
+
+    def sign_in(self, password, otp=None, username="godadmin"):
+        first=self.client.post("/admin/api/login",json={"username":username,"password":password})
+        if otp is not None and first.status_code==200 and first.json().get("mfa_required"):
+            return self.client.post("/admin/api/login/otp",json={
+                "challenge":first.json()["challenge"],"otp":otp})
+        return first
 
     def test_bootstrap_password_is_random_one_time_and_not_in_source_config(self):
         self.assertGreaterEqual(len(self.initial),24)
@@ -63,18 +98,17 @@ class GodAdminBootTests(unittest.TestCase):
     def test_secret_settings_are_authenticated_and_encrypted_at_rest(self):
         denied=self.client.get("/admin/api/settings")
         self.assertEqual(denied.status_code,401)
-        setup.put_setting("sql",{"server":"host.docker.internal,1433",
-              "database":"EnterpriseProcess2","username":"AVAN_Reader",
+        setup.put_setting("mysql",{"host":"host.docker.internal", "port":3306,
+              "database":"wf_workflow","username":"avan_reader",
               "password":"unique-private-SQL-value",
-              "trust_server_certificate":False})
+              "tls":True})
         self.assertNotIn(b"unique-private-SQL-value",setup.SQLITE.read_bytes())
-        self.assertEqual(setup.get_setting("sql")["password"],
+        self.assertEqual(setup.get_setting("mysql")["password"],
                          "unique-private-SQL-value")
-        self.assertEqual(setup.masked_settings()["sql"]["password"],"********")
+        self.assertEqual(setup.masked_settings()["mysql"]["password"],"********")
 
     def test_initial_login_forces_password_rotation_and_mfa(self):
-        response=self.client.post("/admin/api/login",json={
-             "username":"godadmin","password":self.initial})
+        response=self.sign_in(self.initial)
         self.assertEqual(response.status_code,200)
         self.assertFalse(response.json()["password_changed"])
         self.assertEqual(self.client.get("/admin/api/settings").status_code,403)
@@ -87,10 +121,7 @@ class GodAdminBootTests(unittest.TestCase):
         self.assertEqual(rotated.status_code,200)
         self.assertFalse(setup.INITIAL.exists())
         self.assertFalse(setup.password_ok(self.initial))
-        new_login=self.client.post("/admin/api/login",json={
-            "username":"godadmin",
-            "password":"A-different-long-strong-passphrase-2026!"
-        })
+        new_login=self.sign_in("A-different-long-strong-passphrase-2026!")
         self.assertEqual(new_login.status_code,200)
         csrf=new_login.json()["csrf"]
         enrolled=self.client.post("/admin/api/totp/enrollment",
@@ -101,22 +132,20 @@ class GodAdminBootTests(unittest.TestCase):
                       headers={"X-AVAN-ADMIN-CSRF":csrf},json={"code":code})
         self.assertEqual(confirmed.status_code,200)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
-        self.assertEqual(self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":"A-different-long-strong-passphrase-2026!",
-            "otp":"000000"}).status_code,401)
-        signed=self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":"A-different-long-strong-passphrase-2026!",
-            "otp":setup._totp(enrolled.json()["secret"],int(time.time()))
-        })
+        first=self.sign_in("A-different-long-strong-passphrase-2026!")
+        self.assertTrue(first.json()["mfa_required"])
+        self.assertNotIn("csrf",first.json())
+        self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
+        self.assertEqual(self.sign_in("A-different-long-strong-passphrase-2026!","000000").status_code,401)
+        signed=self.sign_in("A-different-long-strong-passphrase-2026!",
+            setup._totp(enrolled.json()["secret"],int(time.time())))
         self.assertEqual(signed.status_code,200)
         self.assertEqual(self.client.get("/admin/api/settings").status_code,200)
 
     def test_csrf_and_failed_login_rate_limit(self):
-        bad=self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":self.initial+"wrong"})
+        bad=self.sign_in(self.initial+"wrong")
         self.assertEqual(bad.status_code,401)
-        ok=self.client.post("/admin/api/login",json={
-            "username":"godadmin","password":self.initial})
+        ok=self.sign_in(self.initial)
         self.assertEqual(ok.status_code,200)
         self.assertEqual(self.client.post("/admin/api/change-password",json={
             "current":self.initial,"updated":"Another-secure-16-char-value!"
@@ -125,6 +154,25 @@ class GodAdminBootTests(unittest.TestCase):
             self.client.post("/admin/api/logout",json={},
                         headers={"X-AVAN-ADMIN-CSRF":"invalid"})
         self.assertEqual(self.client.get("/admin/api/settings").status_code,403)
+
+    def test_bootstrap_otp_stage_expires_and_is_single_use(self):
+        setup.change_password(self.initial,"A-different-long-strong-passphrase-2026!")
+        secret=setup.totp_enrollment()
+        code=setup._totp(secret,int(time.time()))
+        setup.confirm_totp(code)
+        password="A-different-long-strong-passphrase-2026!"
+        first=self.client.post("/admin/api/login",json={"username":"godadmin","password":password})
+        self.assertEqual(first.status_code,200)
+        self.assertTrue(first.json()["mfa_required"])
+        self.assertNotIn("avan_godadmin",first.headers.get("set-cookie",""))
+        payload={"challenge":first.json()["challenge"],"otp":code}
+        self.assertEqual(self.client.post("/admin/api/login/otp",json=payload).status_code,200)
+        self.assertEqual(self.client.post("/admin/api/login/otp",json=payload).status_code,401)
+        other=self.client.post("/admin/api/login",json={"username":"godadmin","password":password})
+        self.assertEqual(self.client.get("/admin/api/settings").status_code,401)
+        payload["challenge"]=other.json()["challenge"]
+        routes._pending_mfa[payload["challenge"]]["expires"]=time.time()-1
+        self.assertEqual(self.client.post("/admin/api/login/otp",json=payload).status_code,401)
 
 
 if __name__=="__main__":

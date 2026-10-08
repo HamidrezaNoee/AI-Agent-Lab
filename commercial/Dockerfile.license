@@ -1,0 +1,10 @@
+FROM python:3.13-slim-bookworm
+WORKDIR /app
+RUN pip install --no-cache-dir 'cryptography>=44,<47'
+COPY commercial/__init__.py /app/commercial/__init__.py
+COPY commercial/licensing/codec.py /app/commercial/licensing/codec.py
+COPY commercial/licensing/studio.py /app/commercial/licensing/studio.py
+WORKDIR /issuer
+ENTRYPOINT ["python","-m","commercial.licensing.studio"]
+ENV PYTHONPATH=/app
+CMD ["--help"]

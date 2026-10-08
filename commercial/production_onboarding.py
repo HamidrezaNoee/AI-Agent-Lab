@@ -1,203 +1,324 @@
-"""Audited GodAdmin staff onboarding without customer data or workflow writes.
+"""AVAN account authorization and onboarding.
 
-Only a subject obtained from a SIGNATURE-VERIFIED OIDC login can be linked.
-Only an ACTIVE ProcessMaker user from the current read-only PM directory with
-the same verified employee email can be linked. Company and user writes use
-the separate AVAN_ConfigWriter credential, which has NO MTG rights.
+Identity authentication is handled by Keycloak. This module only creates the
+tenant-scoped AVAN authorization record. BPMS identity bindings stay separate.
 """
-from contextlib import contextmanager
-import re
-from urllib.parse import urlsplit
 
-import httpx
+from __future__ import annotations
 
+import uuid
+
+from . import native_access
 from . import setup_console as setup
-from .pending_identities import find as find_pending, approve as finish_pending
-from .production_store import _value
+from .pending_identities import approve as finish_pending
+from .pending_identities import find as find_pending
 
 
-class ProvisioningDenied(Exception): pass
+class ProvisioningDenied(Exception):
+    pass
 
 
 def _directory():
-    from .processmaker_directory import clean_users,PMSyncUnavailable
-    config=setup.get_setting("processmaker") or {}
-    base=str(config.get("base_url","")).rstrip("/")
-    space=str(config.get("workspace",""))
-    bearer=str(config.get("bearer_token",""))
-    origin=urlsplit(base)
-    if (origin.scheme!="https" or origin.username or origin.password or
-        origin.query or origin.fragment or
-        not re.fullmatch(r"[A-Za-z0-9_-]{1,48}",space) or
-        not 8<=len(bearer)<=8192 or any(x in bearer for x in ("\r","\n"))):
-        raise ProvisioningDenied("Secure ProcessMaker directory not configured")
-    result=[]
-    seen=set()
+    """Legacy read-only ProcessMaker directory helper kept for compatibility."""
+    from types import SimpleNamespace
+    from .processmaker_store import (
+        ProductionUnavailable,
+        directory,
+        open_production,
+    )
+
     try:
-        with httpx.Client(timeout=12,follow_redirects=False,trust_env=False) as client:
-            for start in range(0,5000,100):
-                response=client.get(
-                    base+"/api/1.0/"+space+"/users",
-                    params={"status":"all","start":start,"limit":100},
-                    headers={"Authorization":"Bearer "+bearer,
-                             "Accept":"application/json"})
-                response.raise_for_status()
-                if len(response.content)>1048576:
-                    raise ProvisioningDenied("ProcessMaker directory response too large")
-                batch=clean_users(response.json())
-                for user in batch:
-                    if user.pm_uid in seen:
-                        raise ProvisioningDenied("Duplicate PM user identity")
-                    seen.add(user.pm_uid)
-                    result.append(user)
-                if len(batch)<100:
-                    return result
-    except (httpx.HTTPError,ValueError,PMSyncUnavailable) as exc:
-        raise ProvisioningDenied("Read-only ProcessMaker user directory unavailable") from exc
-    raise ProvisioningDenied("ProcessMaker directory exceeded approved 5000-user limit")
+        with open_production() as con:
+            users = directory(con)
+    except ProductionUnavailable as exc:
+        raise ProvisioningDenied(
+            "ProcessMaker MySQL directory unavailable"
+        ) from exc
+    return [
+        SimpleNamespace(
+            pm_uid=uid,
+            display_name=user["name"],
+            email=user["email"],
+            status="ACTIVE" if user["active"] else "INACTIVE",
+        )
+        for uid, user in users.items()
+    ]
 
 
-def visible_pm_users()->list[dict]:
-    return [{"pm_uid":u.pm_uid,"name":u.display_name,
-             "email":u.email,"status":u.status}
-            for u in _directory() if u.status=="ACTIVE"]
+def visible_pm_users() -> list[dict]:
+    return [
+        {
+            "pm_uid": user.pm_uid,
+            "name": user.display_name,
+            "email": user.email,
+            "status": user.status,
+        }
+        for user in _directory()
+        if user.status == "ACTIVE"
+    ]
 
 
-@contextmanager
-def writer_connection():
-    config=setup.get_setting("sql") or {}
-    if (config.get("database")!="EnterpriseProcess2"
-        or config.get("writer_username")!="AVAN_ConfigWriter" or
-        not config.get("writer_password")):
-        raise ProvisioningDenied("Restricted AVAN configuration writer unavailable")
-    import pyodbc
+def _tenant(value: str) -> str:
     try:
-        connection=pyodbc.connect(
-            "DRIVER={ODBC Driver 17 for SQL Server};"+
-            "SERVER="+_value(str(config["server"]))+";DATABASE=EnterpriseProcess2;"+
-            "UID={AVAN_ConfigWriter};PWD="+_value(str(config["writer_password"]))+";"+
-            "Encrypt=yes;TrustServerCertificate="+
-            ("yes" if config.get("trust_server_certificate") else "no")+
-            ";Connection Timeout=8;",
-            timeout=8,autocommit=False)
-    except Exception as exc:
-        raise ProvisioningDenied("AVAN writer connection unavailable") from exc
-    try:
-        yield connection
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
+        return str(uuid.UUID(str(value)))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise ProvisioningDenied("Verified tenant UUID required") from exc
 
 
-def approve_employee(*,tenant_id:str,subject:str,company_name:str,
-                     pm_uid:str,role:str,manager_pm_uid:str|None,
-                     department_name:str|None):
-    import uuid
-    try:tenant_id=str(uuid.UUID(tenant_id))
-    except (TypeError,ValueError,AttributeError):
-        raise ProvisioningDenied("Verified tenant UUID required")
-    if (not isinstance(company_name,str) or not 2<=len(company_name.strip())<=200
-        or not re.fullmatch(r"[0-9a-fA-F]{32}",pm_uid or "")
-        or role not in ("Expert","Manager","SysAdmin")):
-        raise ProvisioningDenied("Unapproved company, PM user or organizational role")
-    if department_name is not None and len(department_name.strip())>160:
+def _clean_role(role: str) -> str:
+    if role not in ("Expert", "Manager", "SysAdmin"):
+        raise ProvisioningDenied("Unapproved AVAN role")
+    return role
+
+
+def _add_access_record(
+    *,
+    tenant_id: str,
+    subject: str,
+    company_name: str,
+    role: str,
+    username: str | None,
+    email: str | None,
+    name: str | None,
+    department_name: str | None = None,
+    manager_subject: str | None = None,
+    module_permissions: list[int] | None = None,
+):
+    """Create the AVAN authorization record for a verified identity."""
+
+    tenant_id = _tenant(tenant_id)
+    role = _clean_role(role)
+    company_name = str(company_name or "").strip()
+    subject = str(subject or "").strip()
+    if not subject or len(subject) > 180:
+        raise ProvisioningDenied("Verified identity subject required")
+    if not 2 <= len(company_name) <= 200:
+        raise ProvisioningDenied("Unapproved company")
+
+    department = (
+        str(department_name).strip() if department_name is not None else None
+    )
+    if department and len(department) > 160:
         raise ProvisioningDenied("Department name is too long")
-    department=department_name.strip() if department_name else None
-    pm_uid=pm_uid.lower()
-    if manager_pm_uid is not None:
-        manager_pm_uid=manager_pm_uid.strip().lower() or None
-        if manager_pm_uid and not re.fullmatch(r"[0-9a-f]{32}",manager_pm_uid):
-            raise ProvisioningDenied("Invalid direct manager PM UID")
-        if manager_pm_uid==pm_uid:
-            raise ProvisioningDenied("User cannot manage themselves")
-    user=find_pending(tenant_id,subject)
-    if user is None:
-        raise ProvisioningDenied("OIDC user has not completed signed organizational login")
-    if role=="SysAdmin" and "SysAdmin" not in user["roles"]:
-        raise ProvisioningDenied("SysAdmin must ALSO hold the signed IdP role")
-    if not user["email_verified"] or not user["email"]:
-        raise ProvisioningDenied("IdP email must be verified before staff mapping")
-    directory={u.pm_uid:u for u in _directory()}
-    staff=directory.get(pm_uid)
-    if staff is None or staff.status!="ACTIVE":
-        raise ProvisioningDenied("Selected PM user is absent or inactive")
-    if not staff.email or staff.email.strip().casefold()!=user["email"].strip().casefold():
-        raise ProvisioningDenied("Verified IdP email does not match the ProcessMaker employee")
-    with writer_connection() as con:
-        cur=con.cursor()
-        cur.execute("SELECT TenantID,CompanyName FROM AVAN.Tenant WHERE IsEnabled=1")
-        active=cur.fetchall()
-        if any(str(row[0]).lower()!=tenant_id.lower() for row in active):
-            raise ProvisioningDenied("MTG database already belongs to another active company")
-        cur.execute("SELECT CompanyName FROM AVAN.Tenant WHERE TenantID=?",tenant_id)
-        existing=cur.fetchone()
-        if existing is not None and str(existing[0]).strip()!=company_name.strip():
-            raise ProvisioningDenied("Company name differs from existing signed tenant")
-        if existing is None:
-            cur.execute("INSERT AVAN.Tenant(TenantID,CompanyName,IsEnabled) VALUES (?,?,1)",
-                        tenant_id,company_name.strip())
+
+    manager_subject = str(manager_subject or "").strip() or None
+    if manager_subject == subject:
+        raise ProvisioningDenied("User cannot manage themselves")
+
+    username = str(username or "").strip() or None
+    email = str(email or "").strip() or None
+    display_name = str(name or "").strip() or username or subject
+
+    with native_access.edit() as data:
+        if data["tenant_id"] not in (None, tenant_id):
+            raise ProvisioningDenied(
+                "Workspace already belongs to another company"
+            )
+        if data["company_name"] not in (None, company_name):
+            raise ProvisioningDenied(
+                "Company differs from existing tenant"
+            )
+
+        users = data["users"]
+        existing = next(
+            (user for user in users if user.get("subject") == subject),
+            None,
+        )
+        if existing:
+            raise ProvisioningDenied("AVAN identity already exists")
+
+        if manager_subject and not any(
+            user.get("subject") == manager_subject and user.get("enabled")
+            for user in users
+        ):
+            raise ProvisioningDenied(
+                "Direct manager must be an active AVAN user"
+            )
+
+        data["tenant_id"] = tenant_id
+        data["company_name"] = company_name
+
+        from .production_license import (
+            ProductionLicenseDenied,
+            capacity,
+        )
+
+        try:
+            licensed = capacity(
+                tenant_id,
+                company_name,
+                sum(bool(user.get("enabled")) for user in users) + 1,
+            )
+        except ProductionLicenseDenied as exc:
+            raise ProvisioningDenied(str(exc)) from exc
+
+        licensed_modules = {
+            int(value) for value in licensed.get("modules", ())
+        }
+        if module_permissions is None:
+            requested = licensed_modules
         else:
-            cur.execute("UPDATE AVAN.Tenant SET IsEnabled=1 WHERE TenantID=?",tenant_id)
-        if manager_pm_uid:
-            cur.execute("""SELECT COUNT_BIG(*) FROM AVAN.UserAccess
-                WHERE TenantID=? AND PMUserUID=? AND IsEnabled=1 AND PMIsActive=1""",
-                tenant_id,manager_pm_uid)
-            if int(cur.fetchone()[0])!=1:
-                raise ProvisioningDenied("Direct manager must be previously approved and active")
-        cur.execute("""SELECT COUNT_BIG(*) FROM AVAN.UserAccess
-            WHERE TenantID=? AND (SubjectID=? OR PMUserUID=?)""",
-            tenant_id,subject,pm_uid)
-        if int(cur.fetchone()[0])!=0:
-            raise ProvisioningDenied("This OIDC or PM user is already linked")
-        cur.execute("""INSERT AVAN.UserAccess(
-            TenantID,SubjectID,PMUserUID,DisplayName,DepartmentName,RoleCode,
-            ManagerPMUserUID,IsEnabled,PMIsActive,PMVerifiedAtUTC)
-            VALUES(?,?,?,?,?,?,?,1,1,SYSUTCDATETIME())""",
-            tenant_id,subject,pm_uid,staff.display_name,
-            department,role,manager_pm_uid)
-    finish_pending(tenant_id,subject)
-    setup.audit("VERIFIED_STAFF_MAPPED_"+role.upper())
-    return {"mapped":True,"company_name":company_name.strip(),
-            "name":staff.display_name,"role":role,"tenant_id":tenant_id}
+            if (
+                len(module_permissions) != len(set(module_permissions))
+                or any(
+                    not isinstance(value, int) or value not in (1, 2, 3, 4)
+                    for value in module_permissions
+                )
+            ):
+                raise ProvisioningDenied(
+                    "AVAN module permission is invalid"
+                )
+            requested = set(module_permissions)
+            if not requested <= licensed_modules:
+                raise ProvisioningDenied(
+                    "AVAN module permission is not licensed"
+                )
+
+        users.append(
+            {
+                "subject": subject,
+                "username": username,
+                "email": email,
+                "name": display_name,
+                "department_name": department,
+                "role": role,
+                "manager_subject": manager_subject,
+                "module_permissions": sorted(requested),
+                "enabled": True,
+            }
+        )
+
+    return {
+        "approved": True,
+        "company_name": company_name,
+        "subject": subject,
+        "username": username,
+        "name": display_name,
+        "role": role,
+        "modules": sorted(requested),
+        "tenant_id": tenant_id,
+    }
 
 
-def refresh_employee_statuses()->dict:
-    """Conservative, full-snapshot PM reconciliation initiated by GodAdmin.
+def register_managed_identity(
+    *,
+    tenant_id: str,
+    subject: str,
+    company_name: str,
+    username: str,
+    email: str,
+    name: str,
+    role: str,
+    module_permissions: list[int] | None = None,
+):
+    """Authorize a user explicitly created by an authenticated AVAN GodAdmin.
 
-    Refresh verification time for currently approved ACTIVE accounts. Any PM
-    user removed/deactivated since the last COMPLETE read-only snapshot is
-    disabled in AVAN immediately. Never auto-reactivate a disabled account.
-    A failed/incomplete PM API call cannot alter any database user.
+    No pending-login round trip is required because the administrator has
+    already created the exact Keycloak identity and selected its AVAN role.
     """
-    directory={u.pm_uid:u for u in _directory()}
-    refreshed=0
-    disabled=0
-    with writer_connection() as con:
-        cur=con.cursor()
-        cur.execute("""SELECT TenantID,PMUserUID,IsEnabled,PMIsActive
-                       FROM AVAN.UserAccess""")
-        rows=cur.fetchall()
-        for row in rows:
-            tenant=str(row[0])
-            pm_uid=str(row[1]).strip().lower()
-            active=directory.get(pm_uid)
-            if active is not None and active.status=="ACTIVE":
-                if bool(row[2]):
-                    cur.execute("""UPDATE AVAN.UserAccess
-                         SET PMIsActive=1,PMVerifiedAtUTC=SYSUTCDATETIME()
-                         WHERE TenantID=? AND PMUserUID=? AND IsEnabled=1""",
-                         tenant,pm_uid)
-                    refreshed+=1
-            else:
-                if bool(row[2]) or bool(row[3]):
-                    cur.execute("""UPDATE AVAN.UserAccess
-                         SET PMIsActive=0,IsEnabled=0
-                         WHERE TenantID=? AND PMUserUID=?""",tenant,pm_uid)
-                    disabled+=1
-    setup.audit("PM_STATUS_RECONCILED")
-    return {"refreshed_active_users":refreshed,
-            "disabled_unverified_users":disabled,
-            "source":"complete_read_only_processmaker_directory"}
+
+    result = _add_access_record(
+        tenant_id=tenant_id,
+        subject=subject,
+        company_name=company_name,
+        username=username,
+        email=email,
+        name=name,
+        role=role,
+        module_permissions=module_permissions,
+    )
+    setup.audit("AVAN_MANAGED_USER_CREATED_" + role.upper())
+    return result
+
+
+def approve_avan_user(
+    *,
+    tenant_id: str,
+    subject: str,
+    company_name: str,
+    role: str,
+    department_name: str | None = None,
+    manager_subject: str | None = None,
+    module_permissions: list[int] | None = None,
+):
+    """Approve a user who arrived through a verified external OIDC login."""
+
+    tenant_id = _tenant(tenant_id)
+    role = _clean_role(role)
+    user = find_pending(tenant_id, subject)
+    if user is None:
+        raise ProvisioningDenied(
+            "OIDC user has not completed signed organizational login"
+        )
+    if role == "SysAdmin" and "SysAdmin" not in user["roles"]:
+        raise ProvisioningDenied(
+            "SysAdmin must ALSO hold the signed IdP role"
+        )
+    if not user["email_verified"] or not user["email"]:
+        raise ProvisioningDenied(
+            "IdP email must be verified before AVAN account approval"
+        )
+
+    result = _add_access_record(
+        tenant_id=tenant_id,
+        subject=subject,
+        company_name=company_name,
+        username=user.get("username"),
+        email=user.get("email"),
+        name=user.get("name") or user.get("username") or subject,
+        role=role,
+        department_name=department_name,
+        manager_subject=manager_subject,
+        module_permissions=module_permissions,
+    )
+    finish_pending(tenant_id, subject)
+    setup.audit("AVAN_USER_APPROVED_" + role.upper())
+    return result
+
+
+def approve_employee(**_kwargs):
+    """Removed compatibility path: AVAN approval never creates a BPMS mapping."""
+    raise ProvisioningDenied(
+        "Legacy ProcessMaker-coupled onboarding is disabled. "
+        "Approve the AVAN account first, then create an explicit per-BPMS binding."
+    )
+
+
+def refresh_employee_statuses() -> dict:
+    """Compatibility endpoint: refresh all ProcessMaker binding sources."""
+
+    from .user_bpms_bindings import (
+        BindingError,
+        refresh_source,
+        source_catalog,
+    )
+
+    sources = [
+        source
+        for source in source_catalog()
+        if source.get("engine") == "processmaker" and source.get("enabled")
+    ]
+    if not sources:
+        raise ProvisioningDenied("No ProcessMaker source is configured")
+
+    active = stale = directory_users = 0
+    refreshed = []
+    for source in sources:
+        try:
+            result = refresh_source(source["id"])
+        except BindingError as exc:
+            raise ProvisioningDenied(str(exc)) from exc
+        active += result["active_bindings"]
+        stale += result["stale_bindings"]
+        directory_users += result["directory_users"]
+        refreshed.append(source["id"])
+
+    setup.audit("PM_BINDINGS_RECONCILED")
+    return {
+        "refreshed_active_users": active,
+        "disabled_unverified_users": 0,
+        "stale_bindings": stale,
+        "directory_users": directory_users,
+        "refreshed_sources": refreshed,
+        "source": "all_processmaker_binding_directories",
+    }

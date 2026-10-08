@@ -10,7 +10,11 @@
 .env.*
 **/.env
 **/.env.*
-**/*secret*
+**/.secrets
+**/secrets
+**/*-secret
+**/*-secret.*
+**/*_secret.*
 **/*password*
 *.pem
 *.key
@@ -24,6 +28,7 @@
 **/*.otf
 **/*.woff
 **/*.woff2
+!commercial/web/production/fonts/*.woff2
 **/*.log
 **/*.bak
 **/*.zip
@@ -31,3 +36,7 @@
 node_modules
 dist
 build
+
+
+**/*.pem
+**/*.key

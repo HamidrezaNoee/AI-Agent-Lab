@@ -1,49 +1,89 @@
 # syntax=docker/dockerfile:1
-# Live EnterpriseProcess2 service. No demo-preview server/dataset/legacy API.
+# Live ProcessMaker/MySQL service. No demo-preview server/dataset/legacy API.
 FROM python:3.13-slim-bookworm
-ENV PYTHONDONTWRITEBYTECODE=1 \
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     DEBIAN_FRONTEND=noninteractive \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=12 \
     AVAN_STATE_DIR=/var/lib/avan
-RUN apt-get update \
+RUN apt-get -o Acquire::Retries=8 -o Acquire::http::Timeout=30 update \
  && apt-get install -y --no-install-recommends ca-certificates curl gnupg unixodbc tzdata \
- && curl --fail --silent --show-error --location --retry 3 \
+ && curl --fail --silent --show-error --location --retry 8 --retry-delay 2 --retry-all-errors \
      https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
      --output /tmp/ms-prod.deb \
  && dpkg -i /tmp/ms-prod.deb \
  && rm -f /tmp/ms-prod.deb \
- && apt-get update \
+ && apt-get -o Acquire::Retries=8 -o Acquire::http::Timeout=30 update \
  && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 \
  && rm -rf /var/lib/apt/lists/* /tmp/ms-prod.deb
 WORKDIR /app
 COPY commercial/requirements-production.txt /app/requirements.txt
-RUN python -m pip install --no-cache-dir -r /app/requirements.txt \
+RUN (python -m pip install --no-cache-dir --retries 6 --timeout 60 --index-url "${PIP_INDEX_URL}" -r /app/requirements.txt \
+      || python -m pip install --no-cache-dir --retries 12 --timeout 120 --index-url "https://pypi.org/simple" -r /app/requirements.txt) \
  && groupadd --gid 10001 avan \
  && useradd --uid 10001 --gid 10001 --system --create-home avan \
- && mkdir -p /var/lib/avan \
- && chown 10001:10001 /var/lib/avan
+ && mkdir -p /var/lib/avan /var/lib/avan-ui \
+ && chown 10001:10001 /var/lib/avan /var/lib/avan-ui
 COPY --chown=10001:10001 commercial/__init__.py /app/commercial/__init__.py
 COPY --chown=10001:10001 commercial/security.py /app/commercial/security.py
 COPY --chown=10001:10001 commercial/meeting_questions.py /app/commercial/meeting_questions.py
+COPY --chown=10001:10001 commercial/processmaker_store.py /app/commercial/processmaker_store.py
+COPY --chown=10001:10001 commercial/native_access.py /app/commercial/native_access.py
+COPY --chown=10001:10001 commercial/user_bpms_bindings.py /app/commercial/user_bpms_bindings.py
 COPY --chown=10001:10001 commercial/production_store.py /app/commercial/production_store.py
 COPY --chown=10001:10001 commercial/production_license.py /app/commercial/production_license.py
 COPY --chown=10001:10001 commercial/licensing/codec.py /app/commercial/licensing/codec.py
 COPY --chown=10001:10001 commercial/licensing/publisher-key.sha256 /app/commercial/licensing/publisher-key.sha256
-COPY --chown=10001:10001 commercial/production_install.py /app/commercial/production_install.py
 COPY --chown=10001:10001 commercial/production_onboarding.py /app/commercial/production_onboarding.py
 COPY --chown=10001:10001 commercial/pending_identities.py /app/commercial/pending_identities.py
 COPY --chown=10001:10001 commercial/processmaker_directory.py /app/commercial/processmaker_directory.py
-COPY --chown=10001:10001 commercial/sql/PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql /app/commercial/sql/PRODUCTION_EnterpriseProcess2_01_AVAN_additive.sql
-COPY --chown=10001:10001 commercial/sql/PRODUCTION_EnterpriseProcess2_02_reader_grants.sql /app/commercial/sql/PRODUCTION_EnterpriseProcess2_02_reader_grants.sql
-COPY --chown=10001:10001 commercial/sql/PRODUCTION_EnterpriseProcess2_05_config_writer_grants.sql /app/commercial/sql/PRODUCTION_EnterpriseProcess2_05_config_writer_grants.sql
 COPY --chown=10001:10001 commercial/setup_console.py /app/commercial/setup_console.py
 COPY --chown=10001:10001 commercial/setup_routes.py /app/commercial/setup_routes.py
+COPY --chown=10001:10001 commercial/login_appearance.py /app/commercial/login_appearance.py
+COPY --chown=10001:10001 commercial/turnstile.py /app/commercial/turnstile.py
+COPY --chown=10001:10001 commercial/bpms_registry.py /app/commercial/bpms_registry.py
+COPY --chown=10001:10001 commercial/bpms_tools.py /app/commercial/bpms_tools.py
+COPY --chown=10001:10001 commercial/platform_agent.py /app/commercial/platform_agent.py
+COPY --chown=10001:10001 commercial/platform_routes.py /app/commercial/platform_routes.py
 COPY --chown=10001:10001 commercial/production_app.py /app/commercial/production_app.py
 COPY --chown=10001:10001 commercial/web/admin/ /app/commercial/web/admin/
 COPY --chown=10001:10001 commercial/web/production/ /app/commercial/web/production/
+COPY --chown=10001:10001 commercial/agent_tools.py /app/commercial/agent_tools.py
+COPY --chown=10001:10001 commercial/meeting_agent.py /app/commercial/meeting_agent.py
+COPY --chown=10001:10001 commercial/agent_state.py /app/commercial/agent_state.py
+COPY --chown=10001:10001 commercial/secretary_agent.py /app/commercial/secretary_agent.py
+COPY --chown=10001:10001 commercial/agent_routes.py /app/commercial/agent_routes.py
+COPY --chown=10001:10001 commercial/product_state.py /app/commercial/product_state.py
+COPY --chown=10001:10001 commercial/agent_storage.py /app/commercial/agent_storage.py
+COPY --chown=10001:10001 commercial/agent_install.py /app/commercial/agent_install.py
+COPY --chown=10001:10001 commercial/agent_connections.py /app/commercial/agent_connections.py
+COPY --chown=10001:10001 commercial/bundled_sql.py /app/commercial/bundled_sql.py
+COPY --chown=10001:10001 commercial/sql/AVANAgent_01_schema.sql /app/commercial/sql/AVANAgent_01_schema.sql
+COPY --chown=10001:10001 commercial/agent_workspace.py /app/commercial/agent_workspace.py
+COPY --chown=10001:10001 commercial/user_experience.py commercial/user_experience_routes.py /app/commercial/
+COPY --chown=10001:10001 commercial/agent_monitor.py /app/commercial/agent_monitor.py
+COPY --chown=10001:10001 commercial/agent_voice.py /app/commercial/agent_voice.py
+COPY --chown=10001:10001 commercial/agent_reports.py /app/commercial/agent_reports.py
+COPY --chown=10001:10001 commercial/process_bi.py /app/commercial/process_bi.py
+COPY --chown=10001:10001 commercial/process_bi_routes.py /app/commercial/process_bi_routes.py
+COPY --chown=10001:10001 commercial/process_case_graph.py /app/commercial/process_case_graph.py
+COPY --chown=10001:10001 commercial/process_case_graph_routes.py /app/commercial/process_case_graph_routes.py
+COPY --chown=10001:10001 commercial/identity_operator.py /app/commercial/identity_operator.py
+COPY --chown=10001:10001 commercial/identity_recovery.py /app/commercial/identity_recovery.py
+COPY --chown=10001:10001 commercial/local_godadmin.py /app/commercial/local_godadmin.py
+COPY --chown=10001:10001 commercial/user_accounts.py /app/commercial/user_accounts.py
+COPY --chown=10001:10001 commercial/secretary_workflow.py commercial/secretary_processmaker.py commercial/secretary_routes.py commercial/secretary_pmx.json /app/commercial/
+COPY --chown=10001:10001 commercial/secretary_catalog.py commercial/secretary_credentials.py commercial/secretary_runtime.py commercial/secretary_resolution.py commercial/secretary_commands.py commercial/secretary_inbox_routes.py commercial/secretary_evidence.py commercial/secretary_uploads.py commercial/process_workspace.py commercial/process_context.py /app/commercial/
+COPY --chown=10001:10001 commercial/secretary_ai_context.py commercial/secretary_orchestrator.py commercial/secretary_time.py commercial/secretary_journal.py commercial/secretary_pack_reference.json /app/commercial/
 USER 10001:10001
 EXPOSE 8188
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
  CMD python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8188/health',timeout=3); assert r.status==200" || exit 1
 CMD ["python","-m","uvicorn","commercial.production_app:app","--host","0.0.0.0","--port","8188","--workers","1","--no-proxy-headers"]
+
+

@@ -3,9 +3,28 @@ name: AVAN operational source and Docker installation checks
 on:
   push:
     paths:
+      - "commercial/**"
+      - "docs/ai/**"
+      - "scripts/ai-context.py"
+      - "scripts/check-login-render.py"
+      - "compose.https.yaml"
+      - "infra/**"
+      - ".dockerignore"
+      - "scripts/init-security.sh"
+      - "scripts/configure-turnstile.ps1"
+      - "scripts/pin-license-public-key.ps1"
       - "commercial/production_*.py"
       - "commercial/setup_*.py"
       - "commercial/meeting_questions.py"
+      - "commercial/agent*.py"
+      - "commercial/meeting_agent.py"
+      - "commercial/secretary_agent.py"
+      - "commercial/tests/**"
+      - "commercial/processmaker_store.py"
+      - "commercial/native_access.py"
+      - "commercial/sql/AVANAgent_*"
+      - "processmaker/**"
+      - "scripts/update-meeting-agent.ps1"
       - "commercial/security.py"
       - "commercial/licensing/**"
       - "commercial/web/production/**"
@@ -19,9 +38,28 @@ on:
       - ".github/workflows/commercial-preview-ci.yml"
   pull_request:
     paths:
+      - "commercial/**"
+      - "docs/ai/**"
+      - "scripts/ai-context.py"
+      - "scripts/check-login-render.py"
+      - "compose.https.yaml"
+      - "infra/**"
+      - ".dockerignore"
+      - "scripts/init-security.sh"
+      - "scripts/configure-turnstile.ps1"
+      - "scripts/pin-license-public-key.ps1"
       - "commercial/production_*.py"
       - "commercial/setup_*.py"
       - "commercial/meeting_questions.py"
+      - "commercial/agent*.py"
+      - "commercial/meeting_agent.py"
+      - "commercial/secretary_agent.py"
+      - "commercial/tests/**"
+      - "commercial/processmaker_store.py"
+      - "commercial/native_access.py"
+      - "commercial/sql/AVANAgent_*"
+      - "processmaker/**"
+      - "scripts/update-meeting-agent.ps1"
       - "commercial/security.py"
       - "commercial/licensing/**"
       - "commercial/web/production/**"
@@ -47,28 +85,160 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install operational dependencies
-        run: python -m pip install -r commercial/requirements-production.txt
+        run: python -m pip install -r commercial/requirements-production.txt pytest PyYAML
       - name: Check source and authenticated installation lifecycle
         run: |
-          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/setup_console.py commercial/setup_routes.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py
-          python -m unittest commercial.tests.test_operational_bootstrap -v
+          python scripts/ai-context.py check
+          python -m py_compile commercial/production_store.py commercial/production_license.py commercial/production_app.py commercial/production_install.py commercial/production_onboarding.py commercial/pending_identities.py commercial/processmaker_directory.py commercial/user_bpms_bindings.py commercial/setup_console.py commercial/setup_routes.py commercial/login_appearance.py commercial/turnstile.py commercial/meeting_questions.py commercial/security.py commercial/licensing/codec.py commercial/agent_connections.py commercial/bundled_sql.py commercial/user_experience.py commercial/user_experience_routes.py commercial/secretary_resolution.py commercial/secretary_commands.py commercial/secretary_runtime.py commercial/secretary_inbox_routes.py commercial/agent_routes.py commercial/meeting_agent.py infra/antibot/server.py
+          AVAN_STATE_DIR=/tmp/avan-ci-state AVAN_UI_STATE_DIR=/tmp/avan-ci-ui python -m pytest commercial/tests -q
           python -c "from commercial.production_app import app; assert app.title == 'AVAN'"
       - name: Validate customer-facing JavaScript
         run: |
+          node commercial/tests/logout_routing.cjs
           node --check commercial/web/production/app.js
           node --check commercial/web/admin/app.js
+          node --check commercial/web/admin/login-scene.js
+          node --check commercial/web/admin/help.js
+          node --check infra/keycloak/themes/avan/login/resources/js/otp-motion.js
+          node --check infra/keycloak/themes/avan/login/resources/js/captcha-ui.js
+          node --check infra/keycloak/themes/avan/login/resources/js/login-scene.js
+      - name: Validate approved live login scene assets
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          roots=[
+              Path("commercial/web/admin/scene-data"),
+              Path("infra/keycloak/themes/avan/login/resources/scene-data"),
+          ]
+          pairs=[]
+          for root in roots:
+              background=(root/"boardroom-v5.webp").read_bytes()
+              globe=(root/"globe-v5.webp").read_bytes()
+              assert background[:4]==b"RIFF" and background[8:12]==b"WEBP" and len(background)>10000
+              assert globe[:4]==b"RIFF" and globe[8:12]==b"WEBP" and len(globe)>5000
+              pairs.append((background,globe))
+          assert pairs[0]==pairs[1], "Bootstrap and Keycloak login scene assets differ"
+          print("Approved AVAN login WebP assets are valid and synchronized.")
+          PY
+      - name: Browser smoke test with isolated API fixtures
+        run: |
+          npm install --no-save --package-lock=false playwright jsdom
+          npx playwright install --with-deps chromium
+          node commercial/tests/secretary_inbox_ui.cjs
+          node commercial/tests/process_workspace_ui.cjs
+          node commercial/tests/secretary_desk_browser.cjs
+          node commercial/tests/ui_smoke.cjs
+          node commercial/tests/management_render_smoke.cjs
+          node commercial/tests/ai_model_selection_ui.cjs
+          node commercial/tests/login_scene_smoke.cjs
       - name: Validate env-free first-run Compose
         run: |
           docker compose config --quiet
+          AVAN_APP_HOST=agent.example.com AVAN_AUTH_HOST=auth.example.com docker compose -f compose.yaml -f compose.https.yaml config --quiet
           python - <<'PY'
           from pathlib import Path
           c=Path("compose.yaml").read_text()
           dockerfile=Path("commercial/Dockerfile.production").read_text()
-          assert "avan-control-data:" in c
+          assert "avan-state:" in c
+          assert "avan-ui:" in c and "ui-config-init:" in c
+          assert "AVAN_UI_STATE_DIR: /var/lib/avan-ui" in c
+          assert "avan-ui:/opt/keycloak/themes/avan/login/resources/generated:ro" in c
+          assert "avan-agent-sql:" in c
+          assert "antibot:" in c and "infra/antibot/Dockerfile" in c
+          assert "avan_antibot_hmac_key" in c
+          assert "avan_turnstile_site_key" in c and "avan_turnstile_secret_key" in c
+          assert "mcr.microsoft.com/mssql/server:2022-latest" in c
+          assert "1433:1433" not in c
           assert "127.0.0.1:8188:8188" in c
           assert "env_file:" not in c and "AVAN_SQL_PASSWORD" not in c
           assert "commercial.production_app:app" in dockerfile
           assert "commercial/datasets" not in dockerfile
           assert "setup_console.py" in dockerfile and "setup_routes.py" in dockerfile
+          assert "login_appearance.py" in dockerfile
           print("Operational GodAdmin installation requires no editable .env file.")
           PY
+
+
+      - name: Build self-hosted anti-bot image
+        run: docker build -f infra/antibot/Dockerfile -t avan-antibot:ci .
+
+      - name: Build Keycloak hybrid anti-bot provider
+        run: docker build -f infra/keycloak/Dockerfile -t avan-keycloak:ci .
+
+      - name: Build production image and verify packaged imports
+        run: |
+          docker build -f commercial/Dockerfile.production -t avan-agent:ci .
+          docker run --rm --entrypoint python avan-agent:ci -c "from commercial.production_app import app; assert app.title == 'AVAN'"
+          docker run --rm --tmpfs /var/lib/avan:uid=10001,gid=10001 --entrypoint python avan-agent:ci -c "from commercial.setup_console import initialize; initialize(); from commercial.production_app import app; assert app.title == 'AVAN'; from commercial.setup_console import get_setting; assert not get_setting('agent_sql'); print('First-run setup ready without configured databases')"
+
+      - name: Runtime smoke AVAN Keycloak login theme
+        shell: bash
+        run: |
+          set -euo pipefail
+          smoke_dir="$(mktemp -d)"
+          cleanup() {
+            docker logs avan-keycloak-ci || true
+            docker rm -f avan-keycloak-ci avan-keycloak-db-ci avan-bridge-ci avan-antibot-ci >/dev/null 2>&1 || true
+            docker network rm avan-keycloak-ci >/dev/null 2>&1 || true
+            rm -rf "$smoke_dir"
+          }
+          trap cleanup EXIT
+          printf '%s' 'ci-disposable-bridge-token-0123456789abcdef' > "$smoke_dir/bridge"
+          printf '%s' 'ci-disposable-antibot-key-0123456789abcdef' > "$smoke_dir/antibot"
+          chmod 644 "$smoke_dir/bridge" "$smoke_dir/antibot"
+          docker network create avan-keycloak-ci
+          docker run -d --name avan-antibot-ci --network avan-keycloak-ci \
+            -v "$smoke_dir/antibot:/run/secrets/avan_antibot_hmac_key:ro" avan-antibot:ci
+          docker run -d --name avan-bridge-ci --network avan-keycloak-ci \
+            --tmpfs /var/lib/avan:uid=10001,gid=10001 \
+            -e AVAN_ANTIBOT_URL=http://avan-antibot-ci:8090 \
+            -v "$smoke_dir/bridge:/run/secrets/avan_bff_client_secret:ro" avan-agent:ci
+          for i in {1..30}; do
+            if docker exec avan-bridge-ci python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/health',timeout=2)" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker run -d --name avan-keycloak-db-ci --network avan-keycloak-ci \
+            -e POSTGRES_DB=avan_keycloak \
+            -e POSTGRES_USER=keycloak \
+            -e POSTGRES_PASSWORD=ci-keycloak-password \
+            postgres:17-alpine
+          for i in {1..30}; do
+            if docker exec avan-keycloak-db-ci pg_isready -U keycloak -d avan_keycloak >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          docker run -d --name avan-keycloak-ci --network avan-keycloak-ci \
+            -p 127.0.0.1:18080:8080 \
+            -e AVAN_SECURITY_BRIDGE_URL=http://avan-bridge-ci:8188/internal/security \
+            -v "$smoke_dir/bridge:/run/secrets/avan_bff_client_secret:ro" \
+            -e KC_DB=postgres \
+            -e KC_DB_URL=jdbc:postgresql://avan-keycloak-db-ci:5432/avan_keycloak \
+            -e KC_DB_USERNAME=keycloak \
+            -e KC_DB_PASSWORD=ci-keycloak-password \
+            -e AVAN_BFF_CLIENT_SECRET=0123456789abcdef0123456789abcdef \
+            -e AVAN_PROVISIONER_CLIENT_SECRET=fedcba9876543210fedcba9876543210 \
+            -v "$PWD/infra/keycloak/avan-realm.json:/opt/keycloak/data/import/avan-realm.json:ro" \
+            avan-keycloak:ci \
+            start --optimized --server-async-bootstrap=false --http-enabled=true --import-realm \
+            --hostname=http://127.0.0.1:18080
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:18080/realms/avan/.well-known/openid-configuration >/dev/null; then break; fi
+            sleep 1
+          done
+          login_url='http://127.0.0.1:18080/realms/avan/protocol/openid-connect/auth?response_type=code&client_id=avan-bff&redirect_uri=http%3A%2F%2F127.0.0.1%3A8188%2Fauth%2Fcallback&scope=openid%20profile%20email&state=ci-state&code_challenge=0ZqG8RFNf1lLfH2WJbX9gW7cYfJw-lQJZC9AkFtnz3E&code_challenge_method=S256'
+          status="$(curl -sS -o /tmp/avan-login.html -w '%{http_code}' "$login_url")"
+          test "$status" = "200"
+          grep -q 'ورود به آوان' /tmp/avan-login.html
+          ! grep -q 'An internal server error has occurred' /tmp/avan-login.html
+          ! grep -q 'We are sorry' /tmp/avan-login.html
+          python scripts/check-login-render.py /tmp/avan-login.html
+
+      - name: Build offline license issuer and scenario importer
+        run: |
+          docker build -f commercial/Dockerfile.license -t avan-issuer:ci .
+          docker run --rm avan-issuer:ci --help
+          docker build -f commercial/Dockerfile.scenarios -t avan-scenarios:ci .
+          docker run --rm avan-scenarios:ci --help
+
+      - name: Validate HTTPS gateway configuration
+        run: docker run --rm -e AVAN_APP_HOST=agent.example.com -e AVAN_AUTH_HOST=auth.example.com -v "$PWD/infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+

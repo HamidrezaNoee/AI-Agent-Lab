@@ -1,0 +1,441 @@
+@font-face{font-family:AVANYekan;src:url('../fonts/YekanBakh-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:AVANYekan;src:url('../fonts/YekanBakh-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:AVANYekan;src:url('../fonts/YekanBakh-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
+html,body,.login-pf body{font-family:AVANYekan,Tahoma,sans-serif!important;color:#1e3946!important}
+.login-pf body{background:radial-gradient(circle at 15% 14%,#346787,transparent 25%),radial-gradient(circle at 89% 83%,#157672,transparent 30%),linear-gradient(140deg,#071929,#164451)!important;min-height:100vh}
+.login-pf-page-header{font-family:AVANYekan,Tahoma,sans-serif!important;font-size:32px!important;font-weight:700!important;color:#eafaf8!important;text-shadow:0 4px 28px #071929}
+.card-pf,.pf-v5-c-login__main,.pf-v5-c-card,.pf-c-login__main{border-radius:22px!important;box-shadow:0 27px 90px #010e215e!important;border:1px solid #dae9eb!important;overflow:hidden}
+.card-pf:before{background:#119187!important;border:0!important;height:5px!important}
+.card-pf-title,.pf-v5-c-title,.pf-c-title{color:#123b4c!important;font-family:AVANYekan,Tahoma,sans-serif!important;font-weight:700!important}
+input,button,label,.pf-v5-c-form__label,.pf-c-form__label{font-family:AVANYekan,Tahoma,sans-serif!important}
+input[type=text],input[type=password],input[type=email]{border-radius:9px!important;min-height:43px!important}
+#kc-login,.pf-v5-c-button.pf-m-primary,.pf-c-button.pf-m-primary{background:#087e73!important;border-radius:10px!important;border:0!important;color:white!important;min-height:43px!important}
+#kc-login:hover,.pf-v5-c-button.pf-m-primary:hover,.pf-c-button.pf-m-primary:hover{background:#066b63!important}
+#kc-form-login{max-width:460px;margin:auto}
+body.avan-signin{margin:0;min-height:100vh;background:#081c2c url('../img/agent-login.webp') center/cover no-repeat;font-family:AVANYekan,Tahoma,sans-serif;color:#203649}
+.avan-signin *{box-sizing:border-box}
+.signin-layout{display:grid;grid-template-columns:minmax(360px,500px) 1fr;align-items:stretch;min-height:100vh;max-width:1600px;margin:auto}
+.signin-panel{position:relative;z-index:1;background:#ffffffed;backdrop-filter:blur(24px);padding:clamp(30px,5vw,76px);box-shadow:-16px 0 80px #05182d75;display:flex;flex-direction:column;justify-content:center;min-height:660px}
+.signin-brand{display:flex;align-items:center;gap:13px;font-weight:700;font-size:26px;line-height:1.25}
+.signin-brand small{display:block;color:#6f8797;font-weight:400;font-size:12px;margin-top:7px}
+.signin-mark{display:grid;place-items:center;border-radius:17px;width:55px;height:55px;background:#e4342b;color:#fff;font-size:33px;box-shadow:0 10px 25px #e4342b44}
+.signin-heading{margin:46px 0 20px}.signin-label{display:block;letter-spacing:2px;color:#e4342b;font:700 11px Tahoma,sans-serif;direction:ltr;text-align:right}
+.signin-heading h1{margin:12px 0 8px;font-size:clamp(28px,3vw,38px);line-height:1.5;color:#15394c}.signin-heading p{margin:0;color:#60788b;font-size:14px;line-height:2}
+.avan-signin form{display:flex;flex-direction:column;gap:8px;max-width:none!important;margin:0!important}.avan-signin label{font-size:14px;font-weight:600;color:#24445a;margin-top:15px}
+.avan-signin input,.avan-signin select{width:100%;border:1px solid #cfdee8;border-radius:12px;background:#fff;color:#173b53;padding:12px 15px;font-size:15px;min-height:50px;outline:none}
+.avan-signin input:focus,.avan-signin select:focus{border-color:#0f938b;box-shadow:0 0 0 3px #0f938b2c}
+.avan-signin .signin-panel button{font-family:AVANYekan,Tahoma,sans-serif;font-size:16px;font-weight:700;width:100%;border:0;border-radius:12px;background:#e4342b;color:#fff;min-height:53px;cursor:pointer;margin-top:20px;box-shadow:0 10px 25px #e4342b38}.avan-signin .signin-panel button:hover{background:#c52b24}.avan-signin .signin-panel button:focus-visible{outline:3px solid #14445a;outline-offset:3px}
+.signin-error{background:#fff1ef;color:#a92a24;border:1px solid #efc7c3;border-radius:10px;padding:12px;line-height:1.8;font-size:13px}.signin-art{min-height:100vh}
+.signin-otp #otp{text-align:center;font-size:25px;letter-spacing:9px}
+@media(max-width:820px){.signin-layout{grid-template-columns:1fr;max-width:520px}.signin-panel{min-height:100vh;box-shadow:none;padding:30px;background:#ffffffed}.signin-art{display:none}.signin-heading{margin-top:34px}}
+
+
+/* AVAN neon glass authentication rectangle. Background artwork remains unchanged. */
+.avan-signin .signin-layout{
+ grid-template-columns:minmax(420px,600px) 1fr;
+ align-items:center;padding:38px clamp(26px,5vw,76px);gap:26px;
+}
+.avan-signin .signin-panel{
+ position:relative;isolation:isolate;overflow:hidden;
+ width:min(100%,540px);min-height:0;margin:auto;padding:48px 50px 46px;
+ color:#ecfaff;
+ background:
+  radial-gradient(circle at 50% -8%,rgba(44,218,255,.17),transparent 31%),
+  radial-gradient(circle at 96% 48%,rgba(15,142,239,.12),transparent 34%),
+  linear-gradient(155deg,rgba(7,35,57,.92),rgba(4,25,44,.965) 58%,rgba(5,31,51,.94));
+ border:1px solid rgba(116,229,255,.82);
+ border-radius:34px;
+ box-shadow:0 32px 95px rgba(1,13,27,.7),0 0 0 1px rgba(20,189,245,.14),0 0 32px rgba(16,202,244,.22),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 42px rgba(13,123,183,.09);
+ backdrop-filter:blur(26px) saturate(125%);
+ -webkit-backdrop-filter:blur(26px) saturate(125%);
+}
+.avan-signin .signin-panel::before{
+ content:"";position:absolute;z-index:-2;inset:-35% -30%;
+ background:conic-gradient(from 205deg,transparent 0 37%,rgba(33,230,255,.13) 42%,transparent 49% 72%,rgba(13,139,255,.09) 77%,transparent 84%);
+ filter:blur(22px);pointer-events:none;
+}
+.avan-signin .signin-panel::after{
+ content:"";position:absolute;left:18%;right:18%;top:-1px;height:2px;
+ background:linear-gradient(90deg,transparent,#7ff6ff 40%,#e2fdff 50%,#55ddff 60%,transparent);
+ box-shadow:0 0 18px #26dcff,0 0 40px rgba(38,220,255,.55);pointer-events:none;
+}
+.signin-card-decor{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden;border-radius:inherit}
+.signin-card-decor svg{display:block;width:100%;height:100%}
+.avan-signin .signin-brand{
+ position:relative;display:flex;align-items:center;justify-content:center;gap:14px;
+ direction:rtl;color:#f5fcff;text-align:right;margin:0 auto 28px;font-weight:700;font-size:inherit;line-height:1;
+}
+.avan-signin .signin-mark{
+ display:grid;place-items:center;width:62px;height:62px;flex:0 0 62px;border-radius:0;
+ background:none;color:inherit;font-size:inherit;box-shadow:none;filter:drop-shadow(0 0 13px rgba(34,224,249,.32));
+}
+.avan-signin .signin-mark svg{display:block;width:100%;height:100%}
+.signin-brand-copy{display:flex;flex-direction:column;line-height:1.05}
+.signin-brand-copy strong{font-size:34px;font-weight:800;letter-spacing:-1px;color:#f3fbff;text-shadow:0 4px 22px rgba(53,218,255,.12)}
+.avan-signin .signin-brand-copy small{display:block;margin-top:10px;color:#ff8a73;font:700 12px/1 Tahoma,sans-serif;letter-spacing:2.5px;direction:ltr}
+.avan-signin .signin-heading{margin:4px 0 28px;text-align:center}
+.avan-signin .signin-heading .signin-label{display:none}
+.avan-signin .signin-heading h1{
+ margin:0;color:#fff;font-size:32px;font-weight:800;line-height:1.55;text-shadow:0 5px 30px rgba(0,12,28,.55);
+}
+.avan-signin form{position:relative;z-index:2;gap:0}
+.avan-signin label{margin:0 0 8px;color:#a9cde0;font-size:13px;font-weight:650;line-height:1.8}
+.avan-signin input,.avan-signin select{
+ min-height:62px;margin:0 0 18px;padding:14px 18px;
+ color:#f1fbff;caret-color:#49e7fb;
+ background:linear-gradient(180deg,rgba(13,46,72,.82),rgba(7,34,57,.9));
+ border:1px solid rgba(132,207,242,.55);border-radius:18px;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 9px 28px rgba(0,10,24,.16);
+ outline:none;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease,background .18s ease;
+}
+.avan-signin input:hover,.avan-signin select:hover{border-color:rgba(133,225,253,.76)}
+.avan-signin input:focus,.avan-signin select:focus{
+ border-color:#66e9ff;background:linear-gradient(180deg,rgba(14,54,83,.92),rgba(6,36,60,.96));
+ box-shadow:0 0 0 3px rgba(52,220,247,.12),0 0 24px rgba(39,206,244,.15),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.avan-signin #username{font-weight:700}
+.avan-signin #password{letter-spacing:3px}
+.avan-signin #kc-login{
+ position:relative;overflow:hidden;display:block;width:100%;min-height:62px;margin:8px 0 0;
+ border:1px solid rgba(141,255,250,.72);border-radius:18px;
+ background:linear-gradient(100deg,#20d9cc 0%,#23e3e8 48%,#20c7f3 100%);
+ color:#03293b;font-size:17px;font-weight:800;
+ box-shadow:0 14px 34px rgba(18,220,225,.18),0 0 26px rgba(31,218,244,.15),inset 0 1px 0 rgba(255,255,255,.5);
+ transition:transform .16s ease,filter .16s ease,box-shadow .16s ease;
+}
+.avan-signin #kc-login:hover{
+ background:linear-gradient(100deg,#27e6d7 0%,#31eced 48%,#29d4ff 100%);
+ transform:translateY(-1px);box-shadow:0 18px 40px rgba(18,220,225,.23),0 0 32px rgba(31,218,244,.21);
+}
+.avan-signin #kc-login:focus-visible{outline:3px solid rgba(129,242,255,.7);outline-offset:4px}
+.avan-signin .signin-error{position:relative;z-index:2;background:rgba(91,20,31,.78);border-color:rgba(255,127,141,.48);color:#ffdce2;margin-bottom:18px}
+.avan-signin .signin-otp #otp{min-height:68px;text-align:center;direction:ltr;font-size:28px;letter-spacing:10px;font-weight:700}
+@media(max-width:820px){
+ .avan-signin .signin-layout{display:flex;align-items:center;justify-content:center;min-height:100vh;max-width:none;padding:20px}
+ .avan-signin .signin-panel{width:min(100%,500px);min-height:0;padding:34px 24px 31px;border-radius:27px;background:linear-gradient(155deg,rgba(7,35,57,.94),rgba(4,25,44,.975) 58%,rgba(5,31,51,.95));box-shadow:0 25px 75px rgba(1,13,27,.72)}
+ .avan-signin .signin-art{display:none}.avan-signin .signin-heading{margin:4px 0 24px}
+ .avan-signin .signin-mark{width:52px;height:52px;flex-basis:52px}.signin-brand-copy strong{font-size:29px}
+ .avan-signin .signin-heading h1{font-size:27px}.avan-signin input,.avan-signin select,.avan-signin #kc-login{min-height:57px}
+}
+@media(prefers-reduced-motion:reduce){
+ .avan-signin input,.avan-signin select,.avan-signin #kc-login{transition:none}
+}
+
+.avan-signin .turnstile-shell{
+ width:100%;min-height:65px;margin:2px 0 10px;display:flex;align-items:center;justify-content:center;
+ border:1px solid rgba(112,210,238,.18);border-radius:16px;background:rgba(5,29,48,.5);overflow:hidden;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+}
+.avan-signin .turnstile-shell iframe{max-width:100%!important}
+@media(max-width:380px){
+ .avan-signin .turnstile-shell{min-width:300px;transform-origin:center;scale:.92;margin-inline:-12px;width:calc(100% + 24px)}
+}
+
+
+/* Authenticator motion inspired by the referenced interaction: 6 tiles -> orbit -> verified tile. */
+.avan-signin .otp-motion{
+ --otp-cell:58px;
+ position:relative;width:100%;height:174px;margin:0 0 18px;cursor:text;
+ border:1px solid rgba(107,202,236,.24);border-radius:22px;
+ background:radial-gradient(circle at 50% 48%,rgba(25,209,238,.08),transparent 47%),rgba(3,24,42,.34);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+ overflow:hidden;isolation:isolate;
+}
+.avan-signin .otp-motion::before{
+ content:"";position:absolute;inset:0;pointer-events:none;opacity:.28;
+ background-image:radial-gradient(circle,rgba(39,214,241,.8) 0 1px,transparent 1.4px);
+ background-size:19px 19px;mask-image:linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent);
+}
+.avan-signin .otp-motion-native{
+ position:absolute!important;z-index:8!important;left:50%!important;top:50%!important;
+ width:1px!important;height:1px!important;min-height:1px!important;padding:0!important;margin:0!important;
+ opacity:.01!important;border:0!important;background:transparent!important;box-shadow:none!important;
+ color:transparent!important;caret-color:transparent!important;letter-spacing:0!important;
+ transform:translate(-50%,-50%)!important;
+}
+.avan-signin .otp-stage{position:absolute;inset:0;direction:ltr}
+.avan-signin .otp-digits{position:absolute;inset:0;filter:drop-shadow(0 11px 24px rgba(0,8,20,.28))}
+.avan-signin .otp-digit{
+ --x:0px;--a:0deg;
+ position:absolute;z-index:3;left:50%;top:50%;
+ width:var(--otp-cell);height:64px;display:grid;place-items:center;
+ transform:translate(calc(-50% + var(--x)),-50%);
+ border:1px solid rgba(133,218,250,.54);border-radius:16px;
+ background:linear-gradient(180deg,rgba(17,58,85,.92),rgba(7,36,59,.96));
+ color:#ecfbff;font:800 25px/1 Tahoma,"Segoe UI",sans-serif;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 22px rgba(0,13,29,.18);
+ transition:border-color .16s ease,background .16s ease,box-shadow .16s ease;
+ will-change:transform,opacity,filter;
+}
+.avan-signin .otp-digit:nth-child(1){--x:-170px;--a:0deg}
+.avan-signin .otp-digit:nth-child(2){--x:-102px;--a:60deg}
+.avan-signin .otp-digit:nth-child(3){--x:-34px;--a:120deg}
+.avan-signin .otp-digit:nth-child(4){--x:34px;--a:180deg}
+.avan-signin .otp-digit:nth-child(5){--x:102px;--a:240deg}
+.avan-signin .otp-digit:nth-child(6){--x:170px;--a:300deg}
+.avan-signin .otp-digit.is-filled{
+ border-color:rgba(101,231,255,.86);
+ background:linear-gradient(180deg,rgba(18,71,99,.96),rgba(7,43,68,.98));
+ box-shadow:0 0 0 2px rgba(45,215,247,.07),0 0 20px rgba(31,208,240,.11),inset 0 1px 0 rgba(255,255,255,.1);
+}
+.avan-signin .otp-digit.is-next{border-color:#65e6fb;box-shadow:0 0 0 3px rgba(64,220,246,.09),0 0 18px rgba(43,211,243,.13)}
+.avan-signin .otp-orbit-ring{
+ position:absolute;z-index:2;left:50%;top:50%;width:136px;height:136px;border-radius:50%;
+ transform:translate(-50%,-50%) scale(.48);opacity:0;
+ background:conic-gradient(from 25deg,transparent 0 10%,#50eafb 19%,#168fff 38%,transparent 49% 61%,#22e3de 73%,#75f3ff 89%,transparent);
+ -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));
+ mask:radial-gradient(farthest-side,transparent calc(100% - 3px),#000 calc(100% - 2px));
+ filter:drop-shadow(0 0 10px rgba(43,221,249,.65));
+}
+.avan-signin .otp-verified{
+ position:absolute;z-index:5;left:50%;top:50%;width:156px;height:70px;
+ display:flex;align-items:center;justify-content:center;gap:10px;
+ transform:translate(-50%,-50%) scale(.2) rotate(-12deg);opacity:0;
+ border:1px solid rgba(103,246,234,.9);border-radius:19px;
+ background:linear-gradient(110deg,rgba(20,216,196,.96),rgba(30,196,241,.96));
+ color:#032d3e;font-weight:800;font-size:15px;
+ box-shadow:0 0 0 1px rgba(255,255,255,.16),0 17px 42px rgba(20,219,227,.2),0 0 32px rgba(50,222,246,.24);
+}
+.avan-signin .otp-verified svg{width:30px;height:30px;overflow:visible}
+.avan-signin .otp-verified circle{fill:rgba(255,255,255,.18);stroke:#eaffff;stroke-width:2}
+.avan-signin .otp-verified path{fill:none;stroke:#eaffff;stroke-width:3.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:24;stroke-dashoffset:24}
+.avan-signin .otp-motion-status{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.avan-signin .otp-motion:focus-within{border-color:rgba(96,229,250,.55);box-shadow:0 0 0 3px rgba(55,218,245,.07),inset 0 1px 0 rgba(255,255,255,.04)}
+.avan-signin .otp-motion.is-complete .otp-orbit-ring{animation:avanOtpRing 1.18s cubic-bezier(.2,.7,.15,1) forwards}
+.avan-signin .otp-motion.is-complete .otp-digit{
+ animation:avanOtpCurl 1.18s cubic-bezier(.18,.76,.18,1) forwards;
+ animation-delay:calc(var(--i) * 16ms);border-color:rgba(108,235,255,.9);
+}
+.avan-signin .otp-motion.is-complete .otp-verified{animation:avanOtpVerified 1.18s cubic-bezier(.22,.8,.2,1) forwards}
+.avan-signin .otp-motion.is-complete .otp-verified path{animation:avanOtpCheck .28s .93s ease-out forwards}
+.avan-signin .otp-motion.is-error{animation:avanOtpShake .38s ease}
+.avan-signin .otp-motion.is-error .otp-digit{border-color:rgba(255,105,127,.8);box-shadow:0 0 18px rgba(255,77,111,.13)}
+@keyframes avanOtpCurl{
+ 0%{transform:translate(calc(-50% + var(--x)),-50%) rotate(0) scale(1);opacity:1}
+ 18%{transform:translate(calc(-50% + var(--x)),-62%) rotate(0) scale(.95)}
+ 44%{transform:translate(-50%,-50%) rotate(var(--a)) translateY(-67px) rotate(70deg) scale(.88);opacity:1}
+ 78%{transform:translate(-50%,-50%) rotate(calc(var(--a) + 450deg)) translateY(-67px) rotate(450deg) scale(.72);opacity:1}
+ 100%{transform:translate(-50%,-50%) rotate(calc(var(--a) + 450deg)) translateY(0) rotate(510deg) scale(.06);opacity:0;filter:blur(1px)}
+}
+@keyframes avanOtpRing{
+ 0%{transform:translate(-50%,-50%) scale(.45) rotate(0);opacity:0}
+ 26%{opacity:.92}
+ 76%{transform:translate(-50%,-50%) scale(1) rotate(450deg);opacity:1}
+ 100%{transform:translate(-50%,-50%) scale(.22) rotate(520deg);opacity:0}
+}
+@keyframes avanOtpVerified{
+ 0%,72%{transform:translate(-50%,-50%) scale(.18) rotate(-12deg);opacity:0}
+ 86%{transform:translate(-50%,-50%) scale(1.08) rotate(2deg);opacity:1}
+ 100%{transform:translate(-50%,-50%) scale(1) rotate(0);opacity:1}
+}
+@keyframes avanOtpCheck{to{stroke-dashoffset:0}}
+@keyframes avanOtpShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-7px)}50%{transform:translateX(7px)}75%{transform:translateX(-4px)}}
+@media(max-width:520px){
+ .avan-signin .otp-motion{--otp-cell:46px;height:154px}
+ .avan-signin .otp-digit{height:56px;border-radius:14px;font-size:22px}
+ .avan-signin .otp-digit:nth-child(1){--x:-137px}.avan-signin .otp-digit:nth-child(2){--x:-82px}.avan-signin .otp-digit:nth-child(3){--x:-27px}
+ .avan-signin .otp-digit:nth-child(4){--x:27px}.avan-signin .otp-digit:nth-child(5){--x:82px}.avan-signin .otp-digit:nth-child(6){--x:137px}
+ .avan-signin .otp-orbit-ring{width:118px;height:118px}.avan-signin .otp-verified{width:146px;height:64px}
+}
+@media(max-width:370px){
+ .avan-signin .otp-motion{--otp-cell:40px;height:144px}
+ .avan-signin .otp-digit{height:51px;font-size:20px}
+ .avan-signin .otp-digit:nth-child(1){--x:-117px}.avan-signin .otp-digit:nth-child(2){--x:-70px}.avan-signin .otp-digit:nth-child(3){--x:-23px}
+ .avan-signin .otp-digit:nth-child(4){--x:23px}.avan-signin .otp-digit:nth-child(5){--x:70px}.avan-signin .otp-digit:nth-child(6){--x:117px}
+}
+@media(prefers-reduced-motion:reduce){
+ .avan-signin .otp-motion.is-complete .otp-digit,.avan-signin .otp-motion.is-complete .otp-orbit-ring,.avan-signin .otp-motion.is-complete .otp-verified,.avan-signin .otp-motion.is-complete .otp-verified path{animation-duration:.08s;animation-delay:0s}
+}
+
+
+/* AVAN intelligent CAPTCHA shell — real Turnstile verification, branded presentation. */
+.avan-signin .avan-captcha{
+ position:relative;width:100%;margin:8px 0 4px;padding:14px 15px 12px;
+ border:1px solid rgba(113,211,241,.28);border-radius:18px;overflow:hidden;
+ background:
+  radial-gradient(circle at 14% 20%,rgba(38,221,242,.10),transparent 27%),
+  linear-gradient(180deg,rgba(8,36,58,.82),rgba(4,27,47,.92));
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 10px 30px rgba(0,10,23,.16);
+ transition:border-color .2s ease,box-shadow .2s ease,background .2s ease;
+}
+.avan-signin .avan-captcha::before{
+ content:"";position:absolute;inset:0;pointer-events:none;opacity:.20;
+ background-image:radial-gradient(circle,rgba(45,215,240,.9) 0 1px,transparent 1.4px);
+ background-size:18px 18px;mask-image:linear-gradient(90deg,#000,transparent 48%,#000);
+}
+.avan-signin .avan-captcha-head{position:relative;z-index:2;display:grid;grid-template-columns:58px minmax(0,1fr) auto;align-items:center;gap:12px;direction:rtl}
+.avan-signin .avan-captcha-visual{position:relative;width:58px;height:58px;display:grid;place-items:center;direction:ltr}
+.avan-signin .captcha-shield{position:relative;z-index:3;width:39px;height:39px;filter:drop-shadow(0 0 12px rgba(40,219,245,.34))}
+.avan-signin .captcha-shield .shield-body{fill:rgba(17,59,83,.94);stroke:url(#captchaShieldGradient);stroke-width:2}
+.avan-signin .captcha-shield .shield-scan{fill:none;stroke:#dffffc;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:31;stroke-dashoffset:31;opacity:.15}
+.avan-signin .captcha-scan-ring{position:absolute;left:50%;top:50%;border:1px solid rgba(71,224,247,.32);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}
+.avan-signin .captcha-scan-ring.ring-a{width:50px;height:50px}.avan-signin .captcha-scan-ring.ring-b{width:58px;height:58px;border-color:rgba(29,151,245,.24)}
+.avan-signin .captcha-orbit-dot{position:absolute;left:50%;top:50%;width:5px;height:5px;border-radius:50%;background:#74f5ff;box-shadow:0 0 10px #31ddf7;transform-origin:0 0}
+.avan-signin .captcha-orbit-dot.dot-a{animation:avanCaptchaOrbitA 2.6s linear infinite}.avan-signin .captcha-orbit-dot.dot-b{animation:avanCaptchaOrbitB 3.2s linear infinite reverse;background:#23e4ce}
+.avan-signin .avan-captcha-copy{min-width:0;text-align:right}
+.avan-signin .avan-captcha-copy strong{display:block;color:#eafaff;font-size:13px;font-weight:800;line-height:1.7}
+.avan-signin .avan-captcha-status{display:block;margin-top:2px;color:#8fb9cc;font-size:11px;line-height:1.7;transition:color .2s ease}
+.avan-signin .avan-captcha-badge{align-self:start;margin-top:2px;padding:4px 8px;border:1px solid rgba(107,219,244,.22);border-radius:999px;background:rgba(11,52,75,.66);color:#6edff1;font:700 9px/1 Tahoma,"Segoe UI",sans-serif;letter-spacing:1.3px;direction:ltr}
+.avan-signin .avan-captcha-progress{position:relative;z-index:2;height:3px;margin:11px 0 0;border-radius:999px;overflow:hidden;background:rgba(111,202,229,.10)}
+.avan-signin .avan-captcha-progress span{display:block;height:100%;width:34%;border-radius:inherit;background:linear-gradient(90deg,transparent,#2edbea,#5cf2de,transparent);transform:translateX(-130%);animation:avanCaptchaScan 1.75s ease-in-out infinite}
+.avan-signin .avan-captcha-challenge{position:relative;z-index:3;display:flex;justify-content:center;width:100%;margin-top:8px;min-height:0;overflow:visible}
+.avan-signin .avan-captcha-challenge iframe{max-width:100%!important}
+.avan-signin .avan-captcha.is-checking{border-color:rgba(69,214,242,.42);box-shadow:0 0 0 2px rgba(35,201,240,.05),0 10px 30px rgba(0,10,23,.16),inset 0 1px 0 rgba(255,255,255,.05)}
+.avan-signin .avan-captcha.is-verified{
+ border-color:rgba(87,236,204,.62);
+ background:radial-gradient(circle at 14% 20%,rgba(54,235,198,.13),transparent 30%),linear-gradient(180deg,rgba(8,42,58,.86),rgba(4,31,45,.94));
+ box-shadow:0 0 0 2px rgba(67,227,202,.06),0 0 24px rgba(28,219,191,.10),inset 0 1px 0 rgba(255,255,255,.06);
+}
+.avan-signin .avan-captcha.is-verified .avan-captcha-status{color:#7df0d0}
+.avan-signin .avan-captcha.is-verified .captcha-shield .shield-scan{animation:avanCaptchaCheck .36s ease-out forwards}
+.avan-signin .avan-captcha.is-verified .captcha-scan-ring{border-color:rgba(102,242,207,.42)}
+.avan-signin .avan-captcha.is-verified .captcha-orbit-dot{background:#65f1c9;box-shadow:0 0 12px rgba(90,241,201,.8)}
+.avan-signin .avan-captcha.is-verified .avan-captcha-progress span{width:100%;transform:none;animation:none;background:linear-gradient(90deg,#17c9b2,#73f0d2)}
+.avan-signin .avan-captcha.is-expired{border-color:rgba(244,180,69,.48)}
+.avan-signin .avan-captcha.is-expired .avan-captcha-status{color:#efc77a}
+.avan-signin .avan-captcha.is-error{border-color:rgba(255,103,126,.55);animation:avanCaptchaShake .38s ease}
+.avan-signin .avan-captcha.is-error .avan-captcha-status{color:#ff9caf}
+.avan-signin .avan-captcha.is-error .captcha-shield{filter:drop-shadow(0 0 10px rgba(255,85,117,.22))}
+.avan-signin #kc-login:disabled{opacity:.52;cursor:not-allowed;transform:none;filter:saturate(.55);box-shadow:none}
+@keyframes avanCaptchaOrbitA{from{transform:rotate(0deg) translateX(25px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(25px) translate(-50%,-50%)}}
+@keyframes avanCaptchaOrbitB{from{transform:rotate(0deg) translateX(29px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(29px) translate(-50%,-50%)}}
+@keyframes avanCaptchaScan{0%{transform:translateX(-130%)}50%{transform:translateX(130%)}100%{transform:translateX(130%)}}
+@keyframes avanCaptchaCheck{to{stroke-dashoffset:0;opacity:1}}
+@keyframes avanCaptchaShake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+@media(max-width:460px){
+ .avan-signin .avan-captcha{padding:12px}
+ .avan-signin .avan-captcha-head{grid-template-columns:50px minmax(0,1fr);gap:10px}
+ .avan-signin .avan-captcha-visual{width:50px;height:50px}.avan-signin .captcha-scan-ring.ring-a{width:43px;height:43px}.avan-signin .captcha-scan-ring.ring-b{width:50px;height:50px}
+ .avan-signin .captcha-orbit-dot.dot-a{animation-name:avanCaptchaOrbitASmall}.avan-signin .captcha-orbit-dot.dot-b{animation-name:avanCaptchaOrbitBSmall}
+ .avan-signin .avan-captcha-badge{display:none}
+}
+@keyframes avanCaptchaOrbitASmall{from{transform:rotate(0deg) translateX(21px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(21px) translate(-50%,-50%)}}
+@keyframes avanCaptchaOrbitBSmall{from{transform:rotate(0deg) translateX(25px) translate(-50%,-50%)}to{transform:rotate(360deg) translateX(25px) translate(-50%,-50%)}}
+@media(prefers-reduced-motion:reduce){
+ .avan-signin .captcha-orbit-dot,.avan-signin .avan-captcha-progress span,.avan-signin .avan-captcha.is-error{animation:none!important}
+}
+
+
+/* Reel-inspired compact-to-expanded login presentation. OTP keeps its own card behavior. */
+.avan-signin .signin-panel.login-reveal-card{
+ overflow:visible;
+ width:min(100%,520px);min-height:0;
+ padding:58px 46px 32px;
+ transform-origin:50% 20%;
+ transition:padding .52s cubic-bezier(.18,.82,.22,1),box-shadow .45s ease,transform .45s ease;
+}
+.avan-signin .signin-panel.login-reveal-card .signin-card-decor{overflow:hidden}
+.avan-signin .signin-panel.login-reveal-card .signin-brand{
+ position:absolute;z-index:6;left:50%;top:0;margin:0;
+ transform:translate(-50%,-52%);
+ width:78px;height:78px;border-radius:50%;
+ display:grid;place-items:center;
+ background:radial-gradient(circle at 38% 30%,rgba(110,251,255,.26),rgba(13,84,124,.86) 56%,rgba(4,35,59,.96) 100%);
+ border:1px solid rgba(115,235,255,.78);
+ box-shadow:0 0 0 7px rgba(37,213,244,.055),0 0 34px rgba(30,216,248,.34),0 18px 42px rgba(0,12,28,.42),inset 0 1px 0 rgba(255,255,255,.16);
+ animation:avanLoginFloat 3.8s ease-in-out infinite;
+}
+.avan-signin .signin-panel.login-reveal-card .signin-brand::before{
+ content:"";position:absolute;inset:-11px;border-radius:50%;
+ border:1px solid rgba(74,224,246,.12);box-shadow:0 0 26px rgba(36,213,246,.16);
+}
+.avan-signin .signin-panel.login-reveal-card .signin-mark{width:50px;height:50px;flex-basis:50px}
+.avan-signin .signin-panel.login-reveal-card .signin-brand-copy{display:none}
+.avan-signin .signin-panel.login-reveal-card .signin-heading{margin:4px 0 3px;text-align:center}
+.avan-signin .signin-panel.login-reveal-card .signin-heading h1{
+ margin:0;font-size:29px;
+ transition:transform .45s cubic-bezier(.18,.82,.22,1),font-size .4s ease;
+}
+.avan-signin .login-reveal-subtitle{
+ position:relative;z-index:2;margin:0 auto 18px;text-align:center;
+ color:#7fa9bd;font-size:11px;line-height:1.9;
+ transition:opacity .28s ease,transform .45s cubic-bezier(.18,.82,.22,1),max-height .45s ease,margin .45s ease;
+}
+.avan-signin .login-reveal-toggle{
+ position:relative;z-index:3;display:flex;align-items:center;justify-content:center;gap:7px;
+ width:116px;min-height:40px;margin:8px auto 0;padding:8px 15px;
+ border:1px solid rgba(82,223,244,.54)!important;border-radius:999px!important;
+ background:linear-gradient(180deg,rgba(11,80,105,.88),rgba(7,49,74,.94))!important;
+ color:#dffcff!important;font-size:12px!important;font-weight:800!important;cursor:pointer;
+ box-shadow:0 0 0 3px rgba(26,205,236,.045),0 0 22px rgba(26,205,236,.15),inset 0 1px 0 rgba(255,255,255,.08)!important;
+ transition:opacity .24s ease,transform .4s cubic-bezier(.18,.82,.22,1),max-height .35s ease,margin .35s ease,padding .35s ease,border-width .35s ease;
+}
+.avan-signin .login-reveal-toggle svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:transform .35s ease}
+.avan-signin .login-reveal-toggle:hover{border-color:#68ecff!important;background:linear-gradient(180deg,rgba(12,98,127,.94),rgba(7,59,87,.98))!important;box-shadow:0 0 0 3px rgba(35,214,244,.07),0 0 28px rgba(35,214,244,.2),inset 0 1px 0 rgba(255,255,255,.1)!important}
+.avan-signin .login-reveal-toggle:focus-visible{outline:3px solid rgba(112,239,255,.5);outline-offset:4px}
+.avan-signin .login-expand-body{
+ position:relative;z-index:2;display:flex;
+ max-height:0;opacity:0;overflow:hidden;pointer-events:none;
+ transform:translateY(-18px) scale(.985);filter:blur(8px);margin-top:-8px!important;
+ transition:max-height .72s cubic-bezier(.18,.82,.22,1),opacity .3s ease .02s,transform .62s cubic-bezier(.18,.82,.22,1),filter .38s ease,margin .5s ease;
+}
+.avan-signin .login-reveal-card>.signin-error{
+ max-height:0;opacity:0;overflow:hidden;margin:0;padding-top:0;padding-bottom:0;border-width:0;
+ transition:max-height .4s ease,opacity .25s ease,margin .3s ease,padding .3s ease;
+}
+.avan-signin .login-reveal-card.is-expanded{
+ padding:58px 46px 42px;transform:translateY(-4px);
+ box-shadow:0 38px 110px rgba(1,13,27,.76),0 0 0 1px rgba(20,189,245,.14),0 0 42px rgba(16,202,244,.27),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 42px rgba(13,123,183,.09);
+}
+.avan-signin .login-reveal-card.is-expanded .signin-heading h1{transform:translateY(-1px);font-size:31px}
+.avan-signin .login-reveal-card.is-expanded .login-reveal-subtitle{opacity:.92;transform:translateY(-2px);margin-bottom:14px}
+.avan-signin .login-reveal-card.is-expanded .login-reveal-toggle{
+ opacity:0;pointer-events:none;transform:translateY(-9px) scale(.88);
+ max-height:0;min-height:0;margin:0 auto;padding-top:0;padding-bottom:0;border-width:0!important;
+}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body{
+ max-height:760px;opacity:1;overflow:visible;pointer-events:auto;
+ transform:translateY(0) scale(1);filter:blur(0);margin-top:4px!important;
+ transition:max-height .78s cubic-bezier(.18,.82,.22,1),opacity .35s ease .12s,transform .66s cubic-bezier(.18,.82,.22,1),filter .42s ease .08s,margin .5s ease;
+}
+.avan-signin .login-reveal-card.is-expanded>.signin-error{
+ max-height:120px;opacity:1;overflow:visible;margin:0 0 14px;padding:12px;border-width:1px;
+}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>label,
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>input,
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>.avan-captcha,
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>#kc-login{
+ animation:avanLoginRevealItem .48s both;
+}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>label:nth-of-type(1){animation-delay:.06s}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>input:nth-of-type(1){animation-delay:.09s}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>label:nth-of-type(2){animation-delay:.12s}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>input:nth-of-type(2){animation-delay:.15s}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>.avan-captcha{animation-delay:.19s}
+.avan-signin .login-reveal-card.is-expanded .login-expand-body>#kc-login{animation-delay:.23s}
+@keyframes avanLoginFloat{0%,100%{transform:translate(-50%,-52%) translateY(0)}50%{transform:translate(-50%,-52%) translateY(-6px)}}
+@keyframes avanLoginRevealItem{from{opacity:0;transform:translateY(-9px);filter:blur(5px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
+@media(max-width:820px){
+ .avan-signin .signin-panel.login-reveal-card{width:min(100%,500px);padding:54px 23px 27px}
+ .avan-signin .signin-panel.login-reveal-card.is-expanded{padding:54px 23px 31px}
+ .avan-signin .signin-panel.login-reveal-card .signin-brand{width:70px;height:70px}
+ .avan-signin .signin-panel.login-reveal-card .signin-mark{width:45px;height:45px;flex-basis:45px}
+ .avan-signin .signin-panel.login-reveal-card .signin-heading h1{font-size:26px}
+ .avan-signin .signin-panel.login-reveal-card.is-expanded .signin-heading h1{font-size:28px}
+}
+@media(prefers-reduced-motion:reduce){
+ .avan-signin .signin-panel.login-reveal-card,.avan-signin .login-reveal-subtitle,.avan-signin .login-reveal-toggle,.avan-signin .login-expand-body,
+ .avan-signin .signin-panel.login-reveal-card .signin-brand{transition:none!important;animation:none!important}
+ .avan-signin .login-reveal-card.is-expanded .login-expand-body>*{animation:none!important}
+}
+
+.avan-signin .captcha-provider{
+ display:inline-flex;align-items:center;justify-content:center;
+ padding:4px 9px;border-radius:999px;
+ border:1px solid rgba(94,215,239,.14);
+ background:rgba(8,42,62,.42);color:#6eaabd;
+ font:700 8px/1 Tahoma,"Segoe UI",sans-serif;letter-spacing:1.15px;direction:ltr;
+}
+.avan-signin .login-reveal-card.is-collapsed{cursor:pointer}
+.avan-signin .login-reveal-card.is-expanded{cursor:default}
+
+.avan-signin .captcha-turnstile-slot{
+ width:100%;display:flex;align-items:center;justify-content:center;min-height:0;
+}
+.avan-signin .avan-captcha-challenge{
+ flex-direction:column;align-items:center;gap:6px;
+}
+.avan-signin .avan-captcha-badge{transition:color .2s ease,border-color .2s ease,background .2s ease}
+.avan-signin .avan-captcha.is-verified .avan-captcha-badge{
+ color:#7df0d0;border-color:rgba(87,236,204,.34);background:rgba(14,74,67,.55);
+}

@@ -1,0 +1,11 @@
+{$AVAN_APP_HOST} {
+    @admin path /admin /admin/*
+    respond @admin 404
+    request_body {
+        max_size 9MB
+    }
+    reverse_proxy avan:8188
+}
+{$AVAN_AUTH_HOST} {
+    reverse_proxy keycloak:8080
+}

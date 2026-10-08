@@ -21,6 +21,12 @@ function Write-SecretOnce([string]$Name, [string]$Value) {
 Write-SecretOnce 'keycloak-db-password' (New-StrongSecret 48)
 Write-SecretOnce 'avan-bff-client-secret' (New-StrongSecret 64)
 Write-SecretOnce 'avan-provisioner-client-secret' (New-StrongSecret 64)
+Write-SecretOnce 'avan-sql-sa-password' ('Avan1!' + (New-StrongSecret 48))
+Write-SecretOnce 'avan-antibot-hmac-key' (New-StrongSecret 64)
+# Official Cloudflare Turnstile test credentials for localhost/development.
+# Production should replace them with real widget credentials.
+Write-SecretOnce 'avan-turnstile-site-key' '1x00000000000000000000AA'
+Write-SecretOnce 'avan-turnstile-secret-key' '1x0000000000000000000000000000000AA'
 
 $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls $secretDir /inheritance:r | Out-Null
@@ -29,5 +35,7 @@ Get-ChildItem $secretDir -File | ForEach-Object {
     & icacls $_.FullName /inheritance:r | Out-Null
     & icacls $_.FullName /grant:r "${currentIdentity}:F" "SYSTEM:F" | Out-Null
 }
-Write-Host 'AVAN internal identity secrets initialized.' -ForegroundColor Green
+Write-Host 'AVAN internal identity and database secrets initialized.' -ForegroundColor Green
 Write-Host 'No SQL Server, ProcessMaker or customer password is stored in .env.' -ForegroundColor Green
+Write-Host 'Hybrid Anti-Bot initialized: Cloudflare Turnstile primary + ALTCHA local fallback.' -ForegroundColor Green
+Write-Host 'Localhost uses official Turnstile test keys until production keys are configured.' -ForegroundColor Yellow

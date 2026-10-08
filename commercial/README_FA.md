@@ -1,3 +1,7 @@
+> نسخه جاری: داده جلسه از ProcessMaker/MySQL و اطلاعات خود Agent در SQL Server Express داخلی Docker با بانک مستقل `AVANAgent` است. این اتصال خودکار از GodAdmin قابل جایگزینی با SQL Server سازمانی است. برای نصب این نسخه فقط [راهنمای جدید](MEETING_AGENT_REWRITE_FA.md) را دنبال کنید؛ راهنماهای EnterpriseProcess2 پایین این صفحه مربوط به نسخه قبلی‌اند.
+
+راهنمای نسخه ایجنت تحلیلی و دبیر هوشمند: [MEETING_AGENT_REWRITE_FA.md](MEETING_AGENT_REWRITE_FA.md)
+
 # آوان | سامانه مدیریت هوشمند جلسات
 
 آوان در مسیر پیش‌فرض Docker از `commercial.production_app` و اطلاعات ثبت‌شده در `EnterpriseProcess2.MTG` استفاده می‌کند. تصویر عملیاتی هیچ سناریوی ساختگی یا API قدیمی /v1 را به کاربر ارائه نمی‌دهد.

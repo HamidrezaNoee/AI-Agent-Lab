@@ -1,0 +1,8 @@
+# Development laptop ONLY: ProcessMaker 3 on the same Windows host, port 84.
+# Use with: docker compose -f compose.yaml -f compose.pm-local.yaml up -d --build avan
+# Do not use in production or across a shared network; use trusted HTTPS instead.
+services:
+  avan:
+    environment:
+      AVAN_PM_ALLOW_LOCAL_HTTP: "1"
+      AVAN_LOCAL_EVALUATION: "1"

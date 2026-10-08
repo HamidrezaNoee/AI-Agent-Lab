@@ -1,0 +1,263 @@
+{
+  "schema": 1,
+  "baseline": "4a0b583cf098268ba8c3784e22b87df10b0fc5f2",
+  "modules": {
+    "identity": {
+      "summary": "Organizational OIDC login, account provisioning and local owner recovery.",
+      "entrypoints": [
+        "commercial/production_app.py",
+        "commercial/user_accounts.py",
+        "commercial/identity_operator.py",
+        "commercial/local_godadmin.py",
+        "commercial/security.py"
+      ],
+      "owns": [
+        "commercial/identity*",
+        "commercial/user_accounts.py",
+        "commercial/local_godadmin.py",
+        "commercial/security.py",
+        "commercial/production_app.py",
+        "commercial/pending_identities.py",
+        "infra/keycloak/**",
+        "infra/antibot/**",
+        "commercial/turnstile.py",
+        "scripts/check-login-render.py"
+      ],
+      "tests": [
+        "commercial/tests/test_oidc_state_cookie.py",
+        "commercial/tests/test_login_routing.py",
+        "commercial/tests/test_managed_user_creation.py",
+        "commercial/tests/test_identity_operator.py",
+        "commercial/tests/test_antibot_hybrid.py",
+        "commercial/tests/test_realm_profile_import.py",
+        "commercial/tests/test_login_render_probe.py",
+        "commercial/tests/test_unified_godadmin.py"
+      ],
+      "depends_on": [],
+      "contract": "Keycloak owns organizational credentials. No session before required OTP. Captcha fails closed. Local GodAdmin recovery must not depend on PM or AI."
+    },
+    "access": {
+      "summary": "AVAN authorization, organizations and explicit external-account bindings.",
+      "entrypoints": [
+        "commercial/native_access.py",
+        "commercial/user_bpms_bindings.py",
+        "commercial/authorization_v2.py"
+      ],
+      "owns": [
+        "commercial/native_access.py",
+        "commercial/user_bpms_bindings.py",
+        "commercial/authorization*",
+        "commercial/organizations.py",
+        "commercial/directory_access.py"
+      ],
+      "tests": [
+        "commercial/tests/test_user_bpms_bindings.py",
+        "commercial/tests/test_authorization_v2.py",
+        "commercial/tests/test_organizations.py"
+      ],
+      "depends_on": [
+        "identity",
+        "storage"
+      ],
+      "contract": "Enforce tenant and subject on reads and writes. Binding is explicit; a source external account cannot silently become two AVAN identities."
+    },
+    "bpms": {
+      "summary": "ProcessMaker read models, OAuth writes and multi-source registry.",
+      "entrypoints": [
+        "commercial/processmaker_store.py",
+        "commercial/secretary_credentials.py",
+        "commercial/bpms_registry.py"
+      ],
+      "owns": [
+        "commercial/processmaker*",
+        "commercial/bpms*",
+        "commercial/directory*"
+      ],
+      "tests": [
+        "commercial/tests/test_processmaker_oauth.py",
+        "commercial/tests/test_processmaker_native.py",
+        "commercial/tests/test_processmaker_directory.py",
+        "commercial/tests/test_multi_bpms.py"
+      ],
+      "depends_on": [
+        "access",
+        "storage"
+      ],
+      "contract": "PM MySQL is read-only. Mutations use the acting user OAuth REST credentials and explicit source identity; never a shared administrator fallback."
+    },
+    "meetings": {
+      "summary": "Meeting secretary, chair and action-assignee workflows and versioned process packs.",
+      "entrypoints": [
+        "commercial/secretary_runtime.py",
+        "commercial/secretary_catalog.py",
+        "commercial/process_workspace.py",
+        "commercial/secretary_ai_context.py",
+        "commercial/secretary_orchestrator.py",
+        "commercial/secretary_time.py",
+        "commercial/secretary_journal.py"
+      ],
+      "owns": [
+        "commercial/secretary*",
+        "commercial/process_workspace.py",
+        "commercial/process_context.py",
+        "commercial/meeting_questions.py",
+        "commercial/meeting_outcome.py"
+      ],
+      "tests": [
+        "commercial/tests/test_meeting_pack_roles.py",
+        "commercial/tests/test_secretary_workflow.py",
+        "commercial/tests/test_secretary_inbox.py",
+        "commercial/tests/test_process_workspace.py",
+        "commercial/tests/test_secretary_ai_context.py",
+        "commercial/tests/test_meeting_pair_execution.py",
+        "commercial/tests/test_secretary_commands.py",
+        "commercial/tests/test_secretary_resolution.py",
+        "commercial/tests/test_secretary_conversation_regressions.py",
+        "commercial/tests/test_process_case_graph.py",
+        "commercial/tests/test_secretary_orchestrator.py"
+      ],
+      "depends_on": [
+        "bpms",
+        "access",
+        "storage"
+      ],
+      "contract": "Pack task IDs and roles are validated. Runtime grants and external task ownership must both permit the action. Native read-only packs require explicit reviewed upgrade."
+    },
+    "ai": {
+      "summary": "Agent orchestration, tools, completion, monitoring and usage.",
+      "entrypoints": [
+        "commercial/meeting_agent.py",
+        "commercial/agent_tools.py",
+        "commercial/agent_routes.py"
+      ],
+      "owns": [
+        "commercial/agent*.py",
+        "commercial/meeting_agent.py",
+        "commercial/platform_agent.py",
+        "commercial/quota.py"
+      ],
+      "tests": [
+        "commercial/tests/test_agent_completion.py",
+        "commercial/tests/test_production_agent.py",
+        "commercial/tests/test_agent_connections.py"
+      ],
+      "depends_on": [
+        "access",
+        "bpms",
+        "storage",
+        "licensing"
+      ],
+      "contract": "Read bounded evidence; verify authorization before tool calls. Current vendor coupling and process-local run limiting remain migration work; a provider-neutral gateway is not yet implemented."
+    },
+    "storage": {
+      "summary": "AVAN SQL persistence and installation configuration.",
+      "entrypoints": [
+        "commercial/agent_storage.py",
+        "commercial/production_store.py",
+        "commercial/setup_console.py"
+      ],
+      "owns": [
+        "commercial/*store.py",
+        "commercial/agent_storage.py",
+        "commercial/setup_console.py",
+        "commercial/sql/**",
+        "commercial/product_state.py"
+      ],
+      "tests": [
+        "commercial/tests/test_agent_storage.py",
+        "commercial/tests/test_operational_bootstrap.py"
+      ],
+      "depends_on": [],
+      "contract": "AVAN owns its database. Preserve state, encryption keys and volumes. Encrypted aggregate state is current behavior; relational migration needs versioning, rollback and tenant constraints."
+    },
+    "licensing": {
+      "summary": "License verification and licensed completion gates.",
+      "entrypoints": [
+        "commercial/licensing/runtime.py",
+        "commercial/production_license.py"
+      ],
+      "owns": [
+        "commercial/licens*",
+        "commercial/licensing/**",
+        "commercial/production_license.py"
+      ],
+      "tests": [
+        "commercial/tests/test_license_codec.py",
+        "commercial/tests/test_license_completion.py"
+      ],
+      "depends_on": [],
+      "contract": "Keep signing keys outside production. Verify signatures and entitlements server-side. Billing is planned, not shipped."
+    },
+    "ui": {
+      "summary": "Production workspace and administration frontends.",
+      "entrypoints": [
+        "commercial/web/production/app.js",
+        "commercial/web/admin/app.js",
+        "commercial/login_appearance.py"
+      ],
+      "owns": [
+        "commercial/web/**",
+        "commercial/login_appearance.py",
+        "commercial/branding_assets.py",
+        "commercial/local_font_css.py"
+      ],
+      "tests": [
+        "commercial/tests/test_login_appearance.py",
+        "commercial/tests/test_session_ui.py",
+        "commercial/tests/test_local_font_css.py"
+      ],
+      "depends_on": [
+        "identity",
+        "access",
+        "meetings"
+      ],
+      "contract": "Persian RTL and the shared scene remain. Canonical login assets are under web/admin; synchronize generated Keycloak copies. Python tests do not replace actual browser checks."
+    },
+    "installation": {
+      "summary": "First-run setup, recovery, container delivery and readiness.",
+      "entrypoints": [
+        "commercial/setup_routes.py",
+        "compose.yaml",
+        "scripts/start-avan-verified.ps1"
+      ],
+      "owns": [
+        "compose*",
+        "commercial/Dockerfile*",
+        "commercial/setup_routes.py",
+        "commercial/production_install.py",
+        "commercial/production_onboarding.py",
+        "scripts/**",
+        ".github/**",
+        "infra/caddy/**"
+      ],
+      "tests": [
+        "commercial/tests/test_operational_bootstrap.py",
+        "commercial/tests/test_startup_readiness.py",
+        "commercial/tests/test_preflight.py"
+      ],
+      "depends_on": [
+        "identity",
+        "storage"
+      ],
+      "contract": "Preserve secrets and persistent volumes. /health is liveness only. Discovery, rendered login, security challenge and full authenticated login are separate gates."
+    },
+    "developer-context": {
+      "summary": "Bounded AI context and conservative test selection.",
+      "entrypoints": [
+        "scripts/ai-context.py",
+        "docs/ai/modules.json"
+      ],
+      "owns": [
+        "AGENTS.md",
+        "docs/**",
+        "scripts/ai-context.py",
+        "commercial/tests/test_ai_context.py"
+      ],
+      "tests": [
+        "commercial/tests/test_ai_context.py"
+      ],
+      "depends_on": [],
+      "contract": "Summaries are navigation, not proof. Unknown changed paths fall back to the full Python suite. Full CI remains mandatory; never include credentials, logs or customer records in generated context."
+    }
+  }
+}

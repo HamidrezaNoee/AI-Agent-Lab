@@ -1,7 +1,17 @@
-# Production service — no preview dataset, no OpenAI text generation.
+# Production service with bounded, evidence-grounded OpenAI agent.
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
 PyJWT[crypto]>=2.9,<3
-pyodbc>=5,<6
+PyMySQL>=1.1,<2
+phpserialize==1.3
 httpx>=0.27,<1
 jdatetime>=5,<6
+qrcode>=8,<9
+
+openai>=1.68,<3
+
+pyodbc>=5,<6
+
+
+# Text-only evidence PDFs, parsed in a bounded subprocess.
+pypdf>=6,<7
