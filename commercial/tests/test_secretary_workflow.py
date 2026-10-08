@@ -162,7 +162,7 @@ def test_minutes_does_not_request_locked_plan_or_end_fields():
  f.validate(values,'minutes',S['directory'])
 
 
-def test_minutes_requires_attendance_status_and_time_for_present_participants():
+def test_minutes_requires_status_but_attendance_time_is_optional():
  values={
   'MTG_MeetingHeld':'Held',
   'MTG_MeetingDiscussionSummary':'جمع‌بندی جلسه',
@@ -176,7 +176,7 @@ def test_minutes_requires_attendance_status_and_time_for_present_participants():
  }
  gaps=f.missing(values,'minutes')
  assert any(x['field']=='MTG_Participants.1.MTG_AttendanceStatus' for x in gaps)
- assert any(x['field']=='MTG_Participants.2.MTG_AttendanceTime' for x in gaps)
+ assert not any(x['field']=='MTG_Participants.2.MTG_AttendanceTime' for x in gaps)
  values['MTG_Participants']['1']['MTG_AttendanceStatus']='Excused'
  values['MTG_Participants']['2']['MTG_AttendanceTime']='10:15'
  gaps=f.missing(values,'minutes')

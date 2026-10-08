@@ -514,7 +514,7 @@ def apply(text, current, task, scope, *, questions=(), history=(), now=None):
             reply=f"وضعیت {changed} شرکت‌کننده روی «حاضر» و ساعت حضور همه روی {clock} ثبت شد."
         else:
             remaining=[q for q in remaining if "وضعیت حضور" not in resolution.normalize_text(q)]
-            reply=f"وضعیت {changed} شرکت‌کننده روی «حاضر» ثبت شد؛ ساعت حضور افراد حاضر هنوز باید مشخص شود."
+            reply=f"وضعیت {changed} شرکت‌کننده روی «حاضر» ثبت شد؛ ساعت حضور اختیاری است."
         return {
             "values":values,
             "questions":remaining,

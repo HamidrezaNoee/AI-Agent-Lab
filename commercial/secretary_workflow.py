@@ -163,10 +163,7 @@ def missing(values,stage):
    if not status:
     result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceStatus',
      'question':f'وضعیت حضور شرکت‌کننده ردیف {i}{who} را مشخص کنید: حاضر، غایب یا غیبت موجه.'})
-   elif status=='Present' and not attendance_time:
-    result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceTime',
-     'question':f'ساعت حضور شرکت‌کننده حاضر ردیف {i}{who} را به صورت HH:mm اعلام کنید.'})
-   elif status=='Present' and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',attendance_time):
+   elif status=='Present' and attendance_time and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',attendance_time):
     result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceTime',
      'question':f'ساعت حضور شرکت‌کننده حاضر ردیف {i}{who} معتبر نیست؛ آن را به صورت HH:mm اصلاح کنید.'})
   decision_rows=indexed_rows(values.get('MTG_Decisions'))

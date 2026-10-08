@@ -174,3 +174,27 @@ The broad run reached 569 passed +55 subtests before the known missing local bin
 YekanBakh WOFF2 fixture failed; remote font assets are unchanged. Full remote CI
 remains the release gate. No live PM/SQL/Keycloak/model or production Docker access
 was available; do not claim deployment or live native routing verification.
+
+## Attendance optional correction — 2026-10-08 (main)
+
+Supersedes the earlier statement that attendance clock must be supplied. Owner
+confirmed it is optional; the native FR-MTG-003 control already has required=false.
+AVAN missing-field checks and old assistant questions now honor that requirement.
+Nonempty invalid times still fail validation. Existing same-row active UIDs in model
+outputs are retained without demanding another identity quote; new/reassigned people
+still require evidence. Typo “به موقه” and “سر تایم جلسه” use the attendance tool.
+Explicit “همه ... آمدند” marks all listed participants present; general statements
+about present attendees preserve existing absences. No unknown clock is fabricated.
+
+PM's reviewed AFTER trigger had a contradictory unconditional regex check. The
+complete one-condition correction and exact Designer instructions are in
+`docs/processmaker/OPTIONAL_ATTENDANCE_FA.md` and its adjacent PHP file. AVAN does
+not write PM MySQL or remotely install trigger code. Existing source verification
+accepts only the exact reviewed old/new hashes for that single trigger. Other code
+drift remains rejected. An app rebuild alone cannot change the native trigger.
+
+Main aae3e23 contains all 92242f4 code plus the merged OAuth helper. These fixes target
+main, preserving those unrelated additions. No UI change in this increment. Focused
+Python regressions cover optional blanks, invalid times, both user phrases, preserved
+identities, and rejection of unreviewed trigger changes. Live PM routing and full CI
+are still required before calling this an operationally verified deployment.

@@ -61,16 +61,24 @@ def apply(r,c):
     if task['stage']=='minutes':
         participants=values.get('MTG_Participants') or {}
         if not isinstance(participants,dict):return None
-        on_time=any(x in raw for x in ('به موقع','بموقع','بهموقع','سر ساعت','ساعت جلسه'))
+        if 'ساعت' in raw and 'حضور' in raw and any(x in raw for x in ('اجباری نیست','اختیاری','خالی بماند','خالی بمونه','نپرس')):
+            return result('ساعت حضور اختیاری است؛ خالی بودن آن مانع تکمیل صورت‌جلسه نیست و دیگر برای آن سؤال نمی‌کنم.')
+        on_time=any(x in raw for x in ('به موقع','بموقع','بهموقع','به موقه','بموقه','بهموقه','سر ساعت','ساعت جلسه','سر تایم جلسه'))
         collective=any(x in raw for x in ('همه','حضورها','حضور ها','حاضرین','شرکت کنندگان'))
         if on_time and collective and not any(x in raw for x in ('نیامد','نرسید','تاخیر','تأخیر','دیر آمد','دیر امد')):
             meeting={**task.get('native',{}),**values}
             start=clock(meeting.get('MTG_MeetingStartTime',''),allow_bare=True)
-            if not start:return result('برای ثبت حضور به‌موقع، ساعت شروع جلسه در اطلاعات تأییدشده موجود نیست. ساعت حضور را مانند «ساعت حضور همه افراد حاضر ۱۷:۳۰» بفرستید.')
+            everyone_came='همه' in raw and any(word in raw for word in ('آمدند','امدند','آمده اند','امده اند','اومدن','آمدن','امدن'))
+            if everyone_came:
+                for row in participants.values():row['MTG_AttendanceStatus']='Present'
+            if not start:
+                return result('حضور همه شرکت‌کنندگان ثبت شد؛ ساعت حضور اختیاری است و خالی می‌ماند.' if everyone_came else 'متوجه شدم افراد حاضر به‌موقع رسیدند؛ چون ساعت شروع ثبت نشده، ساعت حضور اختیاری را خالی نگه می‌دارم.',everyone_came)
             changed=0
             for row in participants.values():
                 if row.get('MTG_AttendanceStatus')=='Present':row['MTG_AttendanceTime']=start;changed+=1
-            if changed:return result(f'ساعت حضور {changed} فرد حاضر، مطابق ساعت شروع جلسه، روی {start} ثبت شد. در نسخه فعلی فرایند، این ساعت برای افراد حاضر لازم است.',True)
+            if changed:
+                suffix='وضعیت همه شرکت‌کنندگان حاضر ثبت شد.' if everyone_came else 'وضعیت غیبت افراد دیگر تغییر نکرد.'
+                return result(f'ساعت حضور {changed} فرد حاضر، مطابق ساعت شروع جلسه، روی {start} ثبت شد. ساعت حضور اختیاری است. '+suffix,True)
             return result('هنوز فردی با وضعیت حاضر ثبت نشده است؛ بگویید چه کسانی حاضر بوده‌اند یا «همه حاضر بودند».')
         if raw in ('حاضر بوده','حاضر بود','حاضر است','حاضر بوده است','حاضر','بله حاضر بوده'):
             refs=re.findall(r'(?:ردیف|شرکت کننده)\s*(\d+)',last)

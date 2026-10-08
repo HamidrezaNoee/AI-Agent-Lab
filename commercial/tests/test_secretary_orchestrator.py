@@ -28,7 +28,7 @@ def test_exact_mixed_encoding_from_owner():
 def test_on_time_uses_native_start_and_preserves_absence(pack):
  values={'MTG_MeetingHeld':'Held','MTG_Participants':{'1':{'MTG_AttendanceStatus':'Present'},'7':{'MTG_AttendanceStatus':'Excused'}}}
  t=task(pack,'minutes',{'MTG_MeetingStartTime':'09:30'})
- result=r.converse('حضور ها بهموقع سر ساعت جلسه بودند و اجباری نیستند',t,values,S)
+ result=r.converse('حضور ها بهموقع سر ساعت جلسه بودند',t,values,S)
  assert result[0]['MTG_Participants']['1']['MTG_AttendanceTime']=='09:30'
  assert result[0]['MTG_Participants']['7']==values['MTG_Participants']['7']
  assert values['MTG_Participants']['1'].get('MTG_AttendanceTime') is None
@@ -117,3 +117,55 @@ def test_session_undo_route_keeps_checkpoint_private(pack,store,monkeypatch):
  assert undone.status_code==200 and undone.json()['session']['values']==row['values']
  assert not undone.json()['session']['can_undo']
  assert client.post(base+'/undo',json={'revision':public['revision']}).status_code==409
+
+
+@pytest.mark.parametrize('message',['همه به موقه امدند','یعنی سر تایم جلسه همه امدند'])
+def test_owner_typo_and_followup_keep_existing_identities(pack,message):
+ values={'MTG_MeetingHeld':'Held','MTG_Participants':{'1':{'MTG_ParticipantUserUID':'s'*32,'MTG_AttendanceStatus':'Present'},'7':{'MTG_ParticipantUserUID':'c'*32,'MTG_AttendanceStatus':'Excused'}}}
+ answer=r.converse(message,task(pack,'minutes',{'MTG_MeetingStartTime':'10:00'}),values,S)
+ assert answer.receipt['tool']=='temporal.resolve'
+ assert answer[0]['MTG_Participants']['1']['MTG_AttendanceTime']=='10:00'
+ assert answer[0]['MTG_Participants']['1']['MTG_ParticipantUserUID']=='s'*32
+ assert answer[0]['MTG_Participants']['7']['MTG_ParticipantUserUID']=='c'*32
+ assert answer[0]['MTG_Participants']['7']['MTG_AttendanceStatus']=='Present'
+ assert 'نام/نام' not in answer[2]
+
+
+def test_optional_attendance_drops_persisted_questions(pack):
+ values={'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'جلسه برگزار شد','MTG_Participants':{'1':{'MTG_ParticipantUserUID':'s'*32,'MTG_AttendanceStatus':'Present'}}}
+ question='ساعت حضور شرکت‌کننده حاضر ردیف 1 را به صورت HH:mm اعلام کنید.'
+ answer=r.converse('ساعت حضور اجباری نیست، خالی بماند',task(pack,'minutes'),values,S,questions=[question])
+ assert answer[0]==values and 'اختیاری' in answer[2]
+ assert question not in answer[2]
+ assert not any('AttendanceTime' in x['field'] for x in r.gaps(values,task(pack,'minutes')))
+
+
+def test_model_grid_echo_keeps_only_same_row_existing_identity(pack):
+ field='MTG_Participants';spec=r.form(task(pack,'minutes'))[field]
+ before={'1':{'MTG_ParticipantUserUID':'s'*32,'MTG_AttendanceStatus':'Present'}}
+ after={'1':{'MTG_ParticipantUserUID':'s'*32,'MTG_AttendanceTime':'10:00'}}
+ resolved,questions=r.resolve_extracted_people(field,after,spec,S['directory'],evidence='سر تایم آمدند',current=before)
+ assert resolved['1']['MTG_ParticipantUserUID']=='s'*32 and not questions
+ # A moved/new identity does not inherit another row's evidence exemption.
+ resolved,questions=r.resolve_extracted_people(field,{'2':after['1']},spec,S['directory'],evidence='سر تایم آمدند',current=before)
+ assert not resolved['2']['MTG_ParticipantUserUID'] and questions
+
+@pytest.mark.parametrize('tampered',[False,True])
+def test_only_reviewed_optional_attendance_trigger_is_compatible(monkeypatch,tampered):
+ import hashlib,json
+ from pathlib import Path
+ from commercial import secretary_catalog as catalog,processmaker_store
+ root=Path(__file__).parents[2]
+ code=(root/'docs/processmaker/minutes-after-optional-attendance.php').read_text()
+ uid='fe88e8afc98ca69585ab0f5fb16bbf74'
+ reference=json.loads((root/'commercial/secretary_pack_reference.json').read_text())
+ old_hash=reference['meeting']['trigger_hashes'][uid]
+ original=code.replace("$status === 'Present' && $time !== '' && !preg_match", "$status === 'Present' && !preg_match")
+ assert hashlib.sha256(original.replace('\r\n','\n').strip().encode()).hexdigest()==old_hash
+ expected={'process_uid':'meeting','stages':{},'trigger_hashes':{uid:old_hash}}
+ pack={'meeting':expected,'action':{'process_uid':'action','stages':{}}}
+ monkeypatch.setattr(catalog,'_installed_process',lambda *args:{'stages':{}})
+ monkeypatch.setattr(processmaker_store,'query',lambda *args:[(uid,code+('\nthrow new Exception("unreviewed");' if tampered else ''))])
+ if tampered:
+  with pytest.raises(ValueError):catalog._verify_installed_on_connection(None,pack)
+ else:catalog._verify_installed_on_connection(None,pack)

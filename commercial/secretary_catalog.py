@@ -339,7 +339,11 @@ def _verify_installed_on_connection(con,pack):
   if expected.get('trigger_hashes'):
    rows=query(con,'SELECT TRI_UID,TRI_WEBBOT FROM TRIGGERS WHERE PRO_UID=%s',(expected['process_uid'],))
    hashes={str(uid):hashlib.sha256(str(code or '').replace('\r\n','\n').strip().encode()).hexdigest() for uid,code in rows}
-   if any(hashes.get(uid)!=digest for uid,digest in expected['trigger_hashes'].items()):
+   # Reviewed one-condition migration: blank attendance time becomes optional.
+   # Accept only the exact old/new trigger code, never arbitrary code drift.
+   attendance_uid='fe88e8afc98ca69585ab0f5fb16bbf74'
+   attendance_hashes={'9ab0a550de738f679538b6ddf00b50c497b85b5fe514a87a0cdd55e95625e6ee', 'ffb8f021208417274b5a9b2c451a130e2f01417f129163bd4698b46fb1454873'}
+   if any(hashes.get(uid)!=digest and not (uid==attendance_uid and digest in attendance_hashes and hashes.get(uid) in attendance_hashes) for uid,digest in expected['trigger_hashes'].items()):
     raise ValueError('کد تریگر نصب‌شده با PMX بازبینی‌شده یکسان نیست؛ نسخه صحیح را در ProcessMaker نصب کنید.')
 
 
@@ -384,3 +388,4 @@ def install_reviewed(source_id,actor,expected_revisions):
   tx.audit('',actor,'SECRETARY_REVIEWED_PAIR_INSTALLED',{'source_id':source_id,'pack_id':row['id'],
            'meeting_sha256':pack['meeting']['pmx_sha256'],'action_sha256':pack['action']['pmx_sha256']})
  return row
+

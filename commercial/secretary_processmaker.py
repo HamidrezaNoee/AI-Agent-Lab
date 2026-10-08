@@ -44,7 +44,7 @@ class PMRejected(HTTPException):
   self.upstream_message=_repair_mojibake(message)
   detail=f'ProcessMaker عملیات «{self.operation}» را نپذیرفت (HTTP {self.upstream_status})'
   if self.upstream_message:detail+=': '+self.upstream_message
-  if 'ساعت حضور' in self.upstream_message:detail+=' راه‌حل: ساعت حضور افراد حاضر را در فرم تکمیل کنید؛ اگر همه به‌موقع آمدند، به دبیر بگویید «همه سر ساعت جلسه آمدند». سپس دوباره ارسال کنید.'
+  if 'ساعت حضور' in self.upstream_message:detail+=' اگر ساعتی وارد کرده‌اید، قالب آن باید HH:mm باشد. اگر ساعت خالی است، Trigger نصب‌شده هنوز شرط قدیمی را دارد و باید اصلاح «ساعت حضور اختیاری» در ProcessMaker اعمال شود.'
   super().__init__(502,detail)
 
 def uid(value):
