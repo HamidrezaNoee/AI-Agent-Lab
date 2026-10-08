@@ -17,7 +17,7 @@ const server=http.createServer((req,res)=>{
  const file=path.resolve(web,name);if(!file.startsWith(web+path.sep)){res.writeHead(403);return res.end()}
  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end()}
  const type=path.extname(file);res.setHeader('Content-Type',({'.html':'text/html','.css':'text/css','.js':'text/javascript','.woff2':'font/woff2'})[type]||'application/octet-stream');
- if(name==='app.js')data=data.toString().replace('document.addEventListener("DOMContentLoaded",init);','')+`\ndocument.addEventListener('DOMContentLoaded',()=>{window.avanQA={settings:userSettingsPage,logs:supportLogsPage};app.user={modules:[2],subject:'actor',role:'Expert',name:'علی رضایی',username:'administrator'};app.csrf='fixture';document.body.classList.remove('auth-screen');document.querySelector('#nav').hidden=false;document.querySelector('#person-name').textContent='کارتابل من';secretaryPage('${source}')});`;
+ if(name==='app.js')data=data.toString().replace('document.addEventListener("DOMContentLoaded",init);','')+`\ndocument.addEventListener('DOMContentLoaded',()=>{window.avanQA={settings:userSettingsPage,logs:supportLogsPage,toast};app.user={modules:[2],subject:'actor',role:'Expert',name:'علی رضایی',username:'administrator'};app.csrf='fixture';document.body.classList.remove('auth-screen');document.querySelector('#nav').hidden=false;document.querySelector('#person-name').textContent='کارتابل من';secretaryPage('${source}')});`;
  res.end(data);
  });
 });
@@ -34,6 +34,11 @@ const server=http.createServer((req,res)=>{
     return r.fulfill({json:savedPreferences||{secretary_auto_play_voice:false,voice_auto_transcribe:true,voice_auto_send:false}});
    }
    if(url.pathname==='/api/support/logs')return r.fulfill({json:{scope:'self',logs:[{id:'1',actor_id:'actor',actor_name:person.name,event_code:'SECRETARY_PROCESSING_FAILED',happened_at:'2026-10-07T12:00:00Z',detail:{case_uid:'case-100',source_id:source,process_uid:'meeting-process',stage:'minutes',error:'نمونه گزارش بررسی اتصال'}}],filters:{actors:[{id:'actor',name:person.name}],sources:[source],processes:['meeting-process'],stages:['minutes']}}});
+   if(url.pathname.endsWith('/sessions'))return r.fulfill({json:{id:'new-draft'}});
+   if(url.pathname.includes('/sessions/new-draft')){
+    const turned=url.pathname.endsWith('/turn'),done=turned&&r.request().postDataJSON().text!=='پاک کن';
+    return r.fulfill({json:{session:{id:'new-draft',status:'draft',revision:turned?2:1,values:{MTG_MeetingTitle:done?'جلسه کامل':''},history:[]},task:{stage:'invitation'},form:{MTG_MeetingTitle:{type:'text',label:'عنوان جلسه'}},people:[],assistant:{message:done?'اطلاعات کامل است.':'عنوان جلسه را بگویید.',missing:done?[]:[{field:'MTG_MeetingTitle',question:'عنوان چیست؟'}]}}});
+   }
    if(url.pathname.endsWith('/turn')||url.pathname.endsWith('/undo')){
     const undo=url.pathname.endsWith('/undo'),value=undo?'':'بررسی مجوزها در دستور جلسه قرار گیرد';chatRevision++;
     return r.fulfill({json:{task:tasks[0],draft:{values:{MTG_InvitationApproval:'',MTG_InvitationChairComment:value},revision:chatRevision,status:'draft',history:[{role:'assistant',text:undo?'آخرین تغییر بازگردانده شد.':'**نظر رئیس** در پیش‌نویس ثبت شد.\n- هنوز ارسال نشده است.'}],last_change:{count:1,items:[{label:'نظر رئیس',before:undo?value:'خالی',after:value||'خالی'}]},agent_receipt:{label:'اصلاح پیش‌نویس'},can_undo:!undo},assistant:{message:'ثبت شد.',missing:[{field:'MTG_InvitationApproval',question:'رأی شما چیست؟'}]}}});
@@ -83,6 +88,24 @@ const server=http.createServer((req,res)=>{
   assert.equal(await page.locator('.secretary-step:not(:disabled)').count(),0);
   assert.equal(await page.locator('.secretary-step-count').count(),0);
   assert.equal(await page.locator('[data-action="new-invitation"]').isEnabled(),true);
+  await page.locator('[data-action="new-invitation"]').click();
+  const start=page.getByRole('button',{name:'ایجاد گام اول و ارسال به رئیس',exact:true});
+  assert.equal(await start.count(),0);
+  await page.getByRole('textbox',{name:'پیام به دبیر هوشمند',exact:true}).fill('جلسه کامل');
+  await page.getByRole('button',{name:'↑',exact:true}).click();
+  await start.waitFor({state:'visible'});assert(await start.isEnabled());
+  if(process.env.AVAN_SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.AVAN_SCREENSHOT_DIR,'invitation-ready.png'),fullPage:true});
+  await page.getByRole('textbox',{name:'پیام به دبیر هوشمند',exact:true}).fill('پاک کن');
+  await page.getByRole('button',{name:'↑',exact:true}).click();
+  await start.waitFor({state:'hidden'});
+  await page.clock.install();
+  await page.evaluate(()=>window.avanQA.toast('این وظیفه جاری به حساب متصل شما تعلق ندارد.',{error:true}));
+  assert(await page.getByRole('button',{name:'بستن پیام',exact:true}).isVisible());
+  await page.clock.fastForward(9999);assert(await page.locator('#toast').isVisible());
+  await page.clock.fastForward(1);assert.equal(await page.locator('#toast').isVisible(),false);
+  await page.evaluate(()=>window.avanQA.toast('پیام دوم'));
+  await page.getByRole('button',{name:'بستن پیام',exact:true}).click();
+  assert.equal(await page.locator('#toast').isVisible(),false);
   await page.evaluate(()=>window.avanQA.settings());
   await page.locator('.settings-layout').waitFor();
   await page.locator('[data-preference="secretary_auto_play_voice"]').check();

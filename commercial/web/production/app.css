@@ -508,3 +508,6 @@ body.flow-snapshot-open{overflow:hidden}
 
 .secretary-undo[hidden]{display:none!important}
 .secretary-stop[hidden]{display:none!important}.secretary-undo{width:fit-content!important;align-self:flex-start;padding:6px 12px!important}
+
+#toast[hidden],.secretary-session-start[hidden]{display:none!important}
+#toast .toast-close{display:block!important;flex-shrink:0;min-width:30px;cursor:pointer}

@@ -198,3 +198,18 @@ main, preserving those unrelated additions. No UI change in this increment. Focu
 Python regressions cover optional blanks, invalid times, both user phrases, preserved
 identities, and rejection of unreviewed trigger changes. Live PM routing and full CI
 are still required before calling this an operationally verified deployment.
+
+## Invitation completion button and toast dismissal — 2026-10-08
+
+Owner screenshot 39 shows a new invitation whose missing fields became empty during
+chat, but the submit button was never created. Build the session-start control for
+all draft invitations and update visibility/disabled state on each server response
+and while sending. OAuth, dirty-form and server ownership gates remain unchanged.
+Toast notifications always expose a close button and expire within 10 seconds;
+explicit hidden CSS prevents the flex display rule from overriding hidden state.
+
+Validation: rendered Chromium API fixtures exercise incomplete→complete→incomplete
+invitation turns without reopening the editor, accessible manual dismissal, and the
+exact 10-second timeout using the browser clock. Existing desk/graph/settings/logs
+and DOM integration pass. Screenshot invitation-ready.png inspected locally. No
+live ProcessMaker account routing or production deployment was performed.

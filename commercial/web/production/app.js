@@ -198,7 +198,8 @@ function toast(text,options={}){
  close.addEventListener("click",event=>{event.stopPropagation();hide()});
  t.replaceChildren(message,close);t.hidden=false;t.setAttribute("role",options.error?"alert":"status");
  t.onclick=event=>{if(event.target===t||event.target===message)hide()};
- if(!options.sticky)toast.timer=setTimeout(hide,options.duration||9000);
+ const duration=Number(options.duration);
+ toast.timer=setTimeout(hide,Number.isFinite(duration)&&duration>0?Math.min(duration,10000):10000);
 }
 function sourceApi(sourceId,path){
  return sourceId?("/api/sources/"+encodeURIComponent(sourceId)+path):("/api"+path);
@@ -1528,6 +1529,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    dirty=true;
    if(send)send.disabled=true;
    if(chatMinutesSend)chatMinutesSend.disabled=true;
+   if(sessionStart)sessionStart.disabled=true;
    status.replaceChildren(note("تغییرات فرم ذخیره نشده‌اند؛ ابتدا ذخیره کنید."));
   }
   function workflowDateKey(key){
@@ -1617,7 +1619,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   requestAnimationFrame(()=>{if(chat.isConnected){chat.scrollTop=chat.scrollHeight;chatPinned=true}});
   add(conversation,chat);
 
-  let missing=assistant.missing||r.missing||[],chatMinutesSend=null,chatMinutesHint=null;
+  let missing=assistant.missing||r.missing||[],chatMinutesSend=null,chatMinutesHint=null,sessionStart=null,sessionStartHint=null;
   const progress=el("div","secretary-progress"),receiptPanel=el("details","secretary-change-receipt");
   const undoButton=link("بازگردانی آخرین تغییر",checked(async()=>{
    if(sending||dirty)throw Error("ابتدا پردازش یا اصلاحات دستی را تمام کنید.");
@@ -1643,6 +1645,8 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    summaryBody.textContent=assistant.summary||"";
    contextSummary.hidden=!assistant.summary;
    if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected;
+   if(sessionStart){sessionStart.hidden=missing.length>0;sessionStart.disabled=locked||dirty||missing.length>0||!info.oauth_connected}
+   if(sessionStartHint)sessionStartHint.hidden=missing.length>0||!!info.oauth_connected;
    if(chatMinutesHint){
     chatMinutesHint.textContent=missing.length?(missing.length+" مورد باید قبل از ارسال تکمیل شود؛ دبیر آن‌ها را یکی‌یکی می‌پرسد."):"صورت‌جلسه کامل است و آماده ارسال برای تأیید است.";
     chatMinutesHint.classList.toggle("ok",!missing.length);
@@ -1669,6 +1673,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   function setSending(value,label=""){
    sending=value;composer.classList.toggle("is-sending",value);notes.disabled=value;
    if(sendMessage)sendMessage.disabled=value||locked;
+   if(sessionStart)sessionStart.disabled=value||locked||dirty||missing.length>0||!info.oauth_connected;
    if(stopButton)stopButton.hidden=!value;
    statusLine.textContent=label;
   }
@@ -1894,9 +1899,10 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(missing.length)add(quick,el("small","muted","کنترل نهایی الزامات هنگام ارسال توسط خود ProcessMaker انجام می‌شود."));
    add(composer,quick);
   }
-  if(isSession&&!missing.length&&d.status==="draft"){
-   const start=link("ایجاد گام اول و ارسال به رئیس",()=>sendTurn("بله، ایجاد و ارسال کن").catch(e=>toast(e.message)),"button primary");start.disabled=!info.oauth_connected;add(composer,start);
-   if(!info.oauth_connected)add(composer,note("پیش‌نویس کامل است؛ برای ایجاد پرونده و ارسال آن به کارتابل رئیس، ابتدا «اتصال حساب خودم» را فعال کنید."));
+  if(isSession&&d.status==="draft"){
+   sessionStart=link("ایجاد گام اول و ارسال به رئیس",()=>sendTurn("بله، ایجاد و ارسال کن").catch(e=>toast(e.message)),"button primary secretary-session-start");
+   sessionStartHint=note("پیش‌نویس کامل است؛ برای ایجاد پرونده و ارسال آن به کارتابل رئیس، ابتدا «اتصال حساب خودم» را فعال کنید.");
+   add(composer,sessionStart,sessionStartHint);refreshConversationMeta();
   }
   if(isSession&&d.status==="reconciliation_required"){
    const warning=note("این دعوت قبلاً یک Case در ProcessMaker ساخته است، اما ادامه عملیات کامل نشده. برای جلوگیری از پرونده تکراری، AVAN Case جدید نمی‌سازد.",true);
