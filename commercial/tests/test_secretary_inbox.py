@@ -693,3 +693,93 @@ def test_latest_reviewed_pmx_pair_is_the_only_runtime_contract():
  assert 'MTG002_MeetingAttachment' in trusted['meeting']['stages']['minutes_approval']['fields']
  assert 'MTG_MeetingFile' not in trusted['meeting']['stages']['minutes_approval']['fields']
 
+
+
+
+def test_processmaker_action_grid_serialization_sets_suggest_label(pack):
+ scope=copy.deepcopy(S)
+ owner='3'*32
+ scope['directory'][owner]={
+  'active':True,
+  'username':'mgr.strategy',
+  'name':'مدیر استراتژی',
+  'position':'مدیر استراتژی',
+  'unit':'استراتژی',
+ }
+ t=task(pack,'minutes')
+ values={
+  'MTG_Actions':{
+   '1':{
+    'MTG_ActionDecisionNo':'D-001',
+    'MTG_ActionNo':'A-001',
+    'MTG_ActionDescription':'تدوین برنامه استراتژی',
+    'MTG_ActionOwnerUID':'',
+    'MTG_ActionOwnerPosition':'مدیر استراتژی',
+    'MTG_persiandate_ActionDueDateTime':'1405/07/20',
+    'MTG_ActionPriority':'High',
+   }
+  }
+ }
+ payload=r.labelled(values,t,scope)
+ row=payload['MTG_Actions']['1']
+ assert row['MTG_ActionOwnerUID']==owner
+ assert row['MTG_ActionOwnerUID_label']=='مدیر استراتژی'
+ assert row['MTG_ActionOwnerPosition_label']=='مدیر استراتژی'
+ assert row['MTG_ActionNo_label']=='A-001'
+ assert row['MTG_ActionDescription_label']=='تدوین برنامه استراتژی'
+
+
+def test_direct_minutes_submit_sends_labels_not_raw_uids(pack,store,monkeypatch):
+ scope=copy.deepcopy(S)
+ owner='3'*32
+ scope['directory'][owner]={
+  'active':True,
+  'username':'mgr.strategy',
+  'name':'مدیر استراتژی',
+  'position':'مدیر استراتژی',
+  'unit':'استراتژی',
+ }
+ native=copy.deepcopy(V)
+ native.update({
+  'MTG_MeetingHeld':'Held',
+  'MTG_Decisions':{'1':{
+   'MTG_DecisionNo':'D-001',
+   'MTG_DecisionText':'برنامه استراتژی تدوین شود',
+  }},
+  'MTG_Actions':{'1':{
+   'MTG_ActionDecisionNo':'D-001',
+   'MTG_ActionNo':'A-001',
+   'MTG_ActionDescription':'تدوین برنامه استراتژی',
+   'MTG_ActionOwnerUID':'',
+   'MTG_ActionOwnerPosition':'مدیر استراتژی',
+   'MTG_persiandate_ActionDueDateTime':'1405/07/20',
+   'MTG_ActionPriority':'High',
+  }},
+ })
+ t=task(pack,'minutes',native)
+ r.draft(scope,'actor',t)
+ trusted=c._trusted_meeting_pack()
+ written={}
+ class PM:
+  def __init__(self,*a,**kw):pass
+  def info(self,case):
+   return {'current_task':[{
+    'tas_uid':trusted['stages']['minutes']['task_uid'],
+    'usr_uid':scope['external_user_id'],
+    'del_thread_status':'OPEN','del_index':1,
+   }]}
+  def set_variables(self,case,index,values,operation=None):
+   written.update(copy.deepcopy(values))
+  def execute_trigger(self,*a,**kw):pass
+  def route(self,*a,**kw):pass
+  def close(self):pass
+ monkeypatch.setattr(r,'PM',PM)
+ result=r.advance_minutes_direct(
+  scope['tenant_id'],'actor',scope['source_id'],scope['external_user_id'],
+  t['case_uid'],t['index'],pack['id'],'bearer-token',
+  directory=scope['directory'])
+ assert result['status']=='sent'
+ row=written['MTG_Actions']['1']
+ assert row['MTG_ActionOwnerUID']==owner
+ assert row['MTG_ActionOwnerUID_label']=='مدیر استراتژی'
+ assert row['MTG_ActionOwnerUID_label']!=owner
