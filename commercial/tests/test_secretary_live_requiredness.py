@@ -229,3 +229,62 @@ def test_pm3_double_encoded_dynaform_content_preserves_required_flag():
     },ensure_ascii=False)
     fields=catalog._form_fields(json.dumps(inner,ensure_ascii=False))
     assert fields["MTG_MeetingDiscussionSummary"]["required"] is True
+
+
+
+def test_metadata_outage_keeps_editor_contract_available(pack,monkeypatch):
+    from commercial import processmaker_store
+    from commercial.processmaker_store import ProductionUnavailable
+
+    def denied(*args,**kwargs):
+        raise RuntimeError("SELECT denied")
+
+    monkeypatch.setattr(processmaker_store,"query",denied)
+
+    degraded=catalog.with_live_requiredness(
+        "source",pack,"minutes",con=object(),strict=False)
+
+    assert degraded["live_requiredness_available"] is False
+    assert degraded["live_requiredness_warning"]
+    assert catalog._required_bool(
+        degraded["stages"]["minutes"]["fields"]["MTG_MeetingHeld"].get("required")
+    ) is False
+    assert all(
+        not catalog._required_bool(spec.get("required"))
+        for spec in degraded["stages"]["minutes"]["fields"].values()
+    )
+
+    with pytest.raises(ProductionUnavailable):
+        catalog.with_live_requiredness(
+            "source",pack,"minutes",con=object(),strict=True)
+
+
+def test_live_metadata_success_marks_editor_contract_live(pack,monkeypatch):
+    from commercial import processmaker_store
+    import json
+
+    live_fields=copy.deepcopy(pack["stages"]["minutes"]["fields"])
+    document={"items":[]}
+    for variable,spec in live_fields.items():
+        item={
+            "variable":variable,
+            "label":spec.get("label"),
+            "type":spec.get("type"),
+            "required":bool(spec.get("required")),
+            "mode":spec.get("mode"),
+        }
+        if spec.get("type")=="grid":
+            item["columns"]=copy.deepcopy(spec.get("columns") or [])
+        document["items"].append(item)
+
+    monkeypatch.setattr(
+        processmaker_store,"query",
+        lambda *args,**kwargs:[(json.dumps(document,ensure_ascii=False),)]
+    )
+
+    live=catalog.with_live_requiredness(
+        "source",pack,"minutes",con=object(),strict=False)
+
+    assert live["live_requiredness_available"] is True
+    assert live["live_requiredness_warning"]==""
+    assert live["live_requiredness_hash"]
