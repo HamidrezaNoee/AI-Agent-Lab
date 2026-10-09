@@ -10,6 +10,12 @@ STORE='secretary_packs_v2'
 class MeetingPromotionUnavailable(ValueError):
  pass
 STAGES={'invitation':'FR-MTG-001','invitation_approval':'FR-MTG-002','minutes':'FR-MTG-003','minutes_approval':'FR-MTG-004','monitoring':'FR-MTG-005','action_execution':'FR-MTG-A01','action_review':'FR-MTG-A02'}
+NATIVE_FILE_FIELDS={
+ 'minutes':'MTG002_MeetingAttachment',
+ 'minutes_approval':'MTG002_MeetingAttachment',
+ 'action_execution':'MTGA_EvidenceFile1',
+ 'action_review':'MTGA_EvidenceFile1',
+}
 
 def records(root,name):
  table=root.find(".//table[@name='"+name+"']")
@@ -73,6 +79,19 @@ def _compile_pair(meeting,action):
    'action_execution':['MTGA_SubmissionType','MTGA_ProgressPercent','MTGA_ExecutionDescription'],
    'action_review':['MTGA_ReviewStatus2','MTGA_SecretaryProgressPercent2']}.items():
   if not set(keys)<=stages[s]['fields'].keys():raise ValueError('قرارداد مرحله '+s+' با آداپتور جلسات سازگار نیست.')
+ # These four controls are part of the reviewed PMX workflow contract. The edit
+ # stage and its following review stage must point to the same native Input
+ # Document so files uploaded in AVAN remain visible after routing.
+ for stage,field in NATIVE_FILE_FIELDS.items():
+  spec=stages[stage]['fields'].get(field) or {}
+  if spec.get('type') not in ('file','multipleFile'):
+   raise ValueError('کنترل فایل '+field+' در مرحله '+stage+' مطابق PMX وجود ندارد.')
+  if not re.fullmatch(r'[a-zA-Z0-9]{32}',str(spec.get('inp_doc_uid') or '')):
+   raise ValueError('Input Document کنترل '+field+' معتبر نیست.')
+ if stages['minutes']['fields']['MTG002_MeetingAttachment']['inp_doc_uid']!=stages['minutes_approval']['fields']['MTG002_MeetingAttachment']['inp_doc_uid']:
+  raise ValueError('فایل صورت‌جلسه در ثبت و تأیید باید به یک Input Document متصل باشد.')
+ if stages['action_execution']['fields']['MTGA_EvidenceFile1']['inp_doc_uid']!=stages['action_review']['fields']['MTGA_EvidenceFile1']['inp_doc_uid']:
+  raise ValueError('مستند اقدام در اجرا و بررسی باید به یک Input Document متصل باشد.')
  return {'adapter':'meeting_v2','meeting':meeting,'action':action,'stages':stages}
 
 def compile_pack(meeting_xml,action_xml):
@@ -122,6 +141,15 @@ def _overlay_live_requiredness(pack,stage,live_fields):
  result=copy.deepcopy(pack)
  if stage not in result.get('stages',{}):raise ValueError('مرحله موردنظر در بسته جلسات وجود ندارد.')
  target=result['stages'][stage]['fields']
+ # Packs promoted before native-file support may not have persisted the PMX file
+ # control. Recover only the exact reviewed control for this stage from the live
+ # DynaForm; never promote arbitrary writable fields dynamically.
+ reviewed_file=NATIVE_FILE_FIELDS.get(stage)
+ if reviewed_file and reviewed_file not in target:
+  live_file=live_fields.get(reviewed_file) or {}
+  live_uid=str(live_file.get('inp_doc_uid') or '').strip()
+  if live_file.get('type') in ('file','multipleFile') and re.fullmatch(r'[a-zA-Z0-9]{32}',live_uid):
+   target[reviewed_file]=copy.deepcopy(live_file)
  for field,spec in target.items():
   live=live_fields.get(field)
   if live is None:
@@ -134,6 +162,10 @@ def _overlay_live_requiredness(pack,stage,live_fields):
    live_uid=str(live.get('inp_doc_uid') or '').strip()
    if reviewed_uid and live_uid and reviewed_uid!=live_uid:
     raise ValueError('شناسه Input Document فیلد '+field+' در ProcessMaker تغییر کرده است؛ آداپتور باید بازبینی شود.')
+   # For the reviewed native file controls the live DynaForm owns presentation
+   # mode too: upload in FR-MTG-003/A01, view-only in FR-MTG-004/A02.
+   if live.get('mode') not in (None,''):spec['mode']=str(live.get('mode'))
+   if live.get('label') not in (None,''):spec['label']=str(live.get('label'))
    for meta_key in ('inp_doc_uid','inputDocument','extensions','multiple','size','sizeUnity'):
     if live.get(meta_key) not in (None,''):
      spec[meta_key]=copy.deepcopy(live.get(meta_key))
