@@ -32,7 +32,7 @@ def parse_pmx(xml):
   def walk(v):
    if isinstance(v,dict):
     if v.get('variable'):
-     spec={k:v.get(k) for k in ('label','type','required','options','mode')}
+     spec={k:v.get(k) for k in ('label','type','required','options','mode','inp_doc_uid','inputDocument','extensions','multiple','size','sizeUnity')}
      if v.get('type')=='grid':spec['columns']=[{k:c.get(k) for k in ('id','label','type','options','required','mode')} for c in v.get('columns',[])]
      fields[v['variable']]=spec
     for a in v.values():walk(a)
@@ -83,7 +83,7 @@ def _form_fields(content):
  def walk(v):
   if isinstance(v,dict):
    if v.get('variable'):
-    spec={k:v.get(k) for k in ('label','type','required','options','mode')}
+    spec={k:v.get(k) for k in ('label','type','required','options','mode','inp_doc_uid','inputDocument','extensions','multiple','size','sizeUnity')}
     if v.get('type')=='grid':
      spec['columns']=[{k:c.get(k) for k in ('id','label','type','options','required','mode')} for c in v.get('columns',[])]
     fields[str(v['variable'])]=spec
@@ -129,6 +129,14 @@ def _overlay_live_requiredness(pack,stage,live_fields):
    # A missing audited field is a contract drift, not an optional field.
    raise ValueError('فیلد '+field+' در فرم زنده ProcessMaker پیدا نشد؛ قرارداد فرم تغییر کرده است.')
   spec['required']=_required_bool(live.get('required'))
+  if spec.get('type') in ('file','multipleFile'):
+   reviewed_uid=str(spec.get('inp_doc_uid') or '').strip()
+   live_uid=str(live.get('inp_doc_uid') or '').strip()
+   if reviewed_uid and live_uid and reviewed_uid!=live_uid:
+    raise ValueError('شناسه Input Document فیلد '+field+' در ProcessMaker تغییر کرده است؛ آداپتور باید بازبینی شود.')
+   for meta_key in ('inp_doc_uid','inputDocument','extensions','multiple','size','sizeUnity'):
+    if live.get(meta_key) not in (None,''):
+     spec[meta_key]=copy.deepcopy(live.get(meta_key))
   if spec.get('type')=='grid':
    live_columns={str(c.get('id')):c for c in live.get('columns',[]) if c.get('id')}
    for column in spec.get('columns',[]):
