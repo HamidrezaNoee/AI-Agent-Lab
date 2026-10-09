@@ -148,18 +148,23 @@ def draft(scope,actor,task):
   key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
   if not row or row.get('scope')!=scope_stamp(scope) or row['actor']!=actor or ((row.get('native_stamp')!=native_stamp(task) or row.get('pack_revision')!=task['pack']['revision']) and row.get('status')=='draft'):
    initial_values=initial(task);assistant=assistant_state(initial_values,task,scope)
-   row={'actor':actor,'scope':scope_stamp(scope),'pack_revision':task['pack']['revision'],'native_stamp':native_stamp(task),'values':initial_values,'revision':(row or {}).get('revision',0)+1,'status':'draft','questions':[],'pending_confirmation':None,
+   row={'actor':actor,'scope':scope_stamp(scope),'pack_revision':task['pack']['revision'],'native_stamp':native_stamp(task),
+        'requiredness_hash':task['pack'].get('live_requiredness_hash',''),
+        'values':initial_values,'revision':(row or {}).get('revision',0)+1,'status':'draft','questions':[],'pending_confirmation':None,
         'history':[{'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()}]}
    tx.put(key,row)
   elif row.get('status')=='draft':
    allowed=set(FIELDS[task['stage']])|({'MTG_ActionSummary'} if task['stage']=='monitoring' else set())
    current=row.get('values') or {}
    cleaned={k:v for k,v in current.items() if k in allowed}
-   if cleaned!=current:
+   live_hash=task['pack'].get('live_requiredness_hash','')
+   requiredness_changed=bool(live_hash) and row.get('requiredness_hash')!=live_hash
+   if cleaned!=current or requiredness_changed:
     row['values']=cleaned
     row['revision']=int(row.get('revision') or 0)+1
     row['questions']=[]
     row['pending_confirmation']=None
+    row['requiredness_hash']=live_hash
     tx.put(key,row)
  return row
 
@@ -324,6 +329,15 @@ def assistant_state(values,task,scope,questions=()):
    participants=v.get('MTG_Participants') or {}
    targets=[participants.get(refs[-1],{})] if refs else list(participants.values())
    if targets and all(row.get('MTG_AttendanceStatus')!='Present' or not row.get('MTG_AttendanceTime') or re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',str(row.get('MTG_AttendanceTime') or '')) for row in targets):stale=True
+  if stage=='minutes' and ('وضعیت حضور شرکت کننده' in normalized or 'وضعیت حضور شرکت‌کننده' in text):
+   required_paths={str(x.get('field') or '') for x in missing_now}
+   refs=re.findall(r'ردیف\s*(\d+)',normalized)
+   if refs:
+    path='MTG_Participants.'+refs[-1]+'.MTG_AttendanceStatus'
+    if path not in required_paths:stale=True
+   elif not any(path.endswith('.MTG_AttendanceStatus') for path in required_paths):stale=True
+  if stage=='minutes' and any(x in normalized for x in ('شرح و جمع بندی مذاکرات','شرح و جمع‌بندی مذاکرات')):
+   if not any(str(x.get('field') or '')=='MTG_MeetingDiscussionSummary' for x in missing_now):stale=True
   if v.get('MTG_MeetingEndTime') and (
    'ساعت پایان واقعی جلسه' in normalized
    or ('ساعت پایان جلسه' in normalized and 'برنامه' not in normalized)
@@ -941,7 +955,7 @@ def session_create(scope,actor,pack_id,values=None):
  item={'pack':pack,'stage':'invitation','native':{}}
  validate(values,item,scope)
  assistant=assistant_state(values,item,scope)
- row={'id':secrets.token_urlsafe(24),'pack_id':pack_id,'pack_revision':pack['revision'],'scope':scope_stamp(scope),'actor':actor,'values':values,'status':'draft','revision':1,'case_uid':None,'questions':[],'pending_confirmation':None,
+ row={'id':secrets.token_urlsafe(24),'pack_id':pack_id,'pack_revision':pack['revision'],'requiredness_hash':pack.get('live_requiredness_hash',''),'scope':scope_stamp(scope),'actor':actor,'values':values,'status':'draft','revision':1,'case_uid':None,'questions':[],'pending_confirmation':None,
       'history':[{'role':'assistant','text':assistant['message'],'summary':assistant['summary'],'created_at':datetime.now(timezone.utc).isoformat()}],'attachments':[]}
  with agent_storage.transaction() as tx:
   key=source_user_key('secretary_sessions',scope,actor);items=tx.get(key,[],lock=True)
@@ -955,6 +969,19 @@ def session_load(scope,actor,identifier):
  pack=catalog.get(scope['source_id'],row['pack_id'])
  if row['pack_revision']!=pack['revision']:raise RevisionConflict('تنظیم بسته فرایند تغییر کرده است.')
  pack=catalog.with_live_requiredness(scope['source_id'],pack,'invitation')
+ live_hash=pack.get('live_requiredness_hash','')
+ if row.get('status')=='draft' and live_hash and row.get('requiredness_hash')!=live_hash:
+  with agent_storage.transaction() as tx:
+   key=source_user_key('secretary_sessions',scope,actor);items=tx.get(key,[],lock=True)
+   current=next((r for r in items if r.get('id')==identifier and r.get('scope')==scope_stamp(scope)),None)
+   if not current:raise PermissionError()
+   if current.get('requiredness_hash')!=live_hash:
+    current['requiredness_hash']=live_hash
+    current['questions']=[]
+    current['pending_confirmation']=None
+    current['revision']=int(current.get('revision') or 0)+1
+    tx.put(key,items)
+   row=copy.deepcopy(current)
  return row,{'pack':pack,'stage':'invitation','native':{},'case_uid':None}
 
 def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None,reply=None,pending_confirmation=_KEEP_PENDING,agent_receipt=None,checkpoint=True):
