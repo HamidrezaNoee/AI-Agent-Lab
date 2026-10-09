@@ -111,6 +111,11 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
                 "field_name":field_name,
                 "app_doc_type":"INPUT",
             }
+        def variables(self,case):
+            calls["variables"]=case
+            return {}
+        def set_variables(self,case,index,values,operation=None):
+            calls["set_variables"]=(case,index,copy.deepcopy(values),operation)
         def close(self):pass
 
     monkeypatch.setattr(evidence,"PM",PM)
@@ -133,6 +138,12 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
     assert calls["assigned"]==(t["case_uid"],expected_task,scope["external_user_id"])
     assert calls["upload"][1]=="6343078616ac0d6c53a98d9079721622"
     assert calls["upload"][2]=="MTGA_EvidenceFile1"
+    assert calls["set_variables"][0:2]==(t["case_uid"],1)
+    assert calls["set_variables"][2]["MTGA_EvidenceFile1"]==[{
+        "appDocUid":"3"*32,
+        "name":"proof.pdf",
+        "version":1,
+    }]
     assert result["app_doc_filename"]=="proof.pdf"
 
 
@@ -197,3 +208,27 @@ def test_pm3_light_upload_uses_field_name_and_two_step_protocol():
     assert result["app_doc_uid"]=="4"*32
     assert result["doc_uid"]=="6343078616ac0d6c53a98d9079721622"
     assert result["field_name"]=="MTGA_EvidenceFile1"
+
+
+
+def test_field_documents_prefers_pmx_multiplefile_refs_without_document_step(monkeypatch):
+    t=task("action_review",{
+        "MTGA_EvidenceFile1":[{
+            "appDocUid":"5"*32,
+            "name":"proof-from-execution.pdf",
+            "version":2,
+        }]
+    })
+    monkeypatch.setattr(
+        evidence,"native_documents",
+        lambda *a,**kw:(_ for _ in ()).throw(AssertionError("must not need Input Document step listing"))
+    )
+    docs=evidence.field_documents(
+        t,{"source_id":"source"},"actor","MTGA_EvidenceFile1")
+    assert docs==[{
+        "app_doc_uid":"5"*32,
+        "app_doc_version":2,
+        "app_doc_filename":"proof-from-execution.pdf",
+        "app_doc_type":"INPUT",
+        "doc_uid":"6343078616ac0d6c53a98d9079721622",
+    }]
