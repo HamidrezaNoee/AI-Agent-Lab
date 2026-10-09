@@ -495,3 +495,11 @@ def test_manager_logistics_never_resolves_to_logistics_expert():
     )
     assert resolved==""
     assert issues
+
+
+def test_slash_label_action_owner_question_targets_row():
+    question="اقدامات مصوب / 1 / مسئول اصلی: نام یا سمت دقیق را بگویید."
+    assert resolution._question_targets_path(
+        question,"MTG_Actions.1.MTG_ActionOwnerUID")
+    assert not resolution._question_targets_path(
+        question,"MTG_Actions.2.MTG_ActionOwnerUID")
