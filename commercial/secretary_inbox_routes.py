@@ -332,7 +332,7 @@ def register(app,authorized,csrf):
   if not body.confirmed:raise HTTPException(422,'ارسال صورت‌جلسه را پس از بازبینی تأیید کنید.')
   Ref(case_uid=case_uid,index=index,pack_id=pack_id)
   principal=value[2]
-  from .user_bpms_bindings import binding_for
+  from .user_bpms_bindings import binding_for,directory_users
   binding=binding_for(principal.subject,source_id)
   if not binding:
    raise HTTPException(403,'این ProcessMaker به حساب AVAN شما Binding فعال ندارد.')
@@ -340,10 +340,21 @@ def register(app,authorized,csrf):
   if not external_user_id:
    raise HTTPException(403,'کاربر ProcessMaker متناظر این حساب مشخص نیست.')
   bearer=credentials.token_for_bound_source(str(principal.tenant_id),principal.subject,source_id)
+  rows=directory_users(source_id)
+  directory={
+   str(u.get('external_user_id') or ''):{
+    'active':bool(u.get('active')),
+    'username':u.get('username') or '',
+    'name':u.get('display_name') or u.get('username') or '',
+    'position':u.get('position') or '',
+    'unit':u.get('unit') or '',
+   }
+   for u in rows if u.get('external_user_id')
+  }
   try:
    return runtime.advance_minutes_direct(
     str(principal.tenant_id),principal.subject,source_id,external_user_id,
-    case_uid,index,pack_id,bearer,revision=body.revision)
+    case_uid,index,pack_id,bearer,revision=body.revision,directory=directory)
   except PermissionError as exc:
    raise HTTPException(403,str(exc) or 'ارسال این صورت‌جلسه برای حساب فعلی مجاز نیست.')
   except RevisionConflict:
