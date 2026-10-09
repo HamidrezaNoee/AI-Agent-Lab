@@ -246,6 +246,7 @@ def test_metadata_outage_keeps_editor_contract_available(pack,monkeypatch):
 
     assert degraded["live_requiredness_available"] is False
     assert degraded["live_requiredness_warning"]
+    assert degraded["live_requiredness_hash"]
     assert catalog._required_bool(
         degraded["stages"]["minutes"]["fields"]["MTG_MeetingHeld"].get("required")
     ) is False
