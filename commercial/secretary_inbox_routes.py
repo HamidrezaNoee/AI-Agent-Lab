@@ -1,8 +1,8 @@
 """Task inbox and secretary tools; all writes retain current native assignment checks."""
-import logging
+import logging,re
 from fastapi import Depends,HTTPException,Query,Request
 from fastapi.responses import Response
-from urllib.parse import unquote
+from urllib.parse import quote,unquote
 from pydantic import BaseModel,ConfigDict,Field
 from . import secretary_runtime as runtime,secretary_catalog as catalog,secretary_credentials as credentials,user_experience as ux
 from .agent_workspace import RevisionConflict
@@ -102,7 +102,8 @@ def register(app,authorized,csrf):
                 'warning':t['pack'].get('live_requiredness_warning','')}
   return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},
           'draft':draft,
-          'form':runtime.form(t),'context':context,'missing':assistant['missing'],'assistant':assistant,
+          'form':runtime.form(t),'file_controls':runtime.file_controls(t),
+          'context':context,'missing':assistant['missing'],'assistant':assistant,
           'requiredness':requiredness,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
 
@@ -326,6 +327,44 @@ def register(app,authorized,csrf):
   except Exception as exc:
    operation_finish(p,request_id,'failed',{'case_uid':case_uid,'error_type':type(exc).__name__})
    raise
+
+ @app.get(base+'/tasks/{case_uid}/{index}/native-files')
+ def native_files(source_id:str,case_uid:str,index:int,pack_id:str,field:str=Query(...,min_length=1,max_length=120),value=Depends(authorized)):
+  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
+  from .secretary_evidence import field_documents
+  return access(value,source_id,lambda con,s,p:{
+   'field':field,
+   'control':runtime.file_control((t:=runtime.task(con,s,case_uid,index,pack_id)),field),
+   'documents':field_documents(t,s,p.subject,field)
+  })
+
+ @app.post(base+'/tasks/{case_uid}/{index}/native-files')
+ async def upload_native_file(source_id:str,case_uid:str,index:int,pack_id:str,request:Request,field:str=Query(...,min_length=1,max_length=120),value=Depends(csrf)):
+  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
+  from .secretary_evidence import upload_field_document,MAX_NATIVE_FILE_BYTES
+  data=bytearray()
+  async for chunk in request.stream():
+   data.extend(chunk)
+   if len(data)>MAX_NATIVE_FILE_BYTES:raise HTTPException(413,'حداکثر حجم هر فایل ۲۵ مگابایت است.')
+  filename=unquote(request.headers.get('x-avan-filename','document')).strip()
+  content_type=str(request.headers.get('content-type') or 'application/octet-stream')
+  if not filename:raise HTTPException(422,'نام فایل مشخص نیست.')
+  def run(con,s,p):
+   t=runtime.task(con,s,case_uid,index,pack_id)
+   document=upload_field_document(t,s,p.subject,field,filename,content_type,bytes(data))
+   return {'field':field,'document':document}
+  return access(value,source_id,run)
+
+ @app.get(base+'/tasks/{case_uid}/{index}/native-files/{app_doc_uid}/download')
+ def download_native_file(source_id:str,case_uid:str,index:int,app_doc_uid:str,pack_id:str,field:str=Query(...,min_length=1,max_length=120),version:int=Query(...,ge=1),value=Depends(authorized)):
+  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
+  if not re.fullmatch(r'[a-zA-Z0-9]{32}',app_doc_uid):raise HTTPException(422,'شناسه فایل معتبر نیست.')
+  from .secretary_evidence import read_native_bytes
+  data,meta=access(value,source_id,lambda con,s,p:read_native_bytes(
+   (t:=runtime.task(con,s,case_uid,index,pack_id)),s,p.subject,field,app_doc_uid,version))
+  filename=str(meta.get('app_doc_filename') or 'document').replace('\\','/').split('/')[-1]
+  return Response(data,media_type=str(meta.get('content_type') or 'application/octet-stream'),
+   headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(filename)})
 
  @app.post(base+'/tasks/{case_uid}/{index}/advance-minutes')
  def advance_minutes(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
