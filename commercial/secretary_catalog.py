@@ -86,12 +86,28 @@ def _form_fields(content):
     spec={k:v.get(k) for k in ('label','type','required','options','mode')}
     if v.get('type')=='grid':
      spec['columns']=[{k:c.get(k) for k in ('id','label','type','options','required','mode')} for c in v.get('columns',[])]
-    fields[v['variable']]=spec
+    fields[str(v['variable'])]=spec
    for a in v.values():walk(a)
   elif isinstance(v,list):
    for a in v:walk(a)
- try:walk(json.loads(content))
- except (ValueError,RecursionError,TypeError) as exc:raise ValueError('تعریف فرم نصب‌شده ProcessMaker معتبر نیست.') from exc
+ try:
+  from html import unescape
+  raw=str(content or '').strip().lstrip('\ufeff')
+  parsed=None;last=None
+  for candidate in (raw,unescape(raw)):
+   try:
+    parsed=json.loads(candidate)
+    # Some PM3 builds/drivers expose DYN_CONTENT as a JSON string containing
+    # the actual JSON document. Unwrap at most twice; never eval arbitrary text.
+    for _ in range(2):
+     if not isinstance(parsed,str):break
+     parsed=json.loads(parsed)
+    break
+   except (ValueError,TypeError) as exc:last=exc
+  if parsed is None:raise last or ValueError('empty DynaForm content')
+  walk(parsed)
+ except (ValueError,RecursionError,TypeError) as exc:
+  raise ValueError('تعریف فرم نصب‌شده ProcessMaker معتبر نیست.') from exc
  return fields
 
 
