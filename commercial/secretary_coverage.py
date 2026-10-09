@@ -144,7 +144,7 @@ def explicit_field_requirements(notes,task):
         add("MTG_Decisions","مصوبات",any(x in raw for x in ("مصوبات","مصوبه")))
         add("MTG_Actions","اقدامات",any(x in raw for x in ("اقدامات","اثدامات","اقدام‌ها","اقدام ها")))
     elif stage=="invitation_approval":
-        add("MTG_InvitationApproval","تصمیم تأیید دعوت‌نامه",any(x in raw for x in ("تایید دعوت","تأیید دعوت","دعوت نامه تایید","دعوت‌نامه تایید","دعوت‌نامه تأیید","نیاز به اصلاح","برای اصلاح برگرد")))
+        add("MTG_InvitationApproval","تصمیم تأیید دعوت‌نامه",any(x in raw for x in ("تایید دعوت","تأیید دعوت","دعوت نامه تایید","دعوت‌نامه تایید","دعوت‌نامه تأیید","تایید می کنم","تأیید می کنم","تایید میکنم","تأیید میکنم","مورد تایید","مورد تأیید","نیاز به اصلاح","برای اصلاح برگرد")))
         add("MTG_InvitationChairComment","توضیحات رئیس برای دعوت‌نامه",any(x in raw for x in ("توضیح رئیس","توضیحات رئیس","اصلاحات موردنظر","اصلاحات مورد نظر","نظر رئیس")))
         add("MTG_MeetingTitle","عنوان جلسه",any(x in raw for x in ("عنوان جلسه","عنوان را")))
         add("MTG_Objective","هدف جلسه","هدف جلسه" in raw)
@@ -154,7 +154,7 @@ def explicit_field_requirements(notes,task):
         add("MTG_MeetingEndDateTime","تاریخ پایان برنامه‌ریزی‌شده","تاریخ پایان برنامه" in raw)
         add("MTG_PlannedActionEndTime","ساعت پایان برنامه‌ریزی‌شده","ساعت پایان برنامه" in raw)
     elif stage=="minutes_approval":
-        add("MTG_MinutesApproval","تصمیم تأیید صورت‌جلسه",any(x in raw for x in ("تایید صورت جلسه","تأیید صورت جلسه","تایید صورت‌جلسه","تأیید صورت‌جلسه","صورت جلسه تایید","صورت‌جلسه تأیید","نیاز به اصلاح","برای اصلاح برگرد")))
+        add("MTG_MinutesApproval","تصمیم تأیید صورت‌جلسه",any(x in raw for x in ("تایید صورت جلسه","تأیید صورت جلسه","تایید صورت‌جلسه","تأیید صورت‌جلسه","صورت جلسه تایید","صورت‌جلسه تأیید","تایید می کنم","تأیید می کنم","تایید میکنم","تأیید میکنم","مورد تایید","مورد تأیید","نیاز به اصلاح","برای اصلاح برگرد")))
         add("MTG_ChairComment","توضیحات رئیس جلسه",any(x in raw for x in ("توضیح رئیس","توضیحات رئیس","نظر رئیس","اصلاحات موردنظر","اصلاحات مورد نظر")))
         add("MTG_MeetingDiscussionSummary","شرح مذاکرات",any(x in raw for x in ("شرح مذاکرات","شرح و جمع بندی","شرح و جمع‌بندی")))
         add("MTG_ParkingLot","موضوعات خارج از دستور",any(x in raw for x in ("موضوعات خارج از دستور","خارج از دستور")))
@@ -302,6 +302,31 @@ def action_expectations(notes,directory):
     return result
 
 
+def monitoring_expectations(notes):
+    """Rows explicitly referenced during final monitoring/review."""
+    raw=str(notes or "").replace("\r\n","\n")
+    refs=[]
+    # Prefer line-local action references so field requirements remain scoped.
+    for line in raw.split("\n"):
+        normalized=_norm(line)
+        match=re.search(r'(?:اقدام\s*)?(?:a\s*-?\s*0*)?([0-9]+)\b',normalized)
+        if not match or not any(x in normalized for x in ("اقدام","a-","a ","بسته","اصلاح","بازگشت","پیشرفت","درصد","نظر","تایید","تأیید")):
+            continue
+        number=int(match.group(1));action_no=f"A-{number:03d}"
+        refs.append({
+            "action_no":action_no,
+            "needs_status":any(x in normalized for x in ("بسته","بستن","اصلاح","بازگشت","rework","تایید","تأیید")),
+            "needs_progress":("پیشرفت" in normalized or "درصد" in normalized),
+            "needs_comment":any(x in normalized for x in ("نظر","توضیح","کامنت","علت")),
+            "needs_actual_date":any(x in normalized for x in ("تاریخ واقعی","تاریخ انجام","تاریخ تکمیل")),
+            "needs_actual_time":any(x in normalized for x in ("ساعت واقعی","ساعت انجام","ساعت تکمیل")),
+            "needs_effort":any(x in normalized for x in ("زمان صرف","دقیقه","زمان واقعی")),
+        })
+    unique={}
+    for item in refs:unique[item["action_no"]]=item
+    return list(unique.values())
+
+
 def all_actions_priority(notes):
     raw=_norm(notes)
     if re.search(r'(?:اولویت|اوليت|اولیت)\s+همه\s+اقدام(?:ات|ها| ها)?.{0,20}(?:بالا|زیاد)',raw):
@@ -390,7 +415,7 @@ def coverage_issues(notes,task,values,assignments,directory):
                 issues.append("مسئول اقدام قبلی دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
             if exp.get("existing_due") and str(row.get("MTG_persiandate_ExistingDueDate") or "")!=exp["existing_due"]:
                 issues.append("موعد اقدام قبلی دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
-    if (task or {}).get("stage")=="minutes":
+    if (task or {}).get("stage") in ("minutes","minutes_approval"):
         decisions_expected=decision_expectations(notes)
         if decisions_expected and "MTG_Decisions" in allowed:
             rows=[row for _,row in _rows(values.get("MTG_Decisions"))]
@@ -431,6 +456,28 @@ def coverage_issues(notes,task,values,assignments,directory):
                     issues.append("ارتباط اقدام "+label+" با مصوبه "+ref+" ثبت نشد.")
                 if global_priority and str(row.get("MTG_ActionPriority") or "")!=global_priority:
                     issues.append("اولویت بالای اعلام‌شده روی اقدام "+label+" اعمال نشد.")
+    if (task or {}).get("stage")=="monitoring":
+        expected=monitoring_expectations(notes)
+        if expected and "MTG_ActionSummary" in allowed:
+            rows=[row for _,row in _rows(values.get("MTG_ActionSummary"))]
+            by_no={str(row.get("MTG_MonActionNo") or "").strip().upper():row for row in rows}
+            for exp in expected:
+                row=by_no.get(exp["action_no"])
+                if row is None:
+                    issues.append("اقدام "+exp["action_no"]+" که در پیام بررسی شده بود در خلاصه پایش جا افتاده است.")
+                    continue
+                if exp["needs_status"] and not str(row.get("MTG_MonSecReviewStatus") or "").strip():
+                    issues.append("نتیجه بررسی "+exp["action_no"]+" ثبت نشد.")
+                if exp["needs_progress"] and not str(row.get("MTG_MonSecProgress") or "").strip():
+                    issues.append("درصد تأییدشده "+exp["action_no"]+" ثبت نشد.")
+                if exp["needs_comment"] and not str(row.get("MTG_MonSecComment") or "").strip():
+                    issues.append("نظر دبیر برای "+exp["action_no"]+" ثبت نشد.")
+                if exp["needs_actual_date"] and not str(row.get("MTG_MonSecActualDate") or "").strip():
+                    issues.append("تاریخ واقعی تأییدشده "+exp["action_no"]+" ثبت نشد.")
+                if exp["needs_actual_time"] and not str(row.get("MTG_MonSecActualTime") or "").strip():
+                    issues.append("ساعت واقعی تأییدشده "+exp["action_no"]+" ثبت نشد.")
+                if exp["needs_effort"] and not str(row.get("MTG_MonSecEffort") or "").strip():
+                    issues.append("زمان تأییدشده "+exp["action_no"]+" ثبت نشد.")
     return list(dict.fromkeys(issues))
 
 
@@ -461,4 +508,6 @@ def coverage_prompt(notes,task,directory):
             "has_unique_owner":bool(x["owner_uid"]),"has_due":x["has_due"],
         } for x in actions],
         "all_actions_priority":all_actions_priority(notes),
+        "monitoring_action_count":len(monitoring_expectations(notes)),
+        "monitoring_actions":monitoring_expectations(notes),
     }
