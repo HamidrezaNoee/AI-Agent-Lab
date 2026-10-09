@@ -171,3 +171,37 @@ The model does not own required-field sequencing.
 
 A partial extraction is retried with non-sensitive coverage-failure labels. After the
 bounded retry budget, the draft remains unchanged rather than accepting a partial turn.
+
+
+## ProcessMaker is the required-field authority
+
+AVAN does not maintain a second business-requiredness policy for Smart Secretary
+forms. For the current stage it reads the installed ProcessMaker DynaForm
+(`DYNAFORM.DYN_CONTENT`) and overlays the live `required` flag onto the reviewed
+typed adapter.
+
+Consequences:
+
+- changing a supported field from optional to Required in ProcessMaker makes it a
+  Smart Secretary gap on the next task/session load;
+- changing it back to optional removes that blocker;
+- grid-column Required flags are treated the same way;
+- old persisted clarification questions are invalidated when the live requiredness
+  fingerprint changes;
+- fields marked view/disabled are never requested from the user merely because they
+  are Required; ProcessMaker/triggers own those system/read-only values;
+- the native meeting number remains system-owned because the reviewed BEFORE trigger
+  generates it.
+
+Requiredness and validation are intentionally separate. Optional fields may be left
+blank, but values that are supplied must still satisfy safety/consistency rules
+(valid enum/date/time/percentage, active BPMS identities, non-duplicate identifiers
+and valid decision/action references).
+
+The live overlay changes only Required flags. It never expands AVAN's audited writable
+surface. Adding a new ProcessMaker variable still requires an adapter review before
+AVAN can write it.
+
+The ProcessMaker read-only account used by AVAN must have SELECT permission on
+`DYNAFORM` in addition to the tables needed for task/case/directory reads. No write
+permission is required.
