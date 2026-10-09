@@ -610,6 +610,12 @@ def extract(notes,task,current,scope,*,questions=(),history=(),client=None,model
  payload=build_context(notes,task,current,scope,form(task),questions,history)
  payload['pending_fields']=gaps(current,task)
  payload['coverage_contract']=coverage.coverage_prompt(notes,task,scope.get('directory',{}))
+ dense_contract=payload['coverage_contract']
+ output_budget=7000 if (
+  len(dense_contract.get('explicit_fields',[]))>=5
+  or dense_contract.get('participant_count',0)>=4
+  or dense_contract.get('agenda_count',0)>=3
+ ) else 3500
  payload['last_assistant_message']=next((item['text'] for item in reversed(payload['conversation']) if item['role']=='assistant'),assistant_state(current,task,scope,questions)['message'])
  schema=ConversationExtraction if with_reply else legacy.Extraction
  owned=client is None
@@ -626,7 +632,7 @@ def extract(notes,task,current,scope,*,questions=(),history=(),client=None,model
     if responses is None:raise AttributeError("OpenAI client has no attribute 'responses'")
     parse_method=getattr(responses,'parse',None)
     if callable(parse_method):
-     result=parse_method(model=model,store=False,timeout=60,max_output_tokens=3500,input=[
+     result=parse_method(model=model,store=False,timeout=60,max_output_tokens=output_budget,input=[
       {'role':'system','content':instruction},
       {'role':'user','content':json.dumps(payload,ensure_ascii=False,separators=(',',':'))}],
       text_format=schema)
