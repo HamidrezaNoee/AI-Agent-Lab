@@ -2028,6 +2028,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   function renderFormFields(){
   fieldsHost.replaceChildren();const scalarGrid=el("div","secretary-form-grid");add(fieldsHost,scalarGrid);
   for(const [key,spec] of Object.entries(r.form||{})){
+   if(["file","multipleFile"].includes(spec.type))continue;
    if(spec.type==="grid"){
     const box=card(spec.label||key),rows=el("div","secretary-grid-rows");box.classList.add("secretary-grid-card");
     let data=values[key]&&typeof values[key]==="object"?values[key]:{};values[key]=data;
