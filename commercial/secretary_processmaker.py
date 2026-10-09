@@ -131,6 +131,41 @@ class PM:
   return uid(result['app_uid'])
  def set_variables(self,case,index,values,*,operation='ثبت اطلاعات فرم'):
   return self.call('PUT',f'/cases/{uid(case)}/variable?del_index={int(index)}',values,operation=operation)
+ def upload_input_document(self,case,task_uid,input_doc_uid,filename,data,content_type='application/octet-stream',comment=''):
+  """Upload bytes as a native ProcessMaker Input Document.
+
+  This is intentionally server-side: the browser never receives the PM OAuth
+  token and AVAN does not write APP_DOCUMENT directly.
+  """
+  case=uid(case);task_uid=uid(task_uid);input_doc_uid=uid(input_doc_uid)
+  name=str(filename or 'document').replace('\\','/').split('/')[-1].strip()
+  if not name or len(name)>240 or any(ord(ch)<32 for ch in name):
+   raise ValueError('نام فایل معتبر نیست.')
+  if not isinstance(data,(bytes,bytearray)) or not data:
+   raise ValueError('فایل خالی است.')
+  mime=str(content_type or 'application/octet-stream')[:160]
+  try:
+   response=self.client.post(
+    self.base+f'/cases/{case}/input-document',
+    data={'inp_doc_uid':input_doc_uid,'tas_uid':task_uid,'app_doc_comment':str(comment or '')[:500]},
+    files={'form':(name,bytes(data),mime)},
+   )
+  except httpx.HTTPError as exc:
+   logger.warning('ProcessMaker file upload transport failure type=%s',exc.__class__.__name__)
+   raise HTTPException(502,'ارسال فایل به ProcessMaker انجام نشد؛ اتصال REST را بررسی کنید.') from exc
+  if not 200<=response.status_code<300:
+   logger.warning('ProcessMaker rejected native input document upload status=%s',response.status_code)
+   if response.status_code==413:
+    raise HTTPException(413,'حجم فایل از محدودیت ProcessMaker بیشتر است.')
+   if response.status_code in (401,403):
+    raise HTTPException(403,'حساب متصل ProcessMaker مجوز بارگذاری این فایل را ندارد.')
+   raise HTTPException(502,'ProcessMaker بارگذاری فایل را نپذیرفت.')
+  try:result=response.json()
+  except ValueError as exc:
+   raise HTTPException(502,'پاسخ بارگذاری فایل ProcessMaker معتبر نیست.') from exc
+  if not isinstance(result,dict) or not re.fullmatch(r'[a-zA-Z0-9]{32}',str(result.get('app_doc_uid') or '')):
+   raise HTTPException(502,'ProcessMaker شناسه معتبر برای فایل بارگذاری‌شده برنگرداند.')
+  return result
  def execute_trigger(self,case,trigger,*,operation='اجرای Trigger'):
   return self.call('PUT',f'/cases/{uid(case)}/execute-trigger/{uid(trigger)}',operation=operation)
  def route(self,case,index):
