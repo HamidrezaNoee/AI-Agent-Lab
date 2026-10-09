@@ -1531,6 +1531,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    dirty=true;
    if(send)send.disabled=true;
    if(chatMinutesSend)chatMinutesSend.disabled=true;
+   if(chatStageSend)chatStageSend.disabled=true;
    if(sessionStart)sessionStart.disabled=true;
    status.replaceChildren(note("تغییرات فرم ذخیره نشده‌اند؛ ابتدا ذخیره کنید."));
   }
@@ -1621,7 +1622,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   requestAnimationFrame(()=>{if(chat.isConnected){chat.scrollTop=chat.scrollHeight;chatPinned=true}});
   add(conversation,chat);
 
-  let missing=assistant.missing||r.missing||[],chatMinutesSend=null,chatMinutesHint=null,sessionStart=null,sessionStartHint=null;
+  let missing=assistant.missing||r.missing||[],chatMinutesSend=null,chatStageSend=null,chatMinutesHint=null,sessionStart=null,sessionStartHint=null;
   const progress=el("div","secretary-progress"),receiptPanel=el("details","secretary-change-receipt");
   const undoButton=link("بازگردانی آخرین تغییر",checked(async()=>{
    if(sending||dirty)throw Error("ابتدا پردازش یا اصلاحات دستی را تمام کنید.");
@@ -1647,6 +1648,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    summaryBody.textContent=assistant.summary||"";
    contextSummary.hidden=!assistant.summary;
    if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
+   if(chatStageSend)chatStageSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(sessionStart){sessionStart.hidden=missing.length>0;sessionStart.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive}
    if(sessionStartHint){
     sessionStartHint.textContent=!requirednessLive?"قبل از ایجاد پرونده، AVAN باید تنظیم Required زنده ProcessMaker را بخواند. دسترسی SELECT جدول DYNAFORM را بررسی کنید.":"پیش‌نویس کامل است؛ برای ایجاد پرونده و ارسال آن به کارتابل رئیس، ابتدا «اتصال حساب خودم» را فعال کنید.";
@@ -1679,6 +1681,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    sending=value;composer.classList.toggle("is-sending",value);notes.disabled=value;
    if(sendMessage)sendMessage.disabled=value||locked;
    if(sessionStart)sessionStart.disabled=value||locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
+   if(chatStageSend)chatStageSend.disabled=value||locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(stopButton)stopButton.hidden=!value;
    statusLine.textContent=label;
   }
@@ -1770,6 +1773,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    status.replaceChildren();
    if(send)send.disabled=locked||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
+   if(chatStageSend)chatStageSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(app.preferences.secretary_auto_play_voice)await detachedSpeech();
 
    // If the form is currently open, tell the user that its values changed
@@ -1904,6 +1908,40 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(missing.length)add(quick,el("small","muted","کنترل نهایی الزامات هنگام ارسال توسط خود ProcessMaker انجام می‌شود."));
    add(composer,quick);
   }
+  if(!isSession&&["action_execution","action_review","monitoring"].includes(t.stage)){
+   const quick=el("div","secretary-quick-actions secretary-stage-submit");
+   function stageSubmitLabel(){
+    if(t.stage==="action_execution")return "ارسال گزارش اقدام برای بررسی دبیر";
+    if(t.stage==="action_review"){
+     const decision=String(values.MTGA_ReviewStatus2||"");
+     if(decision==="Closed")return "تأیید و بستن اقدام";
+     if(decision==="Rework")return "بازگشت اقدام برای اصلاح";
+     return "ثبت بررسی و ارسال";
+    }
+    return "ثبت پایش و اختتام جلسه";
+   }
+   chatStageSend=link(stageSubmitLabel(),checked(async()=>{
+    if(dirty)throw Error("ابتدا اصلاحات دستی فرم را ذخیره کنید.");
+    if(missing.length)throw Error("ابتدا موارد الزامی این مرحله را تکمیل کنید.");
+    chatStageSend.disabled=true;
+    try{
+     await post(path+"/submit"+query,{revision:d.revision||1,confirmed:true});
+     editor.dataset.editing="false";
+     editor.replaceChildren(note(
+      t.stage==="action_execution"?"گزارش اقدام ثبت و برای بررسی دبیر ارسال شد.":
+      t.stage==="action_review"?(String(values.MTGA_ReviewStatus2||"")==="Rework"?"اقدام برای اصلاح به مجری بازگردانده شد.":"بررسی اقدام ثبت و پرونده به مسیر بعدی ارسال شد."):
+      "پایش ثبت و پرونده به مسیر بعدی ارسال شد."
+     ));
+     await load();
+    }finally{
+     if(chatStageSend?.isConnected)chatStageSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
+    }
+   }),"button primary");
+   chatStageSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
+   add(quick,chatStageSend);
+   if(missing.length)add(quick,el("small","muted",missing.length+" مورد باید قبل از ارسال تکمیل شود."));
+   add(composer,quick);
+  }
   if(isSession&&d.status==="draft"){
    sessionStart=link("ایجاد گام اول و ارسال به رئیس",()=>sendTurn("بله، ایجاد و ارسال کن").catch(e=>toast(e.message)),"button primary secretary-session-start");
    sessionStartHint=note("پیش‌نویس کامل است؛ برای ایجاد پرونده و ارسال آن به کارتابل رئیس، ابتدا «اتصال حساب خودم» را فعال کنید.");
@@ -1923,6 +1961,58 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     }finally{resume.disabled=!info.oauth_connected}
    }),"button primary");
    resume.disabled=!info.oauth_connected;add(composer,resume);
+  }
+
+  if(!isSession&&Object.keys(r.file_controls||{}).length){
+   const nativeFiles=card("پیوست‌های ProcessMaker","فایل‌ها مستقیماً در همان Case و Input Document تعریف‌شده در PMX ذخیره می‌شوند.");
+   nativeFiles.classList.add("secretary-native-files");
+   function nativeFileUrl(field,suffix=""){
+    return base+path+"/native-files"+suffix+query+"&field="+encodeURIComponent(field);
+   }
+   async function downloadNativeFile(field,doc){
+    const url=nativeFileUrl(field,"/"+encodeURIComponent(doc.app_doc_uid)+"/download")+"&version="+encodeURIComponent(doc.app_doc_version);
+    const response=await request(url,{method:"GET",binary:true});
+    const blob=await response.blob(),objectUrl=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=objectUrl;a.download=doc.app_doc_filename||"document";document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1500);
+   }
+   for(const [field,spec] of Object.entries(r.file_controls||{})){
+    const section=el("div","secretary-native-file-control"),head=el("div","secretary-native-file-head"),list=el("div","secretary-native-file-list");
+    add(head,el("strong","",spec.label||field));
+    if(spec.mode!=="view"&&spec.mode!=="disabled"){
+     const picker=el("input");picker.type="file";picker.setAttribute("aria-label","انتخاب "+(spec.label||"فایل"));
+     const upload=link("بارگذاری فایل در ProcessMaker",checked(async()=>{
+      const selected=picker.files?.[0];if(!selected)throw Error("ابتدا فایل را انتخاب کنید.");
+      upload.disabled=true;
+      try{
+       await request(nativeFileUrl(field),{
+        method:"POST",
+        headers:{"Content-Type":selected.type||"application/octet-stream","X-AVAN-Filename":encodeURIComponent(selected.name)},
+        body:selected
+       });
+       picker.value="";await loadFiles();
+      }finally{upload.disabled=false}
+     }),"button secondary");
+     add(head,picker,upload);
+    }else add(head,el("span","badge","فقط مشاهده"));
+    async function loadFiles(){
+     list.replaceChildren(el("span","muted","در حال دریافت فایل‌ها..."));
+     try{
+      const data=await request(nativeFileUrl(field),{method:"GET",audit:false});
+      list.replaceChildren();
+      for(const doc of data.documents||[]){
+       const row=el("div","secretary-native-file-row");
+       add(row,el("span","",doc.app_doc_filename||"فایل"),
+        el("small","muted","نسخه "+(doc.app_doc_version||"1")+(doc.app_doc_create_date?" · "+doc.app_doc_create_date:"")),
+        link("مشاهده / دریافت",()=>downloadNativeFile(field,doc).catch(e=>toast(e.message)),"button secondary compact-action"));
+       add(list,row);
+      }
+      if(!(data.documents||[]).length)add(list,note("هنوز فایلی برای این بخش ثبت نشده است."));
+     }catch(e){list.replaceChildren(note("دریافت فایل‌ها انجام نشد: "+errorDescription(e),true))}
+    }
+    add(section,head,list);add(nativeFiles,section);loadFiles();
+   }
+   add(composer,nativeFiles);
   }
 
   if((d.attachments||[]).length){
