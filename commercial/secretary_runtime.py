@@ -572,15 +572,27 @@ def resolve_extracted_people(field,value,spec,directory,evidence="",current=None
  """Resolve references locally within this BPMS; never accept a guessed identity."""
  from .secretary_ai_context import normalize as person_text
  questions=[]
- def person(raw,label,existing=None):
+ def person(raw,label,existing=None,row_context=None):
   if raw in ('',None):return ''
   text=str(raw).strip()
   active={uid:p for uid,p in directory.items() if p.get('active')}
   if text in active:
    if text==str(existing or ''):return text
    if evidence and text not in resolution.strict_identity_mentions(evidence,directory):
-    questions.append(str(label)+': عبارت «'+str(evidence)[:120]+'» این کاربر را به‌طور صریح مشخص نمی‌کند؛ نام/نام‌کاربری یا سمت دقیق را بگویید.')
-    return ''
+    # Grid assignments often carry one evidence block for several rows. A UID
+    # remains safe when a human-readable value in the same row (typically the
+    # position/title) appears in evidence and resolves uniquely to that UID.
+    row_supported=False
+    if isinstance(row_context,dict):
+     for hint in row_context.values():
+      if not isinstance(hint,str) or not hint.strip() or hint==text:continue
+      try:candidate=resolution.unique_person(hint,directory)
+      except Exception:candidate=None
+      if candidate==text and _evidence_text(hint) in _evidence_text(evidence):
+       row_supported=True;break
+    if not row_supported:
+     questions.append(str(label)+': عبارت «'+str(evidence)[:120]+'» این کاربر را به‌طور صریح مشخص نمی‌کند؛ نام/نام‌کاربری یا سمت دقیق را بگویید.')
+     return ''
    return text
   uid_matches=[uid for uid in active if uid.lower()==text.lower()]
   if len(uid_matches)==1:return uid_matches[0]
@@ -606,7 +618,7 @@ def resolve_extracted_people(field,value,spec,directory,evidence="",current=None
    if not isinstance(row,dict):continue
    for key in list(row):
     if key in columns and key.endswith('UID'):
-     row[key]=person(row[key],str(spec.get('label') or field)+' / '+str(number)+' / '+str(columns[key].get('label') or key),(current.get(str(number),{}) if isinstance(current,dict) else {}).get(key))
+     row[key]=person(row[key],str(spec.get('label') or field)+' / '+str(number)+' / '+str(columns[key].get('label') or key),(current.get(str(number),{}) if isinstance(current,dict) else {}).get(key),row_context=row)
  return value,questions
 
 
