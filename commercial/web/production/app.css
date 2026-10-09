@@ -525,6 +525,14 @@ body.flow-snapshot-open{overflow:hidden}
 .secretary-native-file-row>span{font-weight:700;overflow-wrap:anywhere}
 .secretary-native-file-row>small{margin-inline-end:auto}
 .secretary-stage-submit{margin-top:10px}
+.secretary-stage-ready-actions{display:flex;justify-content:flex-start;gap:10px;margin:10px 18px 0;min-height:0}
+.secretary-stage-ready-actions:empty{display:none}
+.secretary-stage-ready-actions .secretary-quick-actions{margin:0}
+.secretary-stage-ready-actions .button.primary{min-height:42px;font-weight:800}
+@media(max-width:650px){
+ .secretary-stage-ready-actions{margin:8px 12px 0}
+ .secretary-stage-ready-actions .secretary-quick-actions,.secretary-stage-ready-actions .button{width:100%}
+}
 @media (max-width:720px){
  .secretary-native-file-head,.secretary-native-file-row{align-items:stretch;flex-direction:column}
  .secretary-native-file-head strong,.secretary-native-file-row>small{margin-inline-end:0}
