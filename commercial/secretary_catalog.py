@@ -194,13 +194,13 @@ def with_live_requiredness(source_id,pack,stage,*,con=None,strict=False):
  form_uid=stage_spec['form_uid']
  from .processmaker_store import query,ProductionUnavailable
  owned=con is None
- manager=None
+ manager=None;entered=False
  try:
   if owned:
    from .user_bpms_bindings import processmaker_profile
    from .processmaker_store import open_production
    manager=open_production(processmaker_profile(source_id)['mysql'])
-   con=manager.__enter__()
+   con=manager.__enter__();entered=True
   try:
    rows=query(con,'SELECT DYN_CONTENT FROM DYNAFORM WHERE DYN_UID=%s AND PRO_UID=%s LIMIT 2',
               (form_uid,process_uid))
@@ -214,7 +214,7 @@ def with_live_requiredness(source_id,pack,stage,*,con=None,strict=False):
   if strict:raise
   return _requiredness_unavailable(pack,stage,exc)
  finally:
-  if owned and manager is not None:
+  if owned and manager is not None and entered:
    manager.__exit__(None,None,None)
 
 def _installed_process(con,process_uid):
