@@ -123,9 +123,22 @@ def assignments_for(values):
         "MTG_Participants":"شرکت‌کنندگان:",
         "MTG_Agenda":"دستور جلسه:",
     }
+    def username_for(raw):
+        try:return USERNAMES[int(str(raw),16)-1]
+        except (ValueError,IndexError):return raw
+    model_values=copy.deepcopy(values)
+    model_values["MTG_ChairUserUID"]="ceo"
+    model_values["MTG_SecretaryUserUID"]="administrator"
+    for row in model_values["MTG_Participants"].values():
+        row["MTG_ParticipantUserUID"]=username_for(row["MTG_ParticipantUserUID"])
+    for row in model_values["MTG_Agenda"].values():
+        if row.get("MTG_AgendaPresenterUID"):
+            row["MTG_AgendaPresenterUID"]=username_for(row["MTG_AgendaPresenterUID"])
+        if row.get("MTG_ExistingOwnerUID"):
+            row["MTG_ExistingOwnerUID"]=username_for(row["MTG_ExistingOwnerUID"])
     return [
         runtime.legacy.Assignment(field=field,value_json=json.dumps(value,ensure_ascii=False),quote=quotes[field])
-        for field,value in values.items()
+        for field,value in model_values.items()
     ]
 
 
