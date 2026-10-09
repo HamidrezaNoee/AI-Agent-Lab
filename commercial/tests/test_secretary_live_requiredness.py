@@ -175,3 +175,20 @@ def test_grid_owner_uid_can_be_supported_by_unique_role_in_same_row(pack):
     assert questions==[]
     assert resolved["1"]["MTG_ActionOwnerUID"]==u1
     assert resolved["2"]["MTG_ActionOwnerUID"]==u2
+
+
+def test_assistant_drops_old_attendance_question_when_pm_makes_it_optional(pack):
+    p=all_optional_pack(pack,"minutes")
+    t=task(p,"minutes")
+    values={
+        "MTG_MeetingHeld":"Held",
+        "MTG_Participants":{"1":{
+            "MTG_ParticipantUserUID":"c"*32,
+            "MTG_ParticipantPosition":"مدیریت سامانه",
+        }},
+    }
+    state=runtime.assistant_state(
+        values,t,S,
+        questions=["وضعیت حضور شرکت‌کننده ردیف 1 (مدیریت سامانه) را مشخص کنید: حاضر، غایب یا غیبت موجه."])
+    assert state["missing"]==[]
+    assert "وضعیت حضور شرکت‌کننده" not in state["message"]
