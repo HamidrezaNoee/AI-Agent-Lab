@@ -101,13 +101,14 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
         def assigned(self,case,task_uid,person):
             calls["assigned"]=(case,task_uid,person)
             return 1
-        def upload_input_document(self,case,task_uid,input_doc_uid,filename,data,content_type,comment=""):
-            calls["upload"]=(case,task_uid,input_doc_uid,filename,data,content_type,comment)
+        def upload_input_document(self,case,input_doc_uid,field_name,filename,data,content_type,comment=""):
+            calls["upload"]=(case,input_doc_uid,field_name,filename,data,content_type,comment)
             return {
                 "app_doc_uid":"3"*32,
                 "app_doc_version":"1",
                 "app_doc_filename":filename,
                 "doc_uid":input_doc_uid,
+                "field_name":field_name,
                 "app_doc_type":"INPUT",
             }
         def close(self):pass
@@ -130,6 +131,6 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
 
     expected_task=t["pack"]["stages"]["action_execution"]["task_uid"]
     assert calls["assigned"]==(t["case_uid"],expected_task,scope["external_user_id"])
-    assert calls["upload"][1]==expected_task
-    assert calls["upload"][2]=="6343078616ac0d6c53a98d9079721622"
+    assert calls["upload"][1]=="6343078616ac0d6c53a98d9079721622"
+    assert calls["upload"][2]=="MTGA_EvidenceFile1"
     assert result["app_doc_filename"]=="proof.pdf"
