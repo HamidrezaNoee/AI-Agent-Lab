@@ -1,5 +1,5 @@
 """Bounded native evidence reading and explicitly advisory review proposals."""
-import hashlib,io,json,subprocess,sys
+import hashlib,io,json,mimetypes,subprocess,sys
 from pydantic import BaseModel,ConfigDict,Field
 from . import agent_storage,secretary_runtime as runtime
 from .secretary_processmaker import PM,uid
@@ -8,6 +8,7 @@ from .agent_workspace import scope_stamp,RevisionConflict
 from .meeting_agent import configured_client,AgentInvalid,AgentUnavailable
 
 MAX_BYTES=5*1024*1024
+MAX_NATIVE_FILE_BYTES=25*1024*1024
 
 def document_text(data,filename):
  if not data or len(data)>MAX_BYTES:raise ValueError('سند باید حداکثر ۵ مگابایت باشد.')
@@ -29,8 +30,57 @@ def native_documents(task,scope,actor):
   if pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])!=task['index']:raise RevisionConflict()
   docs=pm.call('GET','/cases/'+uid(task['case_uid'])+'/input-documents')
   if not isinstance(docs,list) or len(docs)>100:raise ValueError('فهرست اسناد بیش از حد بزرگ یا نامعتبر است.')
-  return [{k:d.get(k) for k in ('app_doc_uid','app_doc_version','app_doc_filename','app_doc_type')} for d in docs]
+  allowed=('app_doc_uid','app_doc_version','app_doc_filename','app_doc_type','doc_uid','app_doc_create_date','app_doc_create_user','app_doc_index')
+  return [{k:d.get(k) for k in allowed} for d in docs]
  finally:pm.close()
+
+def field_documents(task,scope,actor,field):
+ spec=runtime.file_control(task,field)
+ docs=native_documents(task,scope,actor)
+ doc_uid=str(spec['inp_doc_uid'])
+ result=[d for d in docs if str(d.get('doc_uid') or '')==doc_uid]
+ result.sort(key=lambda d:(str(d.get('app_doc_create_date') or ''),int(d.get('app_doc_version') or 0)),reverse=True)
+ return result
+
+
+def upload_field_document(task,scope,actor,field,filename,content_type,data):
+ spec=runtime.file_control(task,field,write=True)
+ if not isinstance(data,(bytes,bytearray)) or not data:
+  raise ValueError('فایل خالی است.')
+ if len(data)>MAX_NATIVE_FILE_BYTES:
+  raise ValueError('حداکثر حجم هر فایل ۲۵ مگابایت است.')
+ pm=PM(scope['source_id'],process_uid=runtime.process_for(task['pack'],task['stage']),bearer=token(scope,actor))
+ try:
+  assigned=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
+  if assigned!=task['index']:raise RevisionConflict()
+  result=pm.upload_input_document(
+   task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],spec['inp_doc_uid'],
+   filename,data,content_type,comment='AVAN · '+str(spec.get('label') or field))
+  docs=field_documents(task,scope,actor,field)
+  uploaded=next((d for d in docs if str(d.get('app_doc_uid'))==str(result.get('app_doc_uid'))),None)
+  return uploaded or {k:result.get(k) for k in ('app_doc_uid','app_doc_version','app_doc_filename','app_doc_type','doc_uid')}
+ finally:pm.close()
+
+
+def read_native_bytes(task,scope,actor,field,doc_id,version):
+ spec=runtime.file_control(task,field)
+ docs=field_documents(task,scope,actor,field)
+ doc=next((d for d in docs if str(d.get('app_doc_uid'))==str(doc_id) and str(d.get('app_doc_version'))==str(version)),None)
+ if not doc:raise PermissionError('این فایل متعلق به فیلد مستندات مرحله جاری نیست یا مجوز مشاهده آن وجود ندارد.')
+ pm=PM(scope['source_id'],process_uid=runtime.process_for(task['pack'],task['stage']),bearer=token(scope,actor))
+ try:
+  if pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])!=task['index']:raise RevisionConflict()
+  with pm.client.stream('GET',pm.base+f"/cases/{uid(task['case_uid'])}/input-document/{uid(doc_id)}/file?v={int(version)}") as response:
+   if response.status_code not in (200,206):raise PermissionError('مجوز دریافت این فایل در ProcessMaker وجود ندارد.')
+   data=bytearray()
+   for chunk in response.iter_bytes():
+    data.extend(chunk)
+    if len(data)>MAX_NATIVE_FILE_BYTES:raise ValueError('فایل بیش از ۲۵ مگابایت است.')
+  name=str(doc.get('app_doc_filename') or 'document')
+  mime=response.headers.get('content-type') or mimetypes.guess_type(name)[0] or 'application/octet-stream'
+  return bytes(data),{**doc,'content_type':mime,'field':field,'label':spec.get('label')}
+ finally:pm.close()
+
 
 def read_native(task,scope,actor,doc_id,version):
  docs=native_documents(task,scope,actor)
