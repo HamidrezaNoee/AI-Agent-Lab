@@ -125,3 +125,49 @@ response and still require the normal human review/submission step.
 - Audit source/process/case filters execute before TOP, with malformed-JSON protection and tenant/actor predicates. Operation completion/failure retains its initial operational context.
 
 Latest uploaded meeting-10(1)/action-9(1) compile exactly to the current shipped pack; this repair does not replace their process IDs or trigger definitions.
+
+
+## Full-turn extraction invariant across every stage
+
+Fast-path tools (confirmation, temporal parsing, identity resolution and deterministic
+commands) are allowed to terminate a turn only when the user message is focused on
+one fact. A message containing multiple independently writable facts is always routed
+through full structured extraction before the next question is calculated.
+
+This invariant applies to every Smart Secretary stage:
+
+- invitation
+- invitation approval
+- minutes
+- minutes approval
+- action execution
+- action review
+- monitoring / closure
+
+The server builds a stage-aware `coverage_contract` from facts explicitly visible in
+the new user message. Every detected writable fact is a coverage obligation. The
+model may not report success after extracting only the first date, approval decision,
+status, percentage, action row or other field.
+
+After extraction, the server recalculates the next question from the validated draft.
+The model does not own required-field sequencing.
+
+### Stage-specific coverage
+
+- **Invitation:** title, objective, location, schedule, chair, secretary, participants,
+  participant attributes, agenda rows, presenter/duration and explicit prior-action data.
+- **Minutes:** held/not-held state, discussion summary, parking lot, all decisions,
+  all actions, decision/action links, owners, due dates and global priority statements.
+- **Invitation approval:** approval decision plus all explicit chair comments and
+  writable corrections in the same message.
+- **Minutes approval:** approval decision plus chair comments, summary and any explicit
+  writable decision/action correction.
+- **Action execution:** submission type, progress, execution description, actual
+  completion date/time and effort.
+- **Action review:** review result, secretary-confirmed progress/date/time/effort and
+  secretary comment.
+- **Monitoring / closure:** closing note and every explicitly referenced action-review
+  row; multi-action messages must preserve all referenced action numbers.
+
+A partial extraction is retried with non-sensitive coverage-failure labels. After the
+bounded retry budget, the draft remains unchanged rather than accepting a partial turn.
