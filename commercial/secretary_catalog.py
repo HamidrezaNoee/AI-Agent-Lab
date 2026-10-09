@@ -163,7 +163,7 @@ def with_live_requiredness(source_id,pack,stage,*,con=None):
  owner='action' if stage.startswith('action_') else 'meeting'
  process_uid=pack[owner]['process_uid']
  form_uid=stage_spec['form_uid']
- from .processmaker_store import query
+ from .processmaker_store import query,ProductionUnavailable
  owned=con is None
  if owned:
   from .user_bpms_bindings import processmaker_profile
@@ -175,7 +175,7 @@ def with_live_requiredness(source_id,pack,stage,*,con=None):
    rows=query(con,'SELECT DYN_CONTENT FROM DYNAFORM WHERE DYN_UID=%s AND PRO_UID=%s LIMIT 2',
               (form_uid,process_uid))
   except Exception as exc:
-   raise ValueError('AVAN برای خواندن Required بودن فیلدها به دسترسی SELECT روی جدول DYNAFORM این ProcessMaker نیاز دارد.') from exc
+   raise ProductionUnavailable('ProcessMaker DynaForm metadata unavailable') from exc
   if len(rows)!=1:
    raise ValueError('فرم زنده ProcessMaker برای مرحله جاری به‌صورت یکتا پیدا نشد.')
   live=_form_fields(str(rows[0][0] or '{}'))
