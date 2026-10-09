@@ -777,6 +777,10 @@ def labelled(values,task,scope):
  return result
 
 def submit(scope,actor,task,revision,*,pm=None):
+ # A final mutation must never rely on fallback/stale Required flags.
+ live_pack=catalog.with_live_requiredness(
+  scope['source_id'],catalog.get(scope['source_id'],task['pack_id']),task['stage'],strict=True)
+ task={**task,'pack':live_pack}
  owned=pm is None
  if owned:pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
  try:
@@ -875,7 +879,7 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
    # Re-read current ProcessMaker DynaForm requiredness even on the direct
    # minutes route. Chat, form rendering and submit must share one authority.
    configured=catalog.get(source_id,pack_id)
-   live_pack=catalog.with_live_requiredness(source_id,configured,'minutes')
+   live_pack=catalog.with_live_requiredness(source_id,configured,'minutes',strict=True)
    live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':{}}
    pending=gaps(values,live_task)
    if pending:
@@ -1066,6 +1070,9 @@ def _continue_session_case(scope,row,task,pm,save_row,native_reader):
 
 def session_send(scope,actor,identifier,revision,*,pm=None):
  row,task=session_load(scope,actor,identifier)
+ strict_pack=catalog.with_live_requiredness(
+  scope['source_id'],catalog.get(scope['source_id'],row['pack_id']),'invitation',strict=True)
+ task={**task,'pack':strict_pack}
  validate(row['values'],task,scope)
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
  if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
@@ -1098,6 +1105,9 @@ def session_send(scope,actor,identifier,revision,*,pm=None):
 
 def session_reconcile(scope,actor,identifier,revision,*,pm=None):
  row,task=session_load(scope,actor,identifier)
+ strict_pack=catalog.with_live_requiredness(
+  scope['source_id'],catalog.get(scope['source_id'],row['pack_id']),'invitation',strict=True)
+ task={**task,'pack':strict_pack}
  validate(row['values'],task,scope)
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('دبیر باید همان کاربر متصل فعلی باشد.')
  if gaps(row['values'],task):raise ValueError('اطلاعات دعوت‌نامه ناقص است.')
