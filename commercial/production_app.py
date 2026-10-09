@@ -900,6 +900,7 @@ def _source_store_response(source_id, action, principal):
             "Use a dedicated SELECT-only account":"برای خواندن ProcessMaker باید کاربر اختصاصی فقط‌خواندنی استفاده شود؛ root/admin مجاز نیست.",
             "MySQL did not negotiate TLS":"اتصال MySQL برقرار شد اما TLS مورد انتظار فعال نشد؛ تنظیم TLS این Source را بررسی کنید.",
             "Read-only ProcessMaker MySQL unavailable":"AVAN نتوانست اتصال خواندنی MySQL به ProcessMaker را برقرار نگه دارد؛ Host/Port/Firewall یا دسترسی کاربر را بررسی کنید.",
+            "ProcessMaker DynaForm metadata unavailable":"AVAN نمی‌تواند تنظیم Required فرم زنده ProcessMaker را بخواند؛ به کاربر فقط‌خواندنی AVAN دسترسی SELECT روی جدول DYNAFORM بدهید.",
         }
         raise HTTPException(status_code=503,detail=details.get(reason,"ارتباط با ProcessMaker انتخاب‌شده برقرار نیست: "+reason[:180]))
     except HTTPException:
