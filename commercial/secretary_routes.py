@@ -32,7 +32,7 @@ def register(app,authorized,csrf):
  @app.get(base)
  def listing(source_id:str,value=Depends(authorized)):
   principal,scope=access(value,source_id)
-  return run(lambda:{'workflows':flow.listing(scope,principal.subject),'contract':flow.FORMS,'people':[{'uid':k,'name':v.get('name',k)} for k,v in scope['directory'].items() if v.get('active')]})
+  return run(lambda:{'workflows':flow.listing(scope,principal.subject),'contract':flow.live_forms(scope),'people':[{'uid':k,'name':v.get('name',k)} for k,v in scope['directory'].items() if v.get('active')]})
  @app.post(base)
  def create(source_id:str,value=Depends(csrf)):
   principal,scope=access(value,source_id)
