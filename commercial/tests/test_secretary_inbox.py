@@ -667,7 +667,7 @@ def test_action_stage_requirements_match_latest_action_pmx(pack):
  assert 'MTGA_SecretaryActualCompletionTime2' not in fields
 
 
-def test_minutes_approval_requires_at_least_one_action_when_approved(pack):
+def test_minutes_approval_does_not_invent_minimum_action_requirement(pack):
  t=task(pack,'minutes_approval',{
   'MTG_MeetingHeld':'Held',
   'MTG_MeetingDiscussionSummary':'جمع‌بندی',
@@ -676,7 +676,7 @@ def test_minutes_approval_requires_at_least_one_action_when_approved(pack):
   'MTG_Actions':{},
  })
  gaps=r.gaps({'MTG_MinutesApproval':'Approved'},t)
- assert any(x['field']=='MTG_Actions' for x in gaps)
+ assert not any(x['field']=='MTG_Actions' for x in gaps)
 
 
 def test_latest_reviewed_pmx_pair_is_the_only_runtime_contract():
