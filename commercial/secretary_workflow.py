@@ -148,61 +148,59 @@ def jalali_instant(day,clock):
  return datetime.fromisoformat(g.isoformat()+'T'+(clock or '00:00')).replace(tzinfo=ZoneInfo('Asia/Tehran'))
 
 
-def missing(values,stage):
- required=['MTG_MeetingNo','MTG_MeetingTitle','MTG_Location','MTG_MeetingStartDateTime','MTG_MeetingStartTime','MTG_SecretaryUserUID','MTG_ChairUserUID'] if stage=='invitation' else ['MTG_MeetingHeld'] if stage=='minutes' else ['MTG_ClosingNote']
- if stage=='minutes':
-  if values.get('MTG_MeetingHeld')=='NotHeld':required+=['MTG_NotHeldReason']
-  elif values.get('MTG_MeetingHeld')=='Held':required+=['MTG_MeetingDiscussionSummary']
- result=[{'field':k,'question':'لطفاً '+str(FORMS[stage][k]['label'] or k)+' را مشخص کنید.'} for k in required if not values.get(k)]
- if stage=='minutes' and values.get('MTG_MeetingHeld')=='Held':
-  for i,r in indexed_rows(values.get('MTG_Participants')):
-   status=str(r.get('MTG_AttendanceStatus') or '').strip()
-   attendance_time=str(r.get('MTG_AttendanceTime') or '').strip()
-   participant=str(r.get('MTG_ParticipantPosition') or '').strip()
-   who=(' ('+participant+')') if participant else ''
-   if not status:
-    result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceStatus',
-     'question':f'وضعیت حضور شرکت‌کننده ردیف {i}{who} را مشخص کنید: حاضر، غایب یا غیبت موجه.'})
-   elif status=='Present' and attendance_time and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',attendance_time):
-    result.append({'field':f'MTG_Participants.{i}.MTG_AttendanceTime',
-     'question':f'ساعت حضور شرکت‌کننده حاضر ردیف {i}{who} معتبر نیست؛ آن را به صورت HH:mm اصلاح کنید.'})
-  decision_rows=indexed_rows(values.get('MTG_Decisions'))
-  decisions=set()
-  decision_numbers=[]
-  for i,r in decision_rows:
-   no=str(r.get('MTG_DecisionNo') or '').strip()
-   text=str(r.get('MTG_DecisionText') or '').strip()
-   if not no:
-    result.append({'field':f'MTG_Decisions.{i}.MTG_DecisionNo','question':f'شماره مصوبه ردیف {i} را مشخص کنید.'})
-   if not text:
-    result.append({'field':f'MTG_Decisions.{i}.MTG_DecisionText','question':f'متن مصوبه ردیف {i} را مشخص کنید.'})
-   if no:
-    decision_numbers.append(no)
-    if text:decisions.add(no)
-  if len(decision_numbers)!=len(set(decision_numbers)):
-   raise ValueError('شماره مصوبات تکراری است.')
-  for i,r in indexed_rows(values.get('MTG_Actions')):
-   action_no=str(r.get('MTG_ActionNo') or ('ردیف '+str(i)))
-   action_text=str(r.get('MTG_ActionDescription') or '').strip()
-   subject=(' «'+action_text[:110]+'»') if action_text else ''
-   labels={
-    'MTG_ActionNo':'شماره اقدام',
-    'MTG_ActionDescription':'شرح اقدام',
-    'MTG_ActionOwnerUID':'مسئول اصلی اقدام',
-    'MTG_persiandate_ActionDueDateTime':'مهلت اقدام',
-    'MTG_ActionDecisionNo':'مصوبه مرتبط با اقدام',
-   }
-   for k in ['MTG_ActionNo','MTG_ActionDescription','MTG_ActionOwnerUID','MTG_persiandate_ActionDueDateTime','MTG_ActionDecisionNo']:
-    if not r.get(k):
-     result.append({'field':f'MTG_Actions.{i}.{k}',
-      'question':labels[k]+' '+action_no+subject+' را مشخص کنید.'})
-   if r.get('MTG_ActionDecisionNo') and r['MTG_ActionDecisionNo'] not in decisions:
-    result.append({'field':f'MTG_Actions.{i}.decision','question':'مصوبه '+str(r['MTG_ActionDecisionNo'])+' برای '+action_no+subject+' در فهرست مصوبات پیدا نشد؛ مصوبه مرتبط را تکمیل کنید.'})
-   if r.get('MTG_persiandate_ActionDueDateTime'):jalali_instant(r['MTG_persiandate_ActionDueDateTime'],'00:00')
-  numbers=[r.get('MTG_ActionNo') for r in rows(values.get('MTG_Actions'))]
-  if len(numbers)!=len(set(numbers)):raise ValueError('شماره اقدامات تکراری است.')
- return result
+def live_form(scope,stage):
+ """Return the reviewed writable form with Required flags refreshed from PM."""
+ if stage not in WRITE_FIELDS:raise ValueError('مرحله دبیر معتبر نیست.')
+ from . import secretary_catalog as catalog
+ packs=catalog.runtime_meeting_packs(scope['source_id'])
+ if len(packs)!=1:
+  raise ValueError('بسته فعال مدیریت جلسات برای این ProcessMaker به‌صورت یکتا پیدا نشد.')
+ pack=catalog.with_live_requiredness(scope['source_id'],packs[0],stage)
+ fields=pack['stages'][stage]['fields']
+ return {k:fields[k] for k in WRITE_FIELDS[stage] if k in fields}
 
+
+def live_forms(scope):
+ return {stage:live_form(scope,stage) for stage in ('invitation','minutes','monitoring')}
+
+
+def _required_bool(value):
+ if value is True:return True
+ if value is False or value is None:return False
+ return str(value).strip().lower() in ('1','true','yes','required')
+
+
+def _blank_required(value):
+ return value in (None,'',{}) or value==[]
+
+
+def missing(values,stage,scope=None):
+ """Only ProcessMaker-declared Required fields are blockers.
+
+ scope=None exists for isolated legacy unit tests; production callers always pass
+ scope and therefore read the live DynaForm contract.
+ """
+ specs=live_form(scope,stage) if scope is not None else {
+  k:FORMS[stage][k] for k in WRITE_FIELDS[stage] if k in FORMS[stage]
+ }
+ result=[]
+ for field,spec in specs.items():
+  mode=str(spec.get('mode') or '').lower()
+  if _required_bool(spec.get('required')) and mode not in ('view','disabled') and _blank_required(values.get(field)):
+   if stage=='invitation' and field=='MTG_MeetingNo':
+    continue # Native BEFORE trigger owns the sequence value.
+   result.append({'field':field,'question':'لطفاً '+str(spec.get('label') or field)+' را مشخص کنید.'})
+  if spec.get('type')!='grid' or not isinstance(values.get(field),dict):
+   continue
+  columns={str(c.get('id')):c for c in spec.get('columns',[]) if c.get('id')
+           and _required_bool(c.get('required'))
+           and str(c.get('mode') or '').lower() not in ('view','disabled')}
+  for index,row in indexed_rows(values.get(field)):
+   for column_id,column in columns.items():
+    if _blank_required(row.get(column_id)):
+     result.append({'field':field+'.'+str(index)+'.'+column_id,
+      'question':str(column.get('label') or column_id)+' در ردیف '+str(index)+' را مشخص کنید.'})
+ return result
 
 def key(scope,actor):return source_user_key('secretary_workflows',scope,actor)
 def public(row):
@@ -225,7 +223,7 @@ def listing(scope,actor):
 def create(scope,actor):
  row={'id':secrets.token_urlsafe(24),'actor':actor,'scope':scope_stamp(scope),'tenant':scope['tenant_id'],
   'stage':'invitation','status':'collecting','revision':1,'case_uid':None,'values':{},'questions':[],
-  'created_at':datetime.now(timezone.utc).isoformat(),'source_id':scope['source_id'],'missing':missing({},'invitation')}
+  'created_at':datetime.now(timezone.utc).isoformat(),'source_id':scope['source_id'],'missing':missing({},'invitation',scope)}
  with agent_storage.transaction() as tx:
   index=tx.get(key(scope,actor),[],lock=True)
   if len(index)>=200:raise ValueError('ظرفیت پرونده‌های دبیر تکمیل است.')
@@ -237,7 +235,7 @@ def update(scope,actor,identifier,revision,values,questions=()):
  with agent_storage.transaction() as tx:
   row=allowed(tx.get('secretary-flow:'+identifier,lock=True),scope,actor)
   if row['revision']!=revision or row['status'] not in ('collecting','ready','monitoring_ready'):raise RevisionConflict('Workflow changed or sent')
-  gaps=missing(values,row['stage'])
+  gaps=missing(values,row['stage'],scope)
   row.update(values=values,questions=list(questions),missing=gaps,revision=revision+1,status='collecting' if gaps else 'ready')
   tx.put('secretary-flow:'+identifier,row)
  return public(row)
@@ -264,7 +262,7 @@ def submit(scope,actor,identifier,revision,*,pm=None):
  row=load(scope,actor,identifier)
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('Only bound secretary may submit')
  validate(row['values'],row['stage'],scope['directory'])
- if missing(row['values'],row['stage']):raise ValueError('اطلاعات ناقص جلسه را تکمیل کنید.')
+ if missing(row['values'],row['stage'],scope):raise ValueError('فیلدهای Required فرم ProcessMaker را تکمیل کنید.')
  owned=pm is None
  if owned:pm=PM(scope['source_id'])
  try:
