@@ -9,6 +9,11 @@ S={'tenant_id':'tenant','source_id':'source','external_user_id':'s'*32,'role':'U
 V={'MTG_MeetingNo':'100','MTG_MeetingTitle':'بررسی واردات','MTG_Location':'دفتر','MTG_MeetingStartDateTime':'1405/07/10','MTG_MeetingStartTime':'10:00','MTG_SecretaryUserUID':'s'*32,'MTG_ChairUserUID':'c'*32,'MTG_Participants':{'1':{'MTG_ParticipantUserUID':'c'*32}},'MTG_Agenda':{'1':{'MTG_AgendaTitle':'واردات'}}}
 @pytest.fixture
 def store(monkeypatch):
+ # Legacy workflow unit tests use the checked-in PM form snapshot; production
+ # calls live_form(scope, stage), which refreshes Required flags from PM.
+ monkeypatch.setattr(f,'live_form',lambda scope,stage:{
+  k:copy.deepcopy(f.FORMS[stage][k]) for k in f.WRITE_FIELDS[stage] if k in f.FORMS[stage]
+ })
  data={}
  class Tx:
   def get(self,k,default=None,**kw):return copy.deepcopy(data.get(k,default))
@@ -33,9 +38,11 @@ def ready():
 def test_contract_and_missing():
  assert f.PLAN=='4a6419a60141d7d36001ba9344db4eac'
  assert f.MINUTES=='a07e9ed93a4b3244aca40996c45eb227'
- assert len(f.missing({},'invitation'))==7
+ # Meeting number is system-generated; the remaining blockers come only from
+ # the PM form's own Required flags.
+ assert len(f.missing({},'invitation'))==6
  assert not f.missing(V,'invitation')
- assert f.missing({'MTG_MeetingHeld':'NotHeld'},'minutes')[0]['field']=='MTG_NotHeldReason'
+ assert not f.missing({'MTG_MeetingHeld':'NotHeld'},'minutes')
 
 def test_refuses_invented_identity_or_approval():
  with pytest.raises(ValueError):f.validate({**V,'MTG_ChairUserUID':'unknown'},'invitation',S['directory'])
