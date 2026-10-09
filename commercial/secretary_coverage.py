@@ -160,13 +160,13 @@ def explicit_field_requirements(notes,task):
         add("MTG_ParkingLot","موضوعات خارج از دستور",any(x in raw for x in ("موضوعات خارج از دستور","خارج از دستور")))
         add("MTG_ApprovalSummary","خلاصه مصوبات و اقدامات",any(x in raw for x in ("خلاصه مصوبات","خلاصه اقدامات","خلاصه مصوبات و اقدامات")))
         add("MTG_Decisions","مصوبات",any(x in raw for x in ("مصوبات","مصوبه")))
-        add("MTG_Actions","اقدامات",any(x in raw for x in ("اقدامات","اقدام ها","اقدام‌ها")))
+        add("MTG_Actions","اقدامات",any(x in raw for x in ("اقدامات","اقدام ها","اقدام‌ها")) or bool(re.search(r'\bاقدام\s+(?:a\s*-?\s*)?[0-9]+',raw)))
     elif stage=="action_execution":
         add("MTGA_SubmissionType","نوع ارسال",any(x in raw for x in ("گزارش پیشرفت","اعلام تکمیل","تکمیل اقدام","اقدام تکمیل","کار تمام","کار تموم")))
         add("MTGA_ProgressPercent","درصد پیشرفت",bool(re.search(r'(?:پیشرفت|درصد).{0,30}(?:%|درصد|[0-9])',raw)))
         add("MTGA_ExecutionDescription","شرح اجرای اقدام",any(x in raw for x in ("شرح اجرا","شرح اقدام انجام","گزارش اجرا","گزارش پیشرفت","انجام دادم","انجام شده","انجام شد")))
-        add("MTGA_ActualCompletionDateTime","تاریخ واقعی انجام",any(x in raw for x in ("تاریخ انجام","تاریخ تکمیل","در تاریخ")))
-        add("MTGA_ActualCompletionTime","ساعت واقعی انجام",any(x in raw for x in ("ساعت انجام","ساعت تکمیل","در ساعت")))
+        add("MTGA_ActualCompletionDateTime","تاریخ واقعی انجام",any(x in raw for x in ("تاریخ انجام","تاریخ تکمیل","تاریخ واقعی انجام")) or bool(re.search(r'در تاریخ.{0,50}(?:انجام|تکمیل)',raw)))
+        add("MTGA_ActualCompletionTime","ساعت واقعی انجام",any(x in raw for x in ("ساعت انجام","ساعت تکمیل","ساعت واقعی انجام")) or bool(re.search(r'در ساعت.{0,40}(?:انجام|تکمیل)',raw)))
         add("MTGA_ActualEffortMinutes","زمان واقعی صرف‌شده",any(x in raw for x in ("زمان صرف","زمان واقعی","دقیقه وقت","دقیقه زمان","ساعت کار")))
     elif stage=="action_review":
         add("MTGA_ReviewStatus2","نتیجه بررسی اقدام",any(x in raw for x in ("تایید و بستن","تأیید و بستن","بسته شود","بستن اقدام","بازگشت برای اصلاح","نیاز به اصلاح","ادامه اقدام","rework")))
