@@ -215,3 +215,17 @@ def test_requiredness_hash_changes_when_live_pm_required_flag_changes(pack):
     live["MTG_MeetingDiscussionSummary"]["required"]=True
     second=catalog._overlay_live_requiredness(pack,stage,live)
     assert first["live_requiredness_hash"]!=second["live_requiredness_hash"]
+
+
+def test_pm3_double_encoded_dynaform_content_preserves_required_flag():
+    import json
+    inner=json.dumps({
+        "items":[{
+            "variable":"MTG_MeetingDiscussionSummary",
+            "label":"شرح مذاکرات",
+            "type":"textarea",
+            "required":True,
+        }]
+    },ensure_ascii=False)
+    fields=catalog._form_fields(json.dumps(inner,ensure_ascii=False))
+    assert fields["MTG_MeetingDiscussionSummary"]["required"] is True
