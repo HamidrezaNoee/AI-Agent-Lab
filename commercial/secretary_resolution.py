@@ -254,7 +254,7 @@ def strict_identity_mentions(text,directory):
 
 def person_display(uid,directory):
     person=(directory or {}).get(str(uid)) or {}
-    return str(person.get("username") or person.get("avan_username") or person.get("name") or person.get("avan_name") or uid)
+    return str(person.get("name") or person.get("avan_name") or person.get("username") or person.get("avan_username") or uid).strip()
 
 
 def get_path(values,path):
