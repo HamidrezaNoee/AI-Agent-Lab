@@ -611,6 +611,7 @@ def extract(notes,task,current,scope,*,questions=(),history=(),client=None,model
  payload['pending_fields']=gaps(current,task)
  payload['coverage_contract']=coverage.coverage_prompt(notes,task,scope.get('directory',{}))
  dense_contract=payload['coverage_contract']
+ dense_update=coverage.is_compound_invitation(notes,task)
  output_budget=7000 if (
   len(dense_contract.get('explicit_fields',[]))>=5
   or dense_contract.get('participant_count',0)>=4
@@ -648,6 +649,9 @@ def extract(notes,task,current,scope,*,questions=(),history=(),client=None,model
      if getattr(result,'status','completed')!='completed':raise AgentInvalid('Incomplete extraction')
      parsed=legacy.validate_model_json(schema,legacy.response_text(result))
     if with_reply and parsed.intent=='question':
+     if dense_update:
+      payload['coverage_failures']=['این پیام چند فیلد صریح برای ثبت دارد و نباید به‌عنوان سؤال صرف تفسیر شود.']
+      raise AgentInvalid('Dense update misclassified as question')
      reply=parsed.reply.strip()[:4000] or 'کدام بخش جلسه را توضیح بدهم؟'
      return copy.deepcopy(current),list(questions),reply,'question'
     values=copy.deepcopy(current)
