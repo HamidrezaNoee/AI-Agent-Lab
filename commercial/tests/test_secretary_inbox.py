@@ -822,3 +822,53 @@ def test_opening_minutes_approval_repairs_legacy_suggest_labels(pack,store,monke
  row=written['MTG_Actions']['1']
  assert row['MTG_ActionOwnerUID']==owner
  assert row['MTG_ActionOwnerUID_label']=='مدیر استراتژی'
+
+
+
+def test_action_owner_role_text_is_never_persisted_as_uid(pack):
+ scope=copy.deepcopy(S)
+ owner='4'*32
+ scope['directory'][owner]={
+  'active':True,
+  'username':'sales.manager',
+  'name':'رضا محمدی',
+  'position':'مدیر فروش و بازاریابی',
+  'unit':'فروش و بازاریابی',
+ }
+ t=task(pack,'minutes')
+ values={
+  'MTG_Actions':{
+   '1':{
+    'MTG_ActionDecisionNo':'D-001',
+    'MTG_ActionNo':'A-001',
+    'MTG_ActionDescription':'ساخت برنامه فروش',
+    'MTG_ActionOwnerUID':'مدیر فروش',
+    'MTG_ActionOwnerPosition':'',
+    'MTG_persiandate_ActionDueDateTime':'1405/07/20',
+    'MTG_ActionPriority':'High',
+   }
+  }
+ }
+ payload=r.labelled(values,t,scope)
+ row=payload['MTG_Actions']['1']
+ assert row['MTG_ActionOwnerUID']==owner
+ assert row['MTG_ActionOwnerUID']!='مدیر فروش'
+ assert row['MTG_ActionOwnerUID_label']=='رضا محمدی'
+
+
+def test_unmatched_role_text_is_cleared_not_written_as_uid(pack):
+ scope=copy.deepcopy(S)
+ t=task(pack,'minutes')
+ values={
+  'MTG_Actions':{
+   '1':{
+    'MTG_ActionDecisionNo':'D-001',
+    'MTG_ActionNo':'A-001',
+    'MTG_ActionDescription':'کار ناشناخته',
+    'MTG_ActionOwnerUID':'مدیر واحدی که وجود ندارد',
+    'MTG_ActionOwnerPosition':'',
+   }
+  }
+ }
+ repaired=r._repair_user_grid_rows(values,scope['directory'])
+ assert repaired['MTG_Actions']['1']['MTG_ActionOwnerUID']==''
