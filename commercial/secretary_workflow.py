@@ -138,6 +138,22 @@ def validate(values,stage,directory):
   if spec.get('options') and v and v not in {o['value'] for o in spec['options']}:raise ValueError('گزینه فیلد معتبر نیست.')
   if 'Time' in key and 'Date' not in key and v and not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',v):raise ValueError('ساعت را با قالب HH:mm وارد کنید.')
   if 'DateTime' in key and v:jalali_instant(v,'00:00')
+ if stage=='minutes':
+  decision_rows=indexed_rows(values.get('MTG_Decisions'))
+  decision_numbers=[str(row.get('MTG_DecisionNo') or '').strip() for _,row in decision_rows if str(row.get('MTG_DecisionNo') or '').strip()]
+  if len(decision_numbers)!=len(set(decision_numbers)):
+   raise ValueError('شماره مصوبات تکراری است.')
+  known_decisions=set(decision_numbers)
+  action_rows=indexed_rows(values.get('MTG_Actions'))
+  action_numbers=[str(row.get('MTG_ActionNo') or '').strip() for _,row in action_rows if str(row.get('MTG_ActionNo') or '').strip()]
+  if len(action_numbers)!=len(set(action_numbers)):
+   raise ValueError('شماره اقدامات تکراری است.')
+  for _,row in action_rows:
+   ref=str(row.get('MTG_ActionDecisionNo') or '').strip()
+   if ref and ref not in known_decisions:
+    raise ValueError('مصوبه مرتبط با اقدام در فهرست مصوبات پیدا نشد.')
+   due=str(row.get('MTG_persiandate_ActionDueDateTime') or '').strip()
+   if due:jalali_instant(due,'00:00')
 
 
 def jalali_instant(day,clock):
