@@ -503,3 +503,76 @@ def test_slash_label_action_owner_question_targets_row():
         question,"MTG_Actions.1.MTG_ActionOwnerUID")
     assert not resolution._question_targets_path(
         question,"MTG_Actions.2.MTG_ActionOwnerUID")
+
+
+def test_role_query_resolves_to_real_processmaker_user():
+    sales="1"*32
+    expert="2"*32
+    directory={
+        sales:{
+            "active":True,
+            "username":"sales.manager",
+            "name":"رضا محمدی",
+            "position":"مدیر فروش و بازاریابی",
+            "unit":"فروش و بازاریابی",
+        },
+        expert:{
+            "active":True,
+            "username":"sales.expert",
+            "name":"علی رضایی",
+            "position":"کارشناس فروش",
+            "unit":"فروش",
+        },
+    }
+    match=resolution.best_person_match("مدیر فروش",directory)
+    assert match["uid"]==sales
+    assert match["reason"] in ("alias_exact","role_fuzzy")
+    assert resolution.unique_person("مدیر فروش",directory)==sales
+
+
+def test_role_fuzzy_does_not_cross_manager_expert_boundary():
+    expert="2"*32
+    directory={
+        expert:{
+            "active":True,
+            "username":"sales.expert",
+            "name":"علی رضایی",
+            "position":"کارشناس فروش",
+            "unit":"فروش",
+        },
+    }
+    assert resolution.unique_person("مدیر فروش",directory) is None
+
+
+def test_ambiguous_near_roles_require_clarification():
+    one="1"*32;two="2"*32
+    directory={
+        one:{
+            "active":True,
+            "username":"sales.one",
+            "name":"رضا محمدی",
+            "position":"مدیر فروش داخلی",
+            "unit":"فروش",
+        },
+        two:{
+            "active":True,
+            "username":"sales.two",
+            "name":"مهدی احمدی",
+            "position":"مدیر فروش خارجی",
+            "unit":"فروش",
+        },
+    }
+    match=resolution.best_person_match("مدیر فروش",directory)
+    assert match["uid"] is None
+    assert match["reason"]=="ambiguous_fuzzy"
+
+
+def test_person_display_prefers_real_name_over_username():
+    uid="1"*32
+    directory={uid:{
+        "active":True,
+        "username":"mgr.sales",
+        "name":"رضا محمدی",
+        "position":"مدیر فروش",
+    }}
+    assert resolution.person_display(uid,directory)=="رضا محمدی"
