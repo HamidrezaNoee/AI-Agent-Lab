@@ -6,6 +6,7 @@ exists. It never invents identities or business facts.
 """
 from __future__ import annotations
 import copy,re
+from difflib import SequenceMatcher
 from datetime import datetime,timedelta,timezone
 
 AFFIRMATIVE={
@@ -101,19 +102,125 @@ def _aliases(person):
     return {x for x in result if x}
 
 
-def unique_person(raw,directory):
-    """Return one active UID for an explicit identity/role alias, otherwise None."""
-    needles=_identity_forms(raw)
-    if not needles:return None
+_ROLE_WORDS={"مدیر","کارشناس","رئیس","رییس","سرپرست","معاون","دبیر","مسئول","مدیریت"}
+_ROLE_STOPWORDS={"و","واحد","اداره","دپارتمان","امور","بخش","سمت"}
+
+
+def _role_tokens(value):
+    normalized=normalize_text(value).replace("رییس","رئیس")
+    return [x for x in normalized.split() if x and x not in _ROLE_STOPWORDS]
+
+
+def _role_aliases(person):
+    """Role-bearing aliases only; unit-only aliases are not enough for a role query."""
+    result=set()
+    for key in ("name","avan_name","position","title"):
+        result.update(_identity_forms(person.get(key) or ""))
+    username=normalize_text(person.get("username") or person.get("avan_username") or "")
+    if username:
+        result.update(_identity_forms(username))
+        if "." in username:result.add(username.replace("."," "))
+    unit=normalize_text(
+        person.get("unit") or person.get("department") or person.get("department_name") or ""
+    )
+    if username.startswith("mgr.") and unit:
+        cleaned=re.sub(r"^(?:واحد|مدیریت|اداره|دپارتمان|امور)\s+","",unit).strip()
+        for value in {unit,cleaned}:
+            if value:result.update(_identity_forms("مدیر "+value))
+    if username=="administrator":result.update({"admin","ادمین","administrator","مدیر سیستم","مدیرسیستم"})
+    if username=="ceo":result.update({"ceo","مدیرعامل","مدیر عامل"})
+    return {x for x in result if x}
+
+
+def _role_score(query,alias):
+    q=normalize_text(query).replace("رییس","رئیس")
+    a=normalize_text(alias).replace("رییس","رئیس")
+    if not q or not a:return 0.0
+    if q==a:return 1.0
+    if q.replace(" ","")==a.replace(" ",""):return .995
+
+    qt=_role_tokens(q);at=_role_tokens(a)
+    if not qt or not at:return 0.0
+    qset=set(qt);aset=set(at)
+
+    qroles={x for x in qset if x in _ROLE_WORDS}
+    aroles={x for x in aset if x in _ROLE_WORDS}
+    # A manager request must never silently become an expert/chief/etc.
+    if qroles and aroles and qroles.isdisjoint(aroles):
+        return 0.0
+
+    overlap=len(qset & aset)
+    if overlap==0:return 0.0
+    coverage=overlap/len(qset)
+    precision=overlap/len(aset)
+    ratio=SequenceMatcher(None,q,a).ratio()
+
+    # "مدیر فروش" -> "مدیر فروش و بازاریابی" is intentionally strong,
+    # while "مدیر فروش" -> "کارشناس فروش" is rejected above.
+    if qset <= aset:
+        subset=.94-max(0,len(aset)-len(qset))*.015
+    elif aset <= qset:
+        subset=.90-max(0,len(qset)-len(aset))*.02
+    else:
+        subset=0.0
+    return max(subset,.55*coverage+.20*precision+.25*ratio)
+
+
+def best_person_match(raw,directory,*,min_score=.82,min_margin=.07):
+    """Resolve a human identity query to one real active ProcessMaker user.
+
+    Exact UID/username/name/position aliases win first. Fuzzy matching is only
+    enabled for role-bearing phrases and requires both a high score and a clear
+    margin over the runner-up. The returned value is always a real directory UID.
+    """
+    text=normalize_text(raw)
+    if not text:return {"uid":None,"score":0.0,"reason":"empty","candidates":[]}
     active={str(uid):p for uid,p in (directory or {}).items() if p.get("active")}
-    for needle in needles:
-        if needle in active:return needle
-    matches=[]
+
+    # A real PM UID is accepted only when it exists and is active.
+    for uid in active:
+        if text==uid.casefold():
+            return {"uid":uid,"score":1.0,"reason":"uid_exact","candidates":[uid]}
+
+    needles=_identity_forms(text)
+    exact=[]
     for uid,person in active.items():
-        aliases=_aliases(person)
-        if needles & aliases:
-            matches.append(uid)
-    return matches[0] if len(matches)==1 else None
+        if needles & _aliases(person):exact.append(uid)
+    exact=list(dict.fromkeys(exact))
+    if len(exact)==1:
+        return {"uid":exact[0],"score":1.0,"reason":"alias_exact","candidates":exact}
+    if len(exact)>1:
+        return {"uid":None,"score":1.0,"reason":"ambiguous_exact","candidates":exact[:8]}
+
+    tokens=set(_role_tokens(text))
+    if not (tokens & _ROLE_WORDS):
+        return {"uid":None,"score":0.0,"reason":"no_exact_non_role","candidates":[]}
+
+    scored=[]
+    for uid,person in active.items():
+        best=0.0;best_alias=""
+        for alias in _role_aliases(person):
+            score=_role_score(text,alias)
+            if score>best:
+                best=score;best_alias=alias
+        if best>0:
+            scored.append((best,uid,best_alias))
+    scored.sort(key=lambda x:(-x[0],str(x[1])))
+    if not scored or scored[0][0]<min_score:
+        return {"uid":None,"score":scored[0][0] if scored else 0.0,
+                "reason":"below_threshold","candidates":[x[1] for x in scored[:5]]}
+
+    top=scored[0];second=scored[1][0] if len(scored)>1 else 0.0
+    if len(scored)>1 and top[0]-second<min_margin:
+        return {"uid":None,"score":top[0],"reason":"ambiguous_fuzzy",
+                "candidates":[x[1] for x in scored[:5]]}
+    return {"uid":top[1],"score":top[0],"reason":"role_fuzzy",
+            "matched_alias":top[2],"candidates":[x[1] for x in scored[:5]]}
+
+
+def unique_person(raw,directory):
+    """Return exactly one real active PM UID for a name/username/role query."""
+    return best_person_match(raw,directory).get("uid")
 
 
 def strict_identity_mentions(text,directory):
