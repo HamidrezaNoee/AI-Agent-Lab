@@ -30,11 +30,14 @@ def task(pack,stage,native=None):
  return {'case_uid':'a'*32,'index':1,'pack_id':pack['id'],'stage':stage,'pack':pack,'native':native or {},'title':'جلسه','number':'100'}
 
 @pytest.mark.parametrize('stage',['invitation_approval','minutes_approval'])
-def test_chair_vote_never_inherited(pack,stage):
+def test_chair_vote_never_inherited_or_made_required_by_avan(pack,stage):
  v={'MTG_InvitationApproval':'Approved','MTG_MinutesApproval':'Approved'}
  t=task(pack,stage,v);values=r.initial(t)
- assert values['MTG_InvitationApproval' if stage=='invitation_approval' else 'MTG_MinutesApproval']==''
- assert r.gaps(values,t)
+ key='MTG_InvitationApproval' if stage=='invitation_approval' else 'MTG_MinutesApproval'
+ assert values[key]==''
+ # Current PM DynaForms do not mark the hidden vote field Required. AVAN must
+ # not manufacture a gap, while still never inheriting/guessing a prior vote.
+ assert key not in {x['field'] for x in r.gaps(values,t)}
 
 def test_completion_claim_is_not_secretary_approval(pack):
  t=task(pack,'action_review',{'MTGA_ProgressPercent':'100','MTGA_ActualEffortMinutes':'70','MTGA_SubmissionType':'CompletionClaim'})
