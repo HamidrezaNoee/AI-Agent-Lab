@@ -1520,7 +1520,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const stageLabels={invitation:"دعوت‌نامه",invitation_approval:"تأیید دعوت‌نامه",minutes:"صورت‌جلسه",minutes_approval:"تأیید صورت‌جلسه",action_execution:"گزارش اجرای اقدام",action_review:"بررسی اقدام",monitoring:"پایش و اختتام"};
   const p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+(stageLabels[t.stage]||t.stage));p.classList.add("secretary-editor-card");
   const requirednessLive=r.requiredness?.live!==false;
-  if(!requirednessLive)add(p,note(r.requiredness?.warning||"تنظیم Required زنده ProcessMaker فعلاً قابل خواندن نیست. می‌توانید اطلاعات را ویرایش کنید، اما ارسال نهایی تا بازیابی metadata متوقف است.",true));
+  if(!requirednessLive)add(p,note(r.requiredness?.warning||"تنظیم Required زنده ProcessMaker فعلاً قابل خواندن نیست. می‌توانید اطلاعات را ویرایش کنید، اما ارسال نهایی تا بازیابی metadata متوقف است."));
   const stageProgress=el("div","secretary-editor-progress");stageProgress.setAttribute("aria-label","مرحله جاری پرونده");
   stages.forEach(([key,label],i)=>{const step=el("span",key===t.stage?"is-current":"",fmt(i+1)+" · "+label);if(key===t.stage)step.setAttribute("aria-current","step");add(stageProgress,step)});add(editor,stageProgress);
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
