@@ -361,7 +361,7 @@ def refresh(scope,actor,identifier,*,pm=None,now=None):
      if isinstance(val,dict):row['values'][k]={n:{c:x for c,x in r.items() if not c.endswith('_label')} for n,r in val.items() if isinstance(r,dict)}
     if stage=='monitoring':
      row['values']['MTG_ClosingNote']='جمع‌بندی پایش: '+str(v.get('MTG_ActionSummary') or 'اطلاعات کافی برای جمع‌بندی موجود نیست.')
-    row['missing']=missing(row['values'],stage)
+    row['missing']=missing(row['values'],stage,scope)
    if status=='collecting' and current['stage']==stage and current['status'] in ('ready','collecting'):status=current['status']
    row.update(status=status,revision=row['revision']+1,native_status=info.get('app_status'))
    tx.put('secretary-flow:'+identifier,row)
