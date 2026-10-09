@@ -215,12 +215,50 @@ def file_controls(task):
  return result
 
 
+def native_file_refs(value):
+ """Normalize ProcessMaker multipleFile variable shapes to safe document refs."""
+ if value in (None,'',[]):
+  return []
+ if isinstance(value,str):
+  raw=value.strip()
+  if not raw:return []
+  try:value=json.loads(raw)
+  except ValueError:
+   # Legacy single-file variables may contain one UID/name. They cannot safely
+   # authorize an AVAN download until ProcessMaker's own migration trigger
+   # resolves them, so do not invent a document reference here.
+   return []
+ if isinstance(value,dict) and value.get('appDocUid'):
+  value=[value]
+ if not isinstance(value,list):return []
+ result=[]
+ seen=set()
+ for item in value:
+  if not isinstance(item,dict):continue
+  doc_uid=str(item.get('appDocUid') or item.get('app_doc_uid') or '').strip()
+  version=item.get('version',item.get('docVersion',item.get('app_doc_version',1)))
+  name=str(item.get('name') or item.get('appDocFilename') or item.get('app_doc_filename') or '').strip()
+  if not re.fullmatch(r'[a-zA-Z0-9]{32}',doc_uid):continue
+  try:version=int(version or 1)
+  except (TypeError,ValueError):version=1
+  if version<1:version=1
+  key=(doc_uid,version)
+  if key in seen:continue
+  seen.add(key)
+  result.append({'appDocUid':doc_uid,'name':name or 'document','version':version})
+ return result
+
+
 def native_file_gaps(task,documents):
  """Required native file controls are satisfied only by matching PM documents."""
  docs=documents if isinstance(documents,list) else []
  result=[]
  for field,spec in file_controls(task).items():
   if not spec.get('required') or spec.get('mode') in ('view','disabled'):continue
+  # The PMX multipleFile variable is the strongest evidence that this exact
+  # DynaForm control owns a native ProcessMaker document.
+  if native_file_refs((task.get('native') or {}).get(field)):
+   continue
   target=str(spec.get('inp_doc_uid') or '')
   if not any(str(doc.get('doc_uid') or '')==target for doc in docs if isinstance(doc,dict)):
    result.append({'field':field,'question':'لطفاً '+str(spec.get('label') or field)+' را بارگذاری کنید.'})
