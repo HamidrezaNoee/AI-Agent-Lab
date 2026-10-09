@@ -56,9 +56,16 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
   result=pm.upload_input_document(
    task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],spec['inp_doc_uid'],
    filename,data,content_type,comment='AVAN · '+str(spec.get('label') or field))
-  docs=field_documents(task,scope,actor,field)
-  uploaded=next((d for d in docs if str(d.get('app_doc_uid'))==str(result.get('app_doc_uid'))),None)
-  return uploaded or {k:result.get(k) for k in ('app_doc_uid','app_doc_version','app_doc_filename','app_doc_type','doc_uid')}
+  # Do not perform a second remote read here. The write already succeeded and a
+  # later list-permission/transient failure must never make the browser retry
+  # and create a duplicate ProcessMaker document.
+  return {
+   'app_doc_uid':result.get('app_doc_uid'),
+   'app_doc_version':result.get('app_doc_version') or result.get('doc_version') or '1',
+   'app_doc_filename':result.get('app_doc_filename') or str(filename),
+   'app_doc_type':result.get('app_doc_type') or 'INPUT',
+   'doc_uid':result.get('doc_uid') or spec['inp_doc_uid'],
+  }
  finally:pm.close()
 
 
