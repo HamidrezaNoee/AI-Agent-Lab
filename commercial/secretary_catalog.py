@@ -33,7 +33,7 @@ def parse_pmx(xml):
    if isinstance(v,dict):
     if v.get('variable'):
      spec={k:v.get(k) for k in ('label','type','required','options','mode')}
-     if v.get('type')=='grid':spec['columns']=[{k:c.get(k) for k in ('id','label','type','options')} for c in v.get('columns',[])]
+     if v.get('type')=='grid':spec['columns']=[{k:c.get(k) for k in ('id','label','type','options','required','mode')} for c in v.get('columns',[])]
      fields[v['variable']]=spec
     for a in v.values():walk(a)
    elif isinstance(v,list):
@@ -85,7 +85,7 @@ def _form_fields(content):
    if v.get('variable'):
     spec={k:v.get(k) for k in ('label','type','required','options','mode')}
     if v.get('type')=='grid':
-     spec['columns']=[{k:c.get(k) for k in ('id','label','type','options')} for c in v.get('columns',[])]
+     spec['columns']=[{k:c.get(k) for k in ('id','label','type','options','required','mode')} for c in v.get('columns',[])]
     fields[v['variable']]=spec
    for a in v.values():walk(a)
   elif isinstance(v,list):
@@ -93,6 +93,81 @@ def _form_fields(content):
  try:walk(json.loads(content))
  except (ValueError,RecursionError,TypeError) as exc:raise ValueError('تعریف فرم نصب‌شده ProcessMaker معتبر نیست.') from exc
  return fields
+
+
+def _required_bool(value):
+ if value is True:return True
+ if value is False or value is None:return False
+ return str(value).strip().lower() in ('1','true','yes','required')
+
+
+def _overlay_live_requiredness(pack,stage,live_fields):
+ """Overlay only PM-owned required flags onto the reviewed typed adapter."""
+ result=copy.deepcopy(pack)
+ if stage not in result.get('stages',{}):raise ValueError('مرحله موردنظر در بسته جلسات وجود ندارد.')
+ target=result['stages'][stage]['fields']
+ for field,spec in target.items():
+  live=live_fields.get(field)
+  if live is None:
+   # Do not expand or mutate the audited writable surface just because PM changed.
+   # A missing audited field is a contract drift, not an optional field.
+   raise ValueError('فیلد '+field+' در فرم زنده ProcessMaker پیدا نشد؛ قرارداد فرم تغییر کرده است.')
+  spec['required']=_required_bool(live.get('required'))
+  if spec.get('type')=='grid':
+   live_columns={str(c.get('id')):c for c in live.get('columns',[]) if c.get('id')}
+   for column in spec.get('columns',[]):
+    cid=str(column.get('id') or '')
+    if cid and cid in live_columns:
+     column['required']=_required_bool(live_columns[cid].get('required'))
+ # meeting/action subtrees and the union are shared semantically but not always by
+ # object identity after serialization; keep the current stage consistent.
+ owner='action' if stage.startswith('action_') else 'meeting'
+ if stage in result.get(owner,{}).get('stages',{}):
+  result[owner]['stages'][stage]=copy.deepcopy(result['stages'][stage])
+ canonical={
+  key:{'required':bool(spec.get('required')),
+       'columns':{str(c.get('id')):bool(c.get('required')) for c in spec.get('columns',[]) if c.get('id')}}
+  for key,spec in sorted(target.items())
+ }
+ result['live_requiredness_hash']=hashlib.sha256(
+  json.dumps(canonical,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
+ ).hexdigest()
+ return result
+
+
+def with_live_requiredness(source_id,pack,stage,*,con=None):
+ """Read current DynaForm required flags directly from ProcessMaker.
+
+ The reviewed adapter continues to define which fields AVAN is allowed to touch.
+ ProcessMaker is the sole source of truth for whether those fields are mandatory.
+ """
+ if pack.get('adapter')!='meeting_v2':return pack
+ if stage not in pack.get('stages',{}):raise ValueError('مرحله فرایند در بسته جلسات شناخته‌شده نیست.')
+ stage_spec=pack['stages'][stage]
+ owner='action' if stage.startswith('action_') else 'meeting'
+ process_uid=pack[owner]['process_uid']
+ form_uid=stage_spec['form_uid']
+ from .processmaker_store import query
+ owned=con is None
+ if owned:
+  from .user_bpms_bindings import processmaker_profile
+  from .processmaker_store import open_production
+  manager=open_production(processmaker_profile(source_id)['mysql'])
+  con=manager.__enter__()
+ try:
+  try:
+   rows=query(con,'SELECT DYN_CONTENT FROM DYNAFORM WHERE DYN_UID=%s AND PRO_UID=%s LIMIT 2',
+              (form_uid,process_uid))
+  except Exception as exc:
+   raise ValueError('AVAN برای خواندن Required بودن فیلدها به دسترسی SELECT روی جدول DYNAFORM این ProcessMaker نیاز دارد.') from exc
+  if len(rows)!=1:
+   raise ValueError('فرم زنده ProcessMaker برای مرحله جاری به‌صورت یکتا پیدا نشد.')
+  live=_form_fields(str(rows[0][0] or '{}'))
+  return _overlay_live_requiredness(pack,stage,live)
+ finally:
+  if owned:
+   manager.__exit__(None,None,None)
+
 
 def _installed_process(con,process_uid):
  from .processmaker_store import query
