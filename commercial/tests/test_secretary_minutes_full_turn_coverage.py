@@ -285,3 +285,19 @@ def test_unique_persian_role_resolves_inside_action_grid(pack):
         current=None)
     assert resolved["1"]["MTG_ActionOwnerUID"]==uid(scope,"mgr.strategy")
     assert questions==[]
+
+
+def test_identity_question_is_pruned_after_minutes_defaults_resolve_owner():
+    values={
+        "MTG_Actions":{
+            "1":{
+                "MTG_ActionNo":"A-001",
+                "MTG_ActionOwnerUID":"a"*32,
+            }
+        }
+    }
+    questions=[
+        "اقدامات مصوب / 1 / مسئول اصلی: این کاربر را به‌طور صریح مشخص نمی‌کند؛ نام/نام‌کاربری یا سمت دقیق را بگویید."
+    ]
+    remaining=runtime._prune_resolved_identity_questions(values,questions)
+    assert remaining==[]
