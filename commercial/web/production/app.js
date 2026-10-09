@@ -1990,6 +1990,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
         headers:{"Content-Type":selected.type||"application/octet-stream","X-AVAN-Filename":encodeURIComponent(selected.name)},
         body:selected
        });
+       toast("فایل با موفقیت در ProcessMaker ثبت شد.");
        picker.value="";await loadFiles();
       }finally{upload.disabled=false}
      }),"button secondary");
