@@ -1641,6 +1641,10 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
   refreshReceipt();add(conversation,receiptPanel,undoButton);
   add(conversation,progress);
+  // Stage transition CTA lives next to completion status so it cannot disappear
+  // below the chat composer after a successful extraction.
+  const stageReadyActions=el("div","secretary-stage-ready-actions");
+  add(conversation,stageReadyActions);
   const contextSummary=el("details","secretary-context-summary"),summaryTitle=el("summary","",["invitation_approval","minutes_approval"].includes(t.stage)?"خلاصه برای تصمیم شما":"خلاصه اطلاعات استخراج‌شده"),summaryBody=el("pre");
   add(contextSummary,summaryTitle,summaryBody);add(conversation,contextSummary);
   function refreshConversationMeta(){
@@ -1940,7 +1944,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    chatStageSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
    add(quick,chatStageSend);
    if(missing.length)add(quick,el("small","muted",missing.length+" مورد باید قبل از ارسال تکمیل شود."));
-   add(composer,quick);
+   add(stageReadyActions,quick);
   }
   if(isSession&&d.status==="draft"){
    sessionStart=link("ایجاد گام اول و ارسال به رئیس",()=>sendTurn("بله، ایجاد و ارسال کن").catch(e=>toast(e.message)),"button primary secretary-session-start");
@@ -1964,7 +1968,11 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   }
 
   if(!isSession&&Object.keys(r.file_controls||{}).length){
-   const nativeFiles=card("پیوست‌های ProcessMaker","فایل‌ها مستقیماً در همان Case و Input Document تعریف‌شده در PMX ذخیره می‌شوند.");
+   const nativeTitle=t.stage==="minutes"?"پیوست صورت‌جلسه":
+    t.stage==="minutes_approval"?"مشاهده پیوست صورت‌جلسه":
+    t.stage==="action_execution"?"مستندات اجرای اقدام":
+    t.stage==="action_review"?"مشاهده مستندات اجرای اقدام":"پیوست‌های ProcessMaker";
+   const nativeFiles=card(nativeTitle,"فایل‌ها مستقیماً در همان Case و Input Document تعریف‌شده در PMX ذخیره می‌شوند و در مرحله بررسی بعدی قابل مشاهده‌اند.");
    nativeFiles.classList.add("secretary-native-files");
    function nativeFileUrl(field,suffix=""){
     return base+path+"/native-files"+suffix+query+"&field="+encodeURIComponent(field);
