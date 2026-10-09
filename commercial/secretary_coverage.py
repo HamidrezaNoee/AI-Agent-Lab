@@ -85,22 +85,54 @@ def is_compound_invitation(notes,task):
     )
 
 
+def is_compound_minutes(notes,task):
+    """True when a minutes turn contains status plus substantive minutes content."""
+    if (task or {}).get("stage")!="minutes":return False
+    raw=_norm(notes)
+    score=0
+    signals=(
+        ("status",("جلسه تشکیل شد","جلسه تشکیل نشد","جلسه برگزار شد","جلسه برگزار نشد")),
+        ("discussion",("شرح مذاکرات","شرح و جمع بندی","شرح و جمع‌بندی","جمع بندی مذاکرات","جمع‌بندی مذاکرات")),
+        ("parking",("موضوعات خارج از دستور","خارج از دستور","parking lot")),
+        ("decisions",("مصوبات","مصوبه")),
+        ("actions",("اقدامات","اثدامات","اقدام‌ها","اقدام ها")),
+        ("priority",("اولویت همه اقدامات","اوليت همه اقدامات","اولیت همه اقدامات")),
+    )
+    for _,tokens in signals:
+        if any(_norm(token) in raw for token in tokens):score+=1
+    return score>=2 or (
+        any(x in raw for x in ("مصوبات","مصوبه"))
+        and any(x in raw for x in ("اقدامات","اثدامات","اقدام‌ها","اقدام ها"))
+    )
+
+
+def is_compound_turn(notes,task):
+    return is_compound_invitation(notes,task) or is_compound_minutes(notes,task)
+
+
 def explicit_field_requirements(notes,task):
-    if (task or {}).get("stage")!="invitation":return []
+    stage=(task or {}).get("stage")
     raw=_norm(notes)
     result=[]
     def add(field,label,condition):
         if condition and field not in {x["field"] for x in result}:
             result.append({"field":field,"label":label})
-    add("MTG_MeetingTitle","عنوان جلسه",any(x in raw for x in ("با عنوان","عنوان جلسه")))
-    add("MTG_Objective","هدف جلسه","هدف جلسه" in raw)
-    add("MTG_Location","مکان جلسه",("برگزار" in raw and " در " in " "+raw+" ") or "مکان جلسه" in raw or "اتاق جلسات" in raw)
-    add("MTG_MeetingStartDateTime","تاریخ جلسه",any(x in raw for x in ("برای تاریخ","تاریخ برگزاری")))
-    add("MTG_MeetingStartTime","ساعت شروع جلسه",bool(re.search(r'(?:برای تاریخ|تاریخ برگزاری).{0,100}\bساعت\b',raw,re.S)))
-    add("MTG_ChairUserUID","رئیس جلسه",any(x in raw for x in ("رئیس جلسه","رییس جلسه")))
-    add("MTG_SecretaryUserUID","دبیر جلسه","دبیر جلسه" in raw)
-    add("MTG_Participants","شرکت‌کنندگان",any(x in raw for x in ("شرکت کنندگان","شرکت‌کنندگان","مدعوین")))
-    add("MTG_Agenda","دستور جلسه",any(x in raw for x in ("دستور جلسه","محورهای جلسه")))
+    if stage=="invitation":
+        add("MTG_MeetingTitle","عنوان جلسه",any(x in raw for x in ("با عنوان","عنوان جلسه")))
+        add("MTG_Objective","هدف جلسه","هدف جلسه" in raw)
+        add("MTG_Location","مکان جلسه",("برگزار" in raw and " در " in " "+raw+" ") or "مکان جلسه" in raw or "اتاق جلسات" in raw)
+        add("MTG_MeetingStartDateTime","تاریخ جلسه",any(x in raw for x in ("برای تاریخ","تاریخ برگزاری")))
+        add("MTG_MeetingStartTime","ساعت شروع جلسه",bool(re.search(r'(?:برای تاریخ|تاریخ برگزاری).{0,100}\bساعت\b',raw,re.S)))
+        add("MTG_ChairUserUID","رئیس جلسه",any(x in raw for x in ("رئیس جلسه","رییس جلسه")))
+        add("MTG_SecretaryUserUID","دبیر جلسه","دبیر جلسه" in raw)
+        add("MTG_Participants","شرکت‌کنندگان",any(x in raw for x in ("شرکت کنندگان","شرکت‌کنندگان","مدعوین")))
+        add("MTG_Agenda","دستور جلسه",any(x in raw for x in ("دستور جلسه","محورهای جلسه")))
+    elif stage=="minutes":
+        add("MTG_MeetingHeld","وضعیت تشکیل جلسه",any(x in raw for x in ("جلسه تشکیل شد","جلسه تشکیل نشد","جلسه برگزار شد","جلسه برگزار نشد")))
+        add("MTG_MeetingDiscussionSummary","شرح مذاکرات",any(x in raw for x in ("شرح مذاکرات","شرح و جمع بندی","شرح و جمع‌بندی","جمع بندی مذاکرات","جمع‌بندی مذاکرات")))
+        add("MTG_ParkingLot","موضوعات خارج از دستور",any(x in raw for x in ("موضوعات خارج از دستور","خارج از دستور","parking lot")))
+        add("MTG_Decisions","مصوبات",any(x in raw for x in ("مصوبات","مصوبه")))
+        add("MTG_Actions","اقدامات",any(x in raw for x in ("اقدامات","اثدامات","اقدام‌ها","اقدام ها")))
     return result
 
 
@@ -155,6 +187,99 @@ def agenda_expectations(notes,directory):
             "existing_owner_uid":existing_owner,
             "existing_due":existing_due,
         })
+    return result
+
+
+_DECISION_WORDS={
+    "یک":"1","اول":"1","دو":"2","دوم":"2","سه":"3","سوم":"3",
+    "چهار":"4","چهارم":"4","پنج":"5","پنجم":"5","شش":"6","ششم":"6",
+    "هفت":"7","هفتم":"7","هشت":"8","هشتم":"8","نه":"9","نهم":"9","ده":"10","دهم":"10",
+}
+
+
+def decision_expectations(notes):
+    block=_section(notes,("مصوبات","مصوبات جلسه"),("اقدامات","اثدامات","اقدام‌ها","اقدام ها","اولویت","اوليت","اولیت"))
+    result=[]
+    for raw_no,body in _NUMBERED.findall(block):
+        no=str(int(str(raw_no).translate(_DIGITS)))
+        result.append({"index":no,"text":body.strip()})
+    return result
+
+
+def _decision_ref(text):
+    normalized=_norm(text)
+    match=re.search(r'مصوبه\s*([0-9]+|یک|اول|دو|دوم|سه|سوم|چهار|چهارم|پنج|پنجم|شش|ششم|هفت|هفتم|هشت|هشتم|نه|نهم|ده|دهم)\b',normalized)
+    if not match:return None
+    token=match.group(1)
+    return str(int(token)) if token.isdigit() else _DECISION_WORDS.get(token)
+
+
+def _action_lines(notes):
+    block=_section(notes,("اقدامات","اثدامات","اقدام‌ها","اقدام ها"),("اولویت","اوليت","اولیت"))
+    if not block:return []
+    lines=[];current=""
+    for raw in block.splitlines():
+        line=raw.strip()
+        if not line:continue
+        normalized=_norm(line)
+        starts=normalized.startswith("مصوبه") or normalized.startswith("اقدام")
+        if starts:
+            if current:lines.append(current)
+            current=line
+        elif current:
+            current+=" "+line
+        else:
+            current=line
+    if current:lines.append(current)
+    return lines
+
+
+def action_expectations(notes,directory):
+    result=[]
+    for index,line in enumerate(_action_lines(notes),1):
+        people=resolution.strict_identity_mentions(line,directory)
+        normalized=_norm(line)
+        result.append({
+            "row":str(index),
+            "decision_index":_decision_ref(line),
+            "owner_uid":people[0] if len(people)==1 else None,
+            "has_owner_phrase":("مدیر" in normalized or bool(people)),
+            "has_due":bool(re.search(r'(?:تا\s+تاریخ|موعد|مهلت).{0,60}(?:مهر|آبان|آذر|دی|بهمن|اسفند|فروردین|اردیبهشت|خرداد|تیر|مرداد|شهریور|[0-9]{4}[/\-])',normalized)),
+            "text":line,
+        })
+    return result
+
+
+def all_actions_priority(notes):
+    raw=_norm(notes)
+    if re.search(r'(?:اولویت|اوليت|اولیت)\s+همه\s+اقدام(?:ات|ها| ها)?.{0,20}(?:بالا|زیاد)',raw):
+        return "High"
+    return None
+
+
+def apply_system_defaults(notes,task,values,directory):
+    """Fill identifiers/global flags that are deterministic, never business facts."""
+    if (task or {}).get("stage")!="minutes":return values
+    result=values
+    decisions=[row for _,row in _rows(result.get("MTG_Decisions"))]
+    for index,row in enumerate(decisions,1):
+        if not row.get("MTG_DecisionNo"):
+            row["MTG_DecisionNo"]=f"D-{index:03d}"
+    decision_by_index={str(i):str(row.get("MTG_DecisionNo") or f"D-{i:03d}") for i,row in enumerate(decisions,1)}
+    actions=[row for _,row in _rows(result.get("MTG_Actions"))]
+    expected=action_expectations(notes,directory)
+    priority=all_actions_priority(notes)
+    for index,row in enumerate(actions,1):
+        if not row.get("MTG_ActionNo"):
+            row["MTG_ActionNo"]=f"A-{index:03d}"
+        exp=expected[index-1] if index<=len(expected) else {}
+        ref=exp.get("decision_index")
+        if ref and not row.get("MTG_ActionDecisionNo") and ref in decision_by_index:
+            row["MTG_ActionDecisionNo"]=decision_by_index[ref]
+        if exp.get("owner_uid") and not row.get("MTG_ActionOwnerUID"):
+            row["MTG_ActionOwnerUID"]=exp["owner_uid"]
+        if priority and not row.get("MTG_ActionPriority"):
+            row["MTG_ActionPriority"]=priority
     return result
 
 
@@ -213,6 +338,47 @@ def coverage_issues(notes,task,values,assignments,directory):
                 issues.append("مسئول اقدام قبلی دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
             if exp.get("existing_due") and str(row.get("MTG_persiandate_ExistingDueDate") or "")!=exp["existing_due"]:
                 issues.append("موعد اقدام قبلی دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
+    if (task or {}).get("stage")=="minutes":
+        decisions_expected=decision_expectations(notes)
+        if decisions_expected and "MTG_Decisions" in allowed:
+            rows=[row for _,row in _rows(values.get("MTG_Decisions"))]
+            if len(rows)<len(decisions_expected):
+                issues.append("همه مصوبات شماره‌دار پیام استخراج نشدند.")
+            for index,exp in enumerate(decisions_expected,1):
+                if index>len(rows):break
+                row=rows[index-1]
+                if not str(row.get("MTG_DecisionNo") or "").strip():
+                    issues.append("شماره مصوبه ردیف "+exp["index"]+" تعیین نشد.")
+                if not str(row.get("MTG_DecisionText") or "").strip():
+                    issues.append("متن مصوبه ردیف "+exp["index"]+" استخراج نشد.")
+
+        actions_expected=action_expectations(notes,directory)
+        if actions_expected and "MTG_Actions" in allowed:
+            rows=[row for _,row in _rows(values.get("MTG_Actions"))]
+            if len(rows)<len(actions_expected):
+                issues.append("همه اقدامات صریح پیام استخراج نشدند.")
+            decision_rows=[row for _,row in _rows(values.get("MTG_Decisions"))]
+            decision_by_index={str(i):str(row.get("MTG_DecisionNo") or "") for i,row in enumerate(decision_rows,1)}
+            global_priority=all_actions_priority(notes)
+            for index,exp in enumerate(actions_expected,1):
+                if index>len(rows):break
+                row=rows[index-1]
+                label=str(row.get("MTG_ActionNo") or ("ردیف "+str(index)))
+                if not str(row.get("MTG_ActionNo") or "").strip():
+                    issues.append("شماره اقدام ردیف "+str(index)+" تعیین نشد.")
+                if not str(row.get("MTG_ActionDescription") or "").strip():
+                    issues.append("شرح اقدام "+label+" استخراج نشد.")
+                if exp.get("owner_uid") and str(row.get("MTG_ActionOwnerUID") or "")!=exp["owner_uid"]:
+                    issues.append("مسئول اقدام "+label+" از متن صریح تشخیص داده شد ولی ثبت نشد.")
+                elif exp.get("has_owner_phrase") and not str(row.get("MTG_ActionOwnerUID") or "").strip():
+                    issues.append("مسئول اقدام "+label+" استخراج نشد یا در کاربران فعال یکتا نبود.")
+                if exp.get("has_due") and not str(row.get("MTG_persiandate_ActionDueDateTime") or "").strip():
+                    issues.append("مهلت اقدام "+label+" استخراج نشد.")
+                ref=exp.get("decision_index")
+                if ref and decision_by_index.get(ref) and str(row.get("MTG_ActionDecisionNo") or "")!=decision_by_index[ref]:
+                    issues.append("ارتباط اقدام "+label+" با مصوبه "+ref+" ثبت نشد.")
+                if global_priority and str(row.get("MTG_ActionPriority") or "")!=global_priority:
+                    issues.append("اولویت بالای اعلام‌شده روی اقدام "+label+" اعمال نشد.")
     return list(dict.fromkeys(issues))
 
 
@@ -220,6 +386,8 @@ def coverage_prompt(notes,task,directory):
     fields=[x["label"] for x in explicit_field_requirements(notes,task)]
     participants=participant_expectations(notes,directory)
     agenda=agenda_expectations(notes,directory)
+    decisions=decision_expectations(notes)
+    actions=action_expectations(notes,directory)
     return {
         "explicit_fields":fields,
         "participant_count":len(participants["uids"]),
@@ -232,4 +400,11 @@ def coverage_prompt(notes,task,directory):
             "has_existing_owner":bool(x.get("existing_owner_uid")),
             "existing_due":x.get("existing_due"),
         } for x in agenda],
+        "decision_count":len(decisions),
+        "action_count":len(actions),
+        "actions":[{
+            "row":x["row"],"decision_index":x["decision_index"],
+            "has_unique_owner":bool(x["owner_uid"]),"has_due":x["has_due"],
+        } for x in actions],
+        "all_actions_priority":all_actions_priority(notes),
     }
