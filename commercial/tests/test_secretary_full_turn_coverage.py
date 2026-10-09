@@ -222,3 +222,38 @@ def test_coverage_requires_member_required_position_presenter_and_minutes(pack):
     assert "الزام حضور" in text
     assert "ارائه‌دهنده" in text
     assert "مدت دستور جلسه" in text
+
+
+def test_dense_message_misclassified_as_question_is_retried(pack):
+    scope=dense_scope();values=full_values(scope);calls=[]
+    wrong=runtime.ConversationExtraction(
+        intent="question",reply="لطفاً عنوان جلسه را مشخص کنید.",
+        assignments=[],questions=[])
+    complete=runtime.ConversationExtraction(
+        intent="update",reply="همه اطلاعات قابل استخراج پیام ثبت شد.",
+        assignments=assignments_for(values),questions=[])
+    def parse(**kwargs):
+        calls.append(json.loads(kwargs["input"][1]["content"]))
+        return SimpleNamespace(status="completed",output_parsed=wrong if len(calls)==1 else complete)
+    extracted,questions,reply,intent=runtime.extract(
+        NOTES,task(pack,"invitation"),{},scope,
+        client=SimpleNamespace(responses=SimpleNamespace(parse=parse)),
+        model="fixture",with_reply=True)
+    assert len(calls)==2
+    assert calls[1]["coverage_failures"]
+    assert extracted["MTG_MeetingTitle"]=="بررسی برنامه توسعه و استقرار AVAN"
+    assert intent=="update"
+
+
+def test_prior_action_inside_agenda_is_part_of_coverage(pack):
+    scope=dense_scope();values=full_values(scope)
+    broken=copy.deepcopy(values)
+    broken["MTG_Agenda"]["1"].pop("MTG_ExistingActionText")
+    broken["MTG_Agenda"]["1"].pop("MTG_ExistingOwnerUID")
+    broken["MTG_Agenda"]["1"].pop("MTG_persiandate_ExistingDueDate")
+    issues=coverage.coverage_issues(
+        NOTES,task(pack,"invitation"),broken,assignments_for(values),scope["directory"])
+    text="\n".join(issues)
+    assert "اقدام قبلی مرتبط" in text
+    assert "مسئول اقدام قبلی" in text
+    assert "موعد اقدام قبلی" in text
