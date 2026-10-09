@@ -642,7 +642,7 @@ def extract(notes,task,current,scope,*,questions=(),history=(),client=None,model
      if parsed is None:
       parsed=legacy.validate_model_json(schema,legacy.response_text(result))
     else:
-     result=responses.create(model=model,store=False,timeout=60,max_output_tokens=3500,input=[
+     result=responses.create(model=model,store=False,timeout=60,max_output_tokens=output_budget,input=[
       {'role':'system','content':instruction},
       {'role':'user','content':json.dumps(payload,ensure_ascii=False,separators=(',',':'))}],
       text={'format':{'type':'json_schema','name':'secretary_task_fields','strict':True,'schema':legacy.model_schema(schema)}})
