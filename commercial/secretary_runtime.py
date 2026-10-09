@@ -924,6 +924,13 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
    configured=catalog.get(source_id,pack_id)
    live_pack=catalog.with_live_requiredness(source_id,configured,'minutes',strict=True)
    live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':{}}
+   # Resolve a blank owner from the explicit row position only when that role
+   # maps to one active ProcessMaker user. This also repairs drafts created
+   # before the row-context resolver fix.
+   values=_repair_user_grid_rows(values,directory)
+   validate(values,live_task,{'directory':directory})
+   if row is not None:
+    row['values']=copy.deepcopy(values)
    pending=gaps(values,live_task)
    if pending:
     first='؛ '.join(str(x.get('question') or '') for x in pending[:3] if x.get('question'))
