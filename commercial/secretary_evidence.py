@@ -36,6 +36,18 @@ def native_documents(task,scope,actor):
 
 def field_documents(task,scope,actor,field):
  spec=runtime.file_control(task,field)
+ refs=runtime.native_file_refs((task.get('native') or {}).get(field))
+ if refs:
+  # The field value itself is authoritative for DynaForm ownership. This path
+  # also works when the current PM task does not expose the Input Document as a
+  # separate STEP (the action-review PMX is exactly such a case).
+  return [{
+   'app_doc_uid':ref['appDocUid'],
+   'app_doc_version':ref['version'],
+   'app_doc_filename':ref['name'],
+   'app_doc_type':'INPUT',
+   'doc_uid':spec['inp_doc_uid'],
+  } for ref in refs]
  docs=native_documents(task,scope,actor)
  doc_uid=str(spec['inp_doc_uid'])
  result=[d for d in docs if str(d.get('doc_uid') or '')==doc_uid]
@@ -56,13 +68,33 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
   result=pm.upload_input_document(
    task['case_uid'],spec['inp_doc_uid'],field,
    filename,data,content_type,comment='AVAN · '+str(spec.get('label') or field))
-  # Do not perform a second remote read here. The write already succeeded and a
-  # later list-permission/transient failure must never make the browser retry
-  # and create a duplicate ProcessMaker document.
+
+  new_ref={
+   'appDocUid':str(result.get('app_doc_uid') or ''),
+   'name':str(result.get('app_doc_filename') or filename),
+   'version':int(result.get('app_doc_version') or 1),
+  }
+  # Keep APP_DATA synchronized with the PMX multipleFile variable. Both uploaded
+  # processes normalize this exact {appDocUid,name,version} shape in their
+  # BEFORE triggers, so the following approval/review DynaForm can render it.
+  current=pm.variables(task['case_uid'])
+  refs=runtime.native_file_refs(current.get(field))
+  if not any(x['appDocUid']==new_ref['appDocUid'] and int(x['version'])==new_ref['version'] for x in refs):
+   if spec.get('multiple'):
+    refs.append(new_ref)
+   else:
+    refs=[new_ref]
+  pm.set_variables(
+   task['case_uid'],assigned,{field:refs},
+   operation='اتصال فایل به کنترل '+str(spec.get('label') or field))
+
+  # Do not perform a second document-list read here. The native file write and
+  # APP_DATA link already succeeded; a later list-permission failure must never
+  # make the browser retry and create a duplicate ProcessMaker document.
   return {
-   'app_doc_uid':result.get('app_doc_uid'),
-   'app_doc_version':result.get('app_doc_version') or result.get('doc_version') or '1',
-   'app_doc_filename':result.get('app_doc_filename') or str(filename),
+   'app_doc_uid':new_ref['appDocUid'],
+   'app_doc_version':new_ref['version'],
+   'app_doc_filename':new_ref['name'],
    'app_doc_type':result.get('app_doc_type') or 'INPUT',
    'doc_uid':result.get('doc_uid') or spec['inp_doc_uid'],
   }
