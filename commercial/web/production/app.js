@@ -1768,8 +1768,8 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    refreshConversationMeta();
    dirty=false;
    status.replaceChildren();
-   if(send)send.disabled=locked||missing.length>0||!info.oauth_connected;
-   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected;
+   if(send)send.disabled=locked||missing.length>0||!info.oauth_connected||!requirednessLive;
+   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(app.preferences.secretary_auto_play_voice)await detachedSpeech();
 
    // If the form is currently open, tell the user that its values changed
