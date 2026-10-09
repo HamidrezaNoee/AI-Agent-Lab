@@ -767,13 +767,55 @@ def extract(notes,task,current,scope,*,questions=(),history=(),client=None,model
   if owned:client.close()
 
 
+def _repair_user_grid_rows(values,directory):
+ """Resolve safe UID bindings before serializing PM grid labels.
+
+ ProcessMaker suggest controls require both the stored key and its _label. A
+ human-readable position may be used only when it maps to exactly one active
+ directory user; AVAN never picks the first or a fuzzy candidate.
+ """
+ result=copy.deepcopy(values)
+ actions=result.get('MTG_Actions')
+ if isinstance(actions,dict):
+  for _,row in legacy.indexed_rows(actions):
+   uid=str(row.get('MTG_ActionOwnerUID') or '').strip()
+   if uid and not (directory.get(uid) or {}).get('active'):
+    # Never preserve an inactive/unknown UID as a valid assignment.
+    uid=''
+    row['MTG_ActionOwnerUID']=''
+   if not uid:
+    hint=str(row.get('MTG_ActionOwnerPosition') or '').strip()
+    candidate=resolution.unique_person(hint,directory) if hint else None
+    if candidate:
+     uid=candidate
+     row['MTG_ActionOwnerUID']=candidate
+   if uid and not str(row.get('MTG_ActionOwnerPosition') or '').strip():
+    person=directory.get(uid) or {}
+    row['MTG_ActionOwnerPosition']=str(
+     person.get('position') or person.get('title') or person.get('unit') or ''
+    ).strip()
+ return result
+
+
 def labelled(values,task,scope):
- result=copy.deepcopy(values);specs=form(task)
+ directory=scope.get('directory',{})
+ result=_repair_user_grid_rows(values,directory);specs=form(task)
  for k,v in list(result.items()):
   if isinstance(v,dict):
    cols={c['id']:c for c in specs.get(k,{}).get('columns',[])}
-   if cols:result[k]={n:{**r,**{c+'_label':legacy.label(val,cols[c],scope['directory']) for c,val in r.items() if c in cols}} for n,r in v.items()}
-  else:result[k+'_label']=legacy.label(v,specs.get(k,{}),scope['directory'])
+   if cols:
+    rows={}
+    for n,r in v.items():
+     row=copy.deepcopy(r)
+     # ProcessMaker REST grid variables require the companion _label entry for
+     # every included control. In particular, Suggest otherwise renders raw UID.
+     for c,val in list(r.items()):
+      if c in cols and not str(c).endswith('_label'):
+       row[c+'_label']=legacy.label(val,cols[c],directory)
+     rows[n]=row
+    result[k]=rows
+  else:
+   result[k+'_label']=legacy.label(v,specs.get(k,{}),directory)
  return result
 
 def submit(scope,actor,task,revision,*,pm=None):
@@ -830,7 +872,7 @@ def submit(scope,actor,task,revision,*,pm=None):
 
 
 
-def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,index,pack_id,bearer,*,revision=None):
+def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,index,pack_id,bearer,*,revision=None,directory=None):
  """Commit FR-MTG-003 and route the same native PM case without any MySQL read path.
 
  ProcessMaker REST is the source of truth for this write. The actual FR-MTG-003
@@ -841,6 +883,7 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
  stage=trusted['stages']['minutes']
  approval=trusted['stages']['minutes_approval']
  pm=PM(source_id,process_uid=trusted['meeting']['process_uid'],bearer=bearer)
+ directory=directory or {}
  minimal_scope={'tenant_id':tenant_id,'source_id':source_id}
  key=task_key(minimal_scope,case_uid,index)
  row=None
@@ -906,7 +949,11 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
   # Re-sending the persisted AVAN draft to the same native case is intentional
   # and avoids turning a harmless read-permission difference into a blocker.
   if values:
-   pm.set_variables(case_uid,native_index,values,operation='ثبت نهایی صورت‌جلسه')
+   # Direct minutes routing must use the exact same ProcessMaker serialization
+   # as the normal secretary submit path. Sending raw grid UIDs makes Suggest
+   # controls display 32-char IDs because their companion _label is absent.
+   pm_values=labelled(values,live_task,{'directory':directory})
+   pm.set_variables(case_uid,native_index,pm_values,operation='ثبت نهایی صورت‌جلسه')
 
   for trigger in stage['after']:
    pm.execute_trigger(case_uid,trigger,operation='کنترل نهایی صورت‌جلسه')
