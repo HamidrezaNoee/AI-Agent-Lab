@@ -134,3 +134,66 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
     assert calls["upload"][1]=="6343078616ac0d6c53a98d9079721622"
     assert calls["upload"][2]=="MTGA_EvidenceFile1"
     assert result["app_doc_filename"]=="proof.pdf"
+
+
+
+def test_pm3_light_upload_uses_field_name_and_two_step_protocol():
+    from commercial.secretary_processmaker import PM
+
+    class Response:
+        status_code=200
+        content=b'{"status":"ok"}'
+        def json(self):return {"status":"ok"}
+
+    class Client:
+        def __init__(self):self.posts=[]
+        def post(self,url,**kwargs):
+            self.posts.append((url,kwargs))
+            return Response()
+
+    pm=object.__new__(PM)
+    pm.base="http://pm.local/api/1.0/workflow"
+    pm.client=Client()
+    calls=[]
+
+    def call(method,path,data=None,operation=None):
+        calls.append((method,path,copy.deepcopy(data),operation))
+        return [{
+            "appDocUid":"4"*32,
+            "docVersion":1,
+            "appDocFilename":"proof.pdf",
+            "appDocType":"INPUT",
+            "appDocIndex":7,
+        }]
+    pm.call=call
+
+    result=pm.upload_input_document(
+        "a"*32,
+        "6343078616ac0d6c53a98d9079721622",
+        "MTGA_EvidenceFile1",
+        "proof.pdf",
+        b"%PDF-test",
+        "application/pdf",
+    )
+
+    assert calls[0][0:2]==(
+        "POST",
+        "/light/case/"+"a"*32+"/upload",
+    )
+    assert calls[0][2]==[{
+        "name":"proof.pdf",
+        "appDocType":"INPUT",
+        "docUid":"6343078616ac0d6c53a98d9079721622",
+        "fieldName":"MTGA_EvidenceFile1",
+    }]
+    assert len(pm.client.posts)==1
+    url,kwargs=pm.client.posts[0]
+    assert url.endswith("/light/case/"+"a"*32+"/upload/"+"4"*32)
+    assert "form[MTGA_EvidenceFile1]" in kwargs["files"]
+    filename,payload,mime=kwargs["files"]["form[MTGA_EvidenceFile1]"]
+    assert filename=="proof.pdf"
+    assert payload==b"%PDF-test"
+    assert mime=="application/pdf"
+    assert result["app_doc_uid"]=="4"*32
+    assert result["doc_uid"]=="6343078616ac0d6c53a98d9079721622"
+    assert result["field_name"]=="MTGA_EvidenceFile1"
