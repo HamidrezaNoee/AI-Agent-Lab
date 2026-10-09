@@ -146,11 +146,15 @@ def test_dense_invitation_goes_to_full_extraction_not_temporal(pack,monkeypatch)
     scope=dense_scope();values=full_values(scope)
     monkeypatch.setattr(secretary_time,"apply",lambda *a,**kw:pytest.fail("dense invitation must not terminate in temporal.resolve"))
     monkeypatch.setattr(runtime,"extract",lambda *a,**kw:(copy.deepcopy(values),[],"همه اطلاعات قابل استخراج پیام ثبت شد.","update"))
-    result=runtime.converse(NOTES,task(pack,"invitation"),{},scope)
+    t=task(pack,"invitation");t["case_uid"]=None
+    result=runtime.converse(NOTES,t,{},scope)
     assert result.receipt["tool"]=="draft.extract"
     assert result[0]["MTG_MeetingTitle"]=="بررسی برنامه توسعه و استقرار AVAN"
     assert len(result[0]["MTG_Participants"])==8
     assert len(result[0]["MTG_Agenda"])==5
+    assert "عنوان جلسه را مشخص کنید" not in result[2]
+    assert "شماره جلسه" not in result[2]
+    assert "اطلاعات دعوت‌نامه کامل است" in result[2]
 
 
 def test_dense_invitation_is_detected_as_compound(pack):
