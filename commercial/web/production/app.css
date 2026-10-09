@@ -511,3 +511,22 @@ body.flow-snapshot-open{overflow:hidden}
 
 #toast[hidden],.secretary-session-start[hidden]{display:none!important}
 #toast .toast-close{display:block!important;flex-shrink:0;min-width:30px;cursor:pointer}
+
+
+/* Native ProcessMaker attachments declared by the installed PMX DynaForms. */
+.secretary-native-files{margin-top:14px}
+.secretary-native-file-control{display:grid;gap:10px;padding:12px 0;border-top:1px solid var(--border,#e5e7eb)}
+.secretary-native-file-control:first-child{border-top:0}
+.secretary-native-file-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.secretary-native-file-head strong{margin-inline-end:auto}
+.secretary-native-file-head input[type="file"]{max-width:min(100%,420px)}
+.secretary-native-file-list{display:grid;gap:8px}
+.secretary-native-file-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 11px;border:1px solid var(--border,#e5e7eb);border-radius:12px;background:rgba(255,255,255,.45)}
+.secretary-native-file-row>span{font-weight:700;overflow-wrap:anywhere}
+.secretary-native-file-row>small{margin-inline-end:auto}
+.secretary-stage-submit{margin-top:10px}
+@media (max-width:720px){
+ .secretary-native-file-head,.secretary-native-file-row{align-items:stretch;flex-direction:column}
+ .secretary-native-file-head strong,.secretary-native-file-row>small{margin-inline-end:0}
+ .secretary-native-file-head input[type="file"]{max-width:100%}
+}
