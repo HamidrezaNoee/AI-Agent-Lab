@@ -145,7 +145,7 @@ def run(runtime,notes,task,current,scope,*,questions=(),pending_confirmation=Non
             runtime.validate({k:v for k,v in values.items()
                               if k in allowed or current.get(k)!=v},task,scope)
         reply=result['reply'];remaining=result['questions']
-        if tool.name in ('confirmation.resolve','identity.resolve','draft.command','temporal.resolve'):
+        if tool.name in ('confirmation.resolve','identity.resolve','draft.command','temporal.resolve','draft.extract'):
             state=runtime.assistant_state(values,task,scope,remaining)
             if state['message'] and state['message'] not in reply and (intent!='question' or state['missing']):
                 reply+='\n\n'+state['message']
