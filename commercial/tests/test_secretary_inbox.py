@@ -599,7 +599,7 @@ def test_minutes_direct_advance_uses_rest_only_and_routes_same_case(pack,store,m
  monkeypatch.setattr(r,'_native_case_values',lambda *a:pytest.fail('minutes direct advance must never read PM MySQL'))
  result=r.advance_minutes_direct(
   S['tenant_id'],'actor',S['source_id'],S['external_user_id'],
-  t['case_uid'],t['index'],pack['id'],'bearer-token')
+  t['case_uid'],t['index'],pack['id'],'bearer-token',directory=S['directory'])
  assert result['status']=='sent'
  assert result['next_stage']=='minutes_approval'
  assert [x[0] for x in calls if x][1:]==['info','variables','trigger','route','close']
@@ -624,7 +624,7 @@ def test_minutes_direct_advance_is_idempotent_after_case_reaches_approval(pack,s
  monkeypatch.setattr(r,'PM',PM)
  result=r.advance_minutes_direct(
   S['tenant_id'],'actor',S['source_id'],S['external_user_id'],
-  t['case_uid'],t['index'],pack['id'],'bearer-token')
+  t['case_uid'],t['index'],pack['id'],'bearer-token',directory=S['directory'])
  assert result['already_advanced'] is True
  assert result['next_stage']=='minutes_approval'
  assert calls==['close']
