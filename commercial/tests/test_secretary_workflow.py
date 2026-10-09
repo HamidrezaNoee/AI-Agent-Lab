@@ -112,11 +112,11 @@ def test_rest_transport_checks_assignment_and_runs_pmx_after_before_route(monkey
  with pytest.raises(ValueError):pm.submit('a'*32,f.MINUTES,'c'*32,{})
  assert len(calls)==1
 
-def test_minutes_requires_owner_deadline_and_real_decision():
- values={'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'مذاکرات','MTG_MeetingEndDateTime':'1405/07/15','MTG_PlannedActionEndTime':'16:30','MTG_Actions':{'1':{'MTG_ActionNo':'A-001','MTG_ActionDescription':'بررسی مدارک','MTG_ActionDecisionNo':'D-001'}}}
- gaps=f.missing(values,'minutes')
- assert any('MTG_ActionOwnerUID' in x['field'] for x in gaps)
- assert any('decision' in x['field'] for x in gaps)
+def test_optional_action_fields_are_not_avan_required_but_invalid_reference_is_rejected():
+ values={'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'مذاکرات','MTG_Actions':{'1':{'MTG_ActionNo':'A-001','MTG_ActionDescription':'بررسی مدارک','MTG_ActionDecisionNo':'D-001'}}}
+ assert not any(x['field'].startswith('MTG_Actions.') for x in f.missing(values,'minutes'))
+ with pytest.raises(ValueError,match='مصوبه مرتبط'):
+  f.validate(values,'minutes',S['directory'])
 
 
 
@@ -138,12 +138,9 @@ def test_structured_model_helpers_support_current_pydantic_api():
  assert parsed.assignments==[] and parsed.questions==[]
 
 
-def test_minutes_missing_questions_never_expose_internal_pmx_field_names():
+def test_optional_action_owner_is_not_asked_when_pm_does_not_require_it():
  values={
   'MTG_MeetingHeld':'Held',
-  'MTG_MeetingDiscussionSummary':'جمع‌بندی',
-  'MTG_MeetingEndDateTime':'1405/07/20',
-  'MTG_PlannedActionEndTime':'17:00',
   'MTG_Decisions':{'1':{'MTG_DecisionNo':'D-001','MTG_DecisionText':'پیگیری شود'}},
   'MTG_Actions':{'1':{
    'MTG_ActionNo':'A-002',
@@ -153,10 +150,8 @@ def test_minutes_missing_questions_never_expose_internal_pmx_field_names():
   }},
  }
  gaps=f.missing(values,'minutes')
- owner=next(x for x in gaps if x['field'].endswith('MTG_ActionOwnerUID'))
- assert 'MTG_ActionOwnerUID' not in owner['question']
- assert 'مسئول اصلی اقدام' in owner['question']
- assert 'A-002' in owner['question']
+ assert not any(x['field'].endswith('MTG_ActionOwnerUID') for x in gaps)
+ f.validate(values,'minutes',S['directory'])
 
 
 def test_minutes_does_not_request_locked_plan_or_end_fields():
@@ -169,23 +164,14 @@ def test_minutes_does_not_request_locked_plan_or_end_fields():
  f.validate(values,'minutes',S['directory'])
 
 
-def test_minutes_requires_status_but_attendance_time_is_optional():
+def test_attendance_fields_are_optional_when_pm_marks_them_optional():
  values={
   'MTG_MeetingHeld':'Held',
-  'MTG_MeetingDiscussionSummary':'جمع‌بندی جلسه',
-  'MTG_MeetingEndDateTime':'1405/07/24',
-  'MTG_MeetingEndTime':'15:00',
-  'MTG_PlannedActionEndTime':'17:00',
   'MTG_Participants':{
    '1':{'MTG_ParticipantUserUID':'c'*32,'MTG_ParticipantPosition':'مدیر مجوزات'},
    '2':{'MTG_ParticipantUserUID':'s'*32,'MTG_ParticipantPosition':'دبیر','MTG_AttendanceStatus':'Present'},
   }
  }
- gaps=f.missing(values,'minutes')
- assert any(x['field']=='MTG_Participants.1.MTG_AttendanceStatus' for x in gaps)
- assert not any(x['field']=='MTG_Participants.2.MTG_AttendanceTime' for x in gaps)
- values['MTG_Participants']['1']['MTG_AttendanceStatus']='Excused'
- values['MTG_Participants']['2']['MTG_AttendanceTime']='10:15'
  gaps=f.missing(values,'minutes')
  assert not any(x['field'].startswith('MTG_Participants.') for x in gaps)
 
@@ -216,17 +202,17 @@ def test_latest_invitation_does_not_require_participants_or_agenda():
  assert not f.missing(values,'invitation')
 
 
-def test_minutes_decisions_require_number_text_and_unique_number():
+def test_optional_decision_text_is_not_required_but_duplicate_numbers_are_invalid():
  values={
-  'MTG_MeetingHeld':'Held','MTG_MeetingDiscussionSummary':'جمع‌بندی',
+  'MTG_MeetingHeld':'Held',
   'MTG_Decisions':{
    '1':{'MTG_DecisionNo':'D-001','MTG_DecisionText':''},
    '2':{'MTG_DecisionNo':'D-001','MTG_DecisionText':'دوم'},
   }
  }
  with pytest.raises(ValueError,match='تکراری'):
-  f.missing(values,'minutes')
+  f.validate(values,'minutes',S['directory'])
  values['MTG_Decisions']['2']['MTG_DecisionNo']='D-002'
- gaps=f.missing(values,'minutes')
- assert any(x['field']=='MTG_Decisions.1.MTG_DecisionText' for x in gaps)
+ f.validate(values,'minutes',S['directory'])
+ assert not any(x['field']=='MTG_Decisions.1.MTG_DecisionText' for x in f.missing(values,'minutes'))
 
