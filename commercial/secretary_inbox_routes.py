@@ -8,6 +8,7 @@ from . import secretary_runtime as runtime,secretary_catalog as catalog,secretar
 from .agent_workspace import RevisionConflict
 from .agent_routes import guard_model
 from .meeting_agent import run_slot
+from .processmaker_store import ProductionUnavailable
 
 logger=logging.getLogger(__name__)
 
@@ -97,9 +98,12 @@ def register(app,authorized,csrf):
   elif runtime._route_recovery_row(row):
    draft['recovery']='route_only'
   draft['pending_confirmation']=runtime.resolution.safe_public_pending(row.get('pending_confirmation'))
+  requiredness={'live':t['pack'].get('live_requiredness_available',True),
+                'warning':t['pack'].get('live_requiredness_warning','')}
   return {'task':{k:t[k] for k in ('case_uid','index','pack_id','stage','title','number')},
           'draft':draft,
           'form':runtime.form(t),'context':context,'missing':assistant['missing'],'assistant':assistant,
+          'requiredness':requiredness,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
 
  def committed_turn_response(s,p,t,row,text,submitted_revision):
@@ -122,9 +126,12 @@ def register(app,authorized,csrf):
  def session_response(s,p,row,t):
   assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
   if row.get('reply'):assistant['message']=row['reply']
+  requiredness={'live':t['pack'].get('live_requiredness_available',True),
+                'warning':t['pack'].get('live_requiredness_warning','')}
   return {'session':public_session(row),
           'task':{'stage':'invitation','title':row['values'].get('MTG_MeetingTitle') or 'جلسه جدید'},
           'form':runtime.form(t),'missing':assistant['missing'],'assistant':assistant,
+          'requiredness':requiredness,
           'people':[{'uid':k,'name':v['name']} for k,v in s['directory'].items() if v['active']]}
 
  async def read_upload(request):
@@ -343,6 +350,10 @@ def register(app,authorized,csrf):
    raise HTTPException(409,'وظیفه ProcessMaker تغییر کرده است؛ کارتابل را تازه‌سازی کنید.')
   except ValueError as exc:
    raise HTTPException(422,str(exc))
+  except ProductionUnavailable as exc:
+   if str(exc) in ('ProcessMaker DynaForm metadata unavailable','Read-only ProcessMaker MySQL unavailable'):
+    raise HTTPException(503,'تنظیم Required زنده ProcessMaker قابل خواندن نیست؛ دسترسی SELECT روی DYNAFORM را برای avan_reader بررسی کنید.')
+   raise HTTPException(503,'اتصال خواندنی ProcessMaker در دسترس نیست.')
 
  @app.post(base+'/tasks/{case_uid}/{index}/submit')
  def send_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
