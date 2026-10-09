@@ -164,14 +164,14 @@ def jalali_instant(day,clock):
  return datetime.fromisoformat(g.isoformat()+'T'+(clock or '00:00')).replace(tzinfo=ZoneInfo('Asia/Tehran'))
 
 
-def live_form(scope,stage):
+def live_form(scope,stage,strict=False):
  """Return the reviewed writable form with Required flags refreshed from PM."""
  if stage not in WRITE_FIELDS:raise ValueError('مرحله دبیر معتبر نیست.')
  from . import secretary_catalog as catalog
  packs=catalog.runtime_meeting_packs(scope['source_id'])
  if len(packs)!=1:
   raise ValueError('بسته فعال مدیریت جلسات برای این ProcessMaker به‌صورت یکتا پیدا نشد.')
- pack=catalog.with_live_requiredness(scope['source_id'],packs[0],stage)
+ pack=catalog.with_live_requiredness(scope['source_id'],packs[0],stage,strict=strict)
  fields=pack['stages'][stage]['fields']
  return {k:fields[k] for k in WRITE_FIELDS[stage] if k in fields}
 
@@ -190,13 +190,13 @@ def _blank_required(value):
  return value in (None,'',{}) or value==[]
 
 
-def missing(values,stage,scope=None):
+def missing(values,stage,scope=None,strict=False):
  """Only ProcessMaker-declared Required fields are blockers.
 
- scope=None exists for isolated legacy unit tests; production callers always pass
- scope and therefore read the live DynaForm contract.
+ Non-mutating editor flows degrade safely when live metadata is unavailable.
+ Final submit paths pass strict=True before touching ProcessMaker.
  """
- specs=live_form(scope,stage) if scope is not None else {
+ specs=live_form(scope,stage,strict=strict) if scope is not None else {
   k:FORMS[stage][k] for k in WRITE_FIELDS[stage] if k in FORMS[stage]
  }
  result=[]
@@ -278,7 +278,7 @@ def submit(scope,actor,identifier,revision,*,pm=None):
  row=load(scope,actor,identifier)
  if row['values'].get('MTG_SecretaryUserUID')!=scope['external_user_id']:raise PermissionError('Only bound secretary may submit')
  validate(row['values'],row['stage'],scope['directory'])
- if missing(row['values'],row['stage'],scope):raise ValueError('فیلدهای Required فرم ProcessMaker را تکمیل کنید.')
+ if missing(row['values'],row['stage'],scope,strict=True):raise ValueError('فیلدهای Required فرم ProcessMaker را تکمیل کنید.')
  owned=pm is None
  if owned:pm=PM(scope['source_id'])
  try:
