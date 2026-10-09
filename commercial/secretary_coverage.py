@@ -107,7 +107,17 @@ def is_compound_minutes(notes,task):
 
 
 def is_compound_turn(notes,task):
-    return is_compound_invitation(notes,task) or is_compound_minutes(notes,task)
+    if is_compound_invitation(notes,task) or is_compound_minutes(notes,task):
+        return True
+    # All remaining stages use the same invariant: when one user message carries
+    # two or more independently writable facts, no fast-path tool may terminate
+    # the turn before exhaustive extraction has seen the whole message.
+    requirements=explicit_field_requirements(notes,task)
+    if len(requirements)>=2:return True
+    # Headed/multiline operational reports often express one field by label and
+    # another by value-only continuation. Treat them as dense once one writable
+    # field is explicit.
+    return len(requirements)>=1 and str(notes or "").count("\n")>=2
 
 
 def explicit_field_requirements(notes,task):
@@ -133,6 +143,41 @@ def explicit_field_requirements(notes,task):
         add("MTG_ParkingLot","موضوعات خارج از دستور",any(x in raw for x in ("موضوعات خارج از دستور","موضوعات خارچ از دستور","خارج از دستور","خارچ از دستور","parking lot")))
         add("MTG_Decisions","مصوبات",any(x in raw for x in ("مصوبات","مصوبه")))
         add("MTG_Actions","اقدامات",any(x in raw for x in ("اقدامات","اثدامات","اقدام‌ها","اقدام ها")))
+    elif stage=="invitation_approval":
+        add("MTG_InvitationApproval","تصمیم تأیید دعوت‌نامه",any(x in raw for x in ("تایید دعوت","تأیید دعوت","دعوت نامه تایید","دعوت‌نامه تایید","دعوت‌نامه تأیید","نیاز به اصلاح","برای اصلاح برگرد")))
+        add("MTG_InvitationChairComment","توضیحات رئیس برای دعوت‌نامه",any(x in raw for x in ("توضیح رئیس","توضیحات رئیس","اصلاحات موردنظر","اصلاحات مورد نظر","نظر رئیس")))
+        add("MTG_MeetingTitle","عنوان جلسه",any(x in raw for x in ("عنوان جلسه","عنوان را")))
+        add("MTG_Objective","هدف جلسه","هدف جلسه" in raw)
+        add("MTG_Location","مکان جلسه",any(x in raw for x in ("مکان جلسه","محل جلسه","لینک جلسه")))
+        add("MTG_MeetingStartDateTime","تاریخ جلسه",any(x in raw for x in ("تاریخ جلسه","تاریخ برگزاری")))
+        add("MTG_MeetingStartTime","ساعت شروع جلسه",any(x in raw for x in ("ساعت شروع","ساعت برگزاری")))
+        add("MTG_MeetingEndDateTime","تاریخ پایان برنامه‌ریزی‌شده","تاریخ پایان برنامه" in raw)
+        add("MTG_PlannedActionEndTime","ساعت پایان برنامه‌ریزی‌شده","ساعت پایان برنامه" in raw)
+    elif stage=="minutes_approval":
+        add("MTG_MinutesApproval","تصمیم تأیید صورت‌جلسه",any(x in raw for x in ("تایید صورت جلسه","تأیید صورت جلسه","تایید صورت‌جلسه","تأیید صورت‌جلسه","صورت جلسه تایید","صورت‌جلسه تأیید","نیاز به اصلاح","برای اصلاح برگرد")))
+        add("MTG_ChairComment","توضیحات رئیس جلسه",any(x in raw for x in ("توضیح رئیس","توضیحات رئیس","نظر رئیس","اصلاحات موردنظر","اصلاحات مورد نظر")))
+        add("MTG_MeetingDiscussionSummary","شرح مذاکرات",any(x in raw for x in ("شرح مذاکرات","شرح و جمع بندی","شرح و جمع‌بندی")))
+        add("MTG_ParkingLot","موضوعات خارج از دستور",any(x in raw for x in ("موضوعات خارج از دستور","خارج از دستور")))
+        add("MTG_ApprovalSummary","خلاصه مصوبات و اقدامات",any(x in raw for x in ("خلاصه مصوبات","خلاصه اقدامات","خلاصه مصوبات و اقدامات")))
+        add("MTG_Decisions","مصوبات",any(x in raw for x in ("مصوبات","مصوبه")))
+        add("MTG_Actions","اقدامات",any(x in raw for x in ("اقدامات","اقدام ها","اقدام‌ها")))
+    elif stage=="action_execution":
+        add("MTGA_SubmissionType","نوع ارسال",any(x in raw for x in ("گزارش پیشرفت","اعلام تکمیل","تکمیل اقدام","اقدام تکمیل","کار تمام","کار تموم")))
+        add("MTGA_ProgressPercent","درصد پیشرفت",bool(re.search(r'(?:پیشرفت|درصد).{0,30}(?:%|درصد|[0-9])',raw)))
+        add("MTGA_ExecutionDescription","شرح اجرای اقدام",any(x in raw for x in ("شرح اجرا","شرح اقدام انجام","گزارش اجرا","گزارش پیشرفت","انجام دادم","انجام شده","انجام شد")))
+        add("MTGA_ActualCompletionDateTime","تاریخ واقعی انجام",any(x in raw for x in ("تاریخ انجام","تاریخ تکمیل","در تاریخ")))
+        add("MTGA_ActualCompletionTime","ساعت واقعی انجام",any(x in raw for x in ("ساعت انجام","ساعت تکمیل","در ساعت")))
+        add("MTGA_ActualEffortMinutes","زمان واقعی صرف‌شده",any(x in raw for x in ("زمان صرف","زمان واقعی","دقیقه وقت","دقیقه زمان","ساعت کار")))
+    elif stage=="action_review":
+        add("MTGA_ReviewStatus2","نتیجه بررسی اقدام",any(x in raw for x in ("تایید و بستن","تأیید و بستن","بسته شود","بستن اقدام","بازگشت برای اصلاح","نیاز به اصلاح","ادامه اقدام","rework")))
+        add("MTGA_SecretaryProgressPercent2","درصد پیشرفت تأییدشده",bool(re.search(r'(?:پیشرفت|درصد).{0,40}(?:تایید|تأیید|%|درصد|[0-9])',raw)))
+        add("MTGA_SecretaryActualCompletionDateTime2","تاریخ واقعی تأییدشده",any(x in raw for x in ("تاریخ واقعی","تاریخ انجام","تاریخ تکمیل")))
+        add("MTGA_SecretaryActualCompletionTime2","ساعت واقعی تأییدشده",any(x in raw for x in ("ساعت واقعی","ساعت انجام","ساعت تکمیل")))
+        add("MTGA_SecretaryActualEffortMinutes2","زمان واقعی تأییدشده",any(x in raw for x in ("زمان واقعی","زمان صرف","دقیقه")))
+        add("MTGA_SecretaryComment1","نظر دبیر",any(x in raw for x in ("نظر دبیر","توضیح دبیر","توضیحات دبیر","کامنت","نظر من")))
+    elif stage=="monitoring":
+        add("MTG_ClosingNote","جمع‌بندی اختتام",any(x in raw for x in ("جمع بندی اختتام","جمع‌بندی اختتام","جمع بندی نهایی","جمع‌بندی نهایی","توضیح اختتام","اختتام")))
+        add("MTG_ActionSummary","بررسی نهایی اقدامات",bool(re.search(r'(?:اقدام|a\s*-?\s*0*[0-9]+).{0,80}(?:بسته|اصلاح|بازگشت|پیشرفت|درصد|تایید|تأیید|نظر)',raw,re.S)))
     return result
 
 
@@ -396,6 +441,8 @@ def coverage_prompt(notes,task,directory):
     decisions=decision_expectations(notes)
     actions=action_expectations(notes,directory)
     return {
+        "stage":(task or {}).get("stage"),
+        "explicit_fact_count":len(fields),
         "explicit_fields":fields,
         "participant_count":len(participants["uids"]),
         "all_participants_member":participants["all_member"],
