@@ -139,7 +139,12 @@ def initial(task):
  return v
 
 def native_stamp(task):
- keys=set(task['pack']['stages'][task['stage']]['fields'])|FIELDS[task['stage']]
+ specs=task['pack']['stages'][task['stage']]['fields']
+ keys=set(specs)|FIELDS[task['stage']]
+ # Native file uploads mutate APP_DATA independently from the conversational
+ # draft. Their identity/version is guarded by ProcessMaker APP_DOCUMENT and
+ # native_file_gaps(), so they must not invalidate an otherwise unchanged draft.
+ keys={k for k in keys if (specs.get(k) or {}).get('type') not in ('file','multipleFile')}
  watched={k:task['native'].get(k,'') for k in keys}
  return hashlib.sha256(json.dumps(watched,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
 
@@ -938,8 +943,10 @@ def submit(scope,actor,task,revision,*,pm=None):
    raise ValueError('اطلاعات پایه تأییدشده جلسه در ProcessMaker آماده نیست؛ وظیفه را از کارتابل دوباره باز کنید تا آماده‌سازی فرم انجام شود.')
   required_native=[x for x in file_controls(task).values() if x.get('required') and x.get('mode') not in ('view','disabled')]
   if required_native:
-   docs=pm.call('GET','/cases/'+str(task['case_uid'])+'/input-documents',operation='کنترل مستندات الزامی مرحله')
-   file_missing=native_file_gaps(task,docs)
+   file_missing=native_file_gaps(task,[])
+   if file_missing:
+    docs=pm.call('GET','/cases/'+str(task['case_uid'])+'/input-documents',operation='کنترل مستندات الزامی مرحله')
+    file_missing=native_file_gaps(task,docs)
    if file_missing:
     raise ValueError('فایل الزامی ProcessMaker بارگذاری نشده است: '+'؛ '.join(x['question'] for x in file_missing))
   with agent_storage.transaction() as tx:
@@ -1029,7 +1036,8 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
    # minutes route. Chat, form rendering and submit must share one authority.
    configured=catalog.get(source_id,pack_id)
    live_pack=catalog.with_live_requiredness(source_id,configured,'minutes',strict=True)
-   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':{}}
+   live_native=normalize(pm.variables(case_uid))
+   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':live_native}
    # Resolve a blank owner from the explicit row position only when that role
    # maps to one active ProcessMaker user. This also repairs drafts created
    # before the row-context resolver fix.
@@ -1047,8 +1055,10 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
     raise ValueError(detail)
    required_native=[x for x in file_controls(live_task).values() if x.get('required') and x.get('mode') not in ('view','disabled')]
    if required_native:
-    docs=pm.call('GET','/cases/'+str(case_uid)+'/input-documents',operation='کنترل فایل الزامی صورت‌جلسه')
-    file_missing=native_file_gaps(live_task,docs)
+    file_missing=native_file_gaps(live_task,[])
+    if file_missing:
+     docs=pm.call('GET','/cases/'+str(case_uid)+'/input-documents',operation='کنترل فایل الزامی صورت‌جلسه')
+     file_missing=native_file_gaps(live_task,docs)
     if file_missing:
      raise ValueError('فایل الزامی ProcessMaker بارگذاری نشده است: '+'؛ '.join(x['question'] for x in file_missing))
 
