@@ -119,6 +119,8 @@ def model_assignments(scope,complete=True):
     for row in decisions.values():row.pop("MTG_DecisionNo")
     actions=copy.deepcopy(values["MTG_Actions"])
     for row in actions.values():
+        # Model may legitimately return the explicit human role rather than a UID.
+        row["MTG_ActionOwnerUID"]=row["MTG_ActionOwnerPosition"]
         row.pop("MTG_ActionNo")
         row.pop("MTG_ActionPriority")
         row.pop("MTG_ActionDecisionNo")
@@ -267,3 +269,19 @@ def test_real_typos_and_fourth_decision_reference_are_understood(pack):
     assert contract["all_actions_priority"]=="High"
     assert [x["decision_index"] for x in contract["actions"]]==["1","2","2","3","4"]
     assert "موضوعات خارج از دستور" in contract["explicit_fields"]
+
+
+def test_unique_persian_role_resolves_inside_action_grid(pack):
+    scope=minutes_scope()
+    spec=runtime.form(task(pack,"minutes"))["MTG_Actions"]
+    raw={"1":{
+        "MTG_ActionDescription":"تدوین برنامه استراتژی",
+        "MTG_ActionOwnerUID":"مدیر استراتژی",
+        "MTG_ActionOwnerPosition":"مدیر استراتژی",
+    }}
+    resolved,questions=runtime.resolve_extracted_people(
+        "MTG_Actions",raw,spec,scope["directory"],
+        evidence="مصوبه یک با مدیر استراتژی تا تاریخ 20 مهر وقت داره که تدوین کنه",
+        current=None)
+    assert resolved["1"]["MTG_ActionOwnerUID"]==uid(scope,"mgr.strategy")
+    assert questions==[]
