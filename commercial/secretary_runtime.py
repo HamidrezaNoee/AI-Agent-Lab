@@ -253,6 +253,10 @@ def gaps(values,task):
  stage=task['stage'];specs=form(task);result=[]
  for field,spec in specs.items():
   mode=str(spec.get('mode') or '').lower()
+  # Native PM file controls live in APP_DOCUMENT and are validated separately
+  # through native_file_gaps(); they are never text-draft fields.
+  if spec.get('type') in ('file','multipleFile'):
+   continue
   # Read-only/system values are populated by PM/triggers; never ask the user.
   user_editable=mode not in ('view','disabled')
   if _pm_required(spec) and user_editable and _blank_required(values.get(field)):
