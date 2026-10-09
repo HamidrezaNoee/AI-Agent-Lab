@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import copy
 import re
 import time
-from . import secretary_time
+from . import secretary_time,secretary_coverage
 
 
 @dataclass(frozen=True)
@@ -124,7 +124,13 @@ def run(runtime,notes,task,current,scope,*,questions=(),pending_confirmation=Non
     c=dict(notes=notes,task=task,current=copy.deepcopy(current),scope=scope,
            questions=list(questions),pending=pending_confirmation,history=list(history or [])[-40:])
     started=time.monotonic()
-    for tool in TOOLS:
+    # High-density invitation messages must be read as one semantic unit. A
+    # partial deterministic match (for example the first date) must never stop
+    # the rest of the message from reaching exhaustive structured extraction.
+    tools=TOOLS
+    if secretary_coverage.is_compound_invitation(notes,task):
+        tools=(TOOLS[0],TOOLS[-1])  # confirmation, then full extraction
+    for tool in tools:
         result=tool.handler(runtime,c)
         if result is None:continue
         values=result['values'];intent=result.get('intent','resolved')
