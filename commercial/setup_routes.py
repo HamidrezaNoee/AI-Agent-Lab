@@ -711,10 +711,14 @@ def _mysql_check(body):
             query(con,'SELECT DEL_INDEX,APP_UID,TAS_UID,USR_UID,DEL_THREAD_STATUS,DEL_DELEGATE_DATE,DEL_INIT_DATE,DEL_FINISH_DATE,DEL_TASK_DUE_DATE FROM APP_DELEGATION LIMIT 0')
             query(con,'SELECT TAS_UID,TAS_TITLE FROM TASK LIMIT 0')
             query(con,'SELECT PRO_TITLE FROM PROCESS LIMIT 0')
+            # Smart Secretary reads the live DynaForm Required flags on every
+            # stage load. Connection validation must prove that metadata is
+            # readable by the same SELECT-only account.
+            query(con,'SELECT DYN_UID,DYN_CONTENT FROM DYNAFORM LIMIT 0')
             rows=query(con,'SELECT PRO_UID FROM PROCESS WHERE PRO_UID IN (%s,%s)',(MEETING_PROCESS,ACTION_PROCESS))
             if len(rows)!=2:raise ProductionUnavailable('Both meeting processes must be imported')
         return {'connected':True,'source':'ProcessMaker/MySQL','read_only':True}
-    except ProductionUnavailable:raise HTTPException(503,'اتصال فقط‌خواندنی MySQL یا دو فرایند جلسه قابل تأیید نیست.')
+    except ProductionUnavailable:raise HTTPException(503,'اتصال فقط‌خواندنی MySQL، دسترسی DYNAFORM یا دو فرایند جلسه قابل تأیید نیست.')
 
 @router.post('/api/mysql/check')
 def mysql_check(body:MySQLConfig,session=Depends(_ready)):
