@@ -192,3 +192,26 @@ def test_assistant_drops_old_attendance_question_when_pm_makes_it_optional(pack)
         questions=["وضعیت حضور شرکت‌کننده ردیف 1 (مدیریت سامانه) را مشخص کنید: حاضر، غایب یا غیبت موجه."])
     assert state["missing"]==[]
     assert "وضعیت حضور شرکت‌کننده" not in state["message"]
+
+
+def test_assistant_drops_old_discussion_question_when_pm_makes_it_optional(pack):
+    p=all_optional_pack(pack,"minutes")
+    t=task(p,"minutes")
+    state=runtime.assistant_state(
+        {"MTG_MeetingHeld":"Held"},t,S,
+        questions=["لطفاً شرح و جمع‌بندی مذاکرات جلسه را مشخص کنید."])
+    assert state["missing"]==[]
+    assert "شرح و جمع‌بندی مذاکرات" not in state["message"]
+
+
+def test_requiredness_hash_changes_when_live_pm_required_flag_changes(pack):
+    stage="minutes"
+    live=copy.deepcopy(pack["stages"][stage]["fields"])
+    for spec in live.values():
+        spec["required"]=False
+        for column in spec.get("columns",[]) or []:
+            column["required"]=False
+    first=catalog._overlay_live_requiredness(pack,stage,live)
+    live["MTG_MeetingDiscussionSummary"]["required"]=True
+    second=catalog._overlay_live_requiredness(pack,stage,live)
+    assert first["live_requiredness_hash"]!=second["live_requiredness_hash"]
