@@ -131,41 +131,88 @@ class PM:
   return uid(result['app_uid'])
  def set_variables(self,case,index,values,*,operation='ثبت اطلاعات فرم'):
   return self.call('PUT',f'/cases/{uid(case)}/variable?del_index={int(index)}',values,operation=operation)
- def upload_input_document(self,case,task_uid,input_doc_uid,filename,data,content_type='application/octet-stream',comment=''):
-  """Upload bytes as a native ProcessMaker Input Document.
+ def upload_input_document(self,case,input_doc_uid,field_name,filename,data,content_type='application/octet-stream',comment=''):
+  """Upload one DynaForm File/multipleFile value through ProcessMaker Light API.
 
-  This is intentionally server-side: the browser never receives the PM OAuth
-  token and AVAN does not write APP_DOCUMENT directly.
+  PM3 file controls use a two-step protocol:
+  1) POST /light/case/{app_uid}/upload creates APP_DOCUMENT with DOC_UID and
+     APP_DOC_FIELDNAME.
+  2) POST /light/case/{app_uid}/upload/{app_doc_uid} sends multipart bytes.
+
+  This works for DynaForm file controls even when the Input Document is not a
+  STEP on the current task. AVAN never writes ProcessMaker tables directly.
   """
-  case=uid(case);task_uid=uid(task_uid);input_doc_uid=uid(input_doc_uid)
+  case=uid(case);input_doc_uid=uid(input_doc_uid)
+  field=str(field_name or '').strip()
+  if not re.fullmatch(r'[A-Za-z0-9_]{1,120}',field):
+   raise ValueError('نام متغیر فایل ProcessMaker معتبر نیست.')
   name=str(filename or 'document').replace('\\','/').split('/')[-1].strip()
   if not name or len(name)>240 or any(ord(ch)<32 for ch in name):
    raise ValueError('نام فایل معتبر نیست.')
   if not isinstance(data,(bytes,bytearray)) or not data:
    raise ValueError('فایل خالی است.')
   mime=str(content_type or 'application/octet-stream')[:160]
+
+  # First phase is a normal JSON API mutation and creates the native document
+  # record with the exact DynaForm field name.
+  created=self.call(
+   'POST',f'/light/case/{case}/upload',
+   [{'name':name,'appDocType':'INPUT','docUid':input_doc_uid,'fieldName':field}],
+   operation='ایجاد رکورد فایل فرم ProcessMaker')
+  if not isinstance(created,list) or len(created)!=1 or not isinstance(created[0],dict):
+   raise HTTPException(502,'ProcessMaker رکورد معتبر برای فایل فرم ایجاد نکرد.')
+  record=created[0]
+  app_doc_uid=str(record.get('appDocUid') or '')
+  if not re.fullmatch(r'[a-zA-Z0-9]{32}',app_doc_uid):
+   raise HTTPException(502,'ProcessMaker شناسه معتبر برای فایل فرم برنگرداند.')
+
+  # PHP expects $_FILES["form"]["name"][<DynaForm variable>]. Using the nested
+  # multipart key below yields that exact shape.
   try:
    response=self.client.post(
-    self.base+f'/cases/{case}/input-document',
-    data={'inp_doc_uid':input_doc_uid,'tas_uid':task_uid,'app_doc_comment':str(comment or '')[:500]},
-    files={'form':(name,bytes(data),mime)},
+    self.base+f'/light/case/{case}/upload/{app_doc_uid}',
+    files={f'form[{field}]':(name,bytes(data),mime)},
    )
   except httpx.HTTPError as exc:
-   logger.warning('ProcessMaker file upload transport failure type=%s',exc.__class__.__name__)
-   raise HTTPException(502,'ارسال فایل به ProcessMaker انجام نشد؛ اتصال REST را بررسی کنید.') from exc
+   logger.warning('ProcessMaker file upload transport failure app_doc_uid=%s type=%s',
+                  app_doc_uid,exc.__class__.__name__)
+   raise HTTPException(
+    502,'رکورد فایل در ProcessMaker ایجاد شد اما انتقال محتوای فایل نامشخص ماند؛ '
+        'پیش از تکرار، همان پرونده را بررسی کنید.') from exc
+
   if not 200<=response.status_code<300:
-   logger.warning('ProcessMaker rejected native input document upload status=%s',response.status_code)
+   logger.warning('ProcessMaker rejected file bytes app_doc_uid=%s status=%s',
+                  app_doc_uid,response.status_code)
    if response.status_code==413:
-    raise HTTPException(413,'حجم فایل از محدودیت ProcessMaker بیشتر است.')
+    raise HTTPException(413,'حجم فایل از محدودیت تعریف‌شده در ProcessMaker بیشتر است.')
+   if response.status_code==415:
+    raise HTTPException(415,'نوع یا پسوند فایل با تنظیم Input Document در ProcessMaker سازگار نیست.')
    if response.status_code in (401,403):
     raise HTTPException(403,'حساب متصل ProcessMaker مجوز بارگذاری این فایل را ندارد.')
-   raise HTTPException(502,'ProcessMaker بارگذاری فایل را نپذیرفت.')
-  try:result=response.json()
-  except ValueError as exc:
-   raise HTTPException(502,'پاسخ بارگذاری فایل ProcessMaker معتبر نیست.') from exc
-  if not isinstance(result,dict) or not re.fullmatch(r'[a-zA-Z0-9]{32}',str(result.get('app_doc_uid') or '')):
-   raise HTTPException(502,'ProcessMaker شناسه معتبر برای فایل بارگذاری‌شده برنگرداند.')
-  return result
+   raise HTTPException(
+    502,'رکورد فایل در ProcessMaker ایجاد شد اما ProcessMaker محتوای فایل را نپذیرفت؛ '
+        'پیش از تکرار، همان پرونده را بررسی کنید.')
+
+  try:uploaded=response.json() if response.content else {}
+  except ValueError:
+   uploaded={}
+  if isinstance(uploaded,dict) and uploaded.get('status') not in (None,'ok','OK',True):
+   raise HTTPException(
+    502,'ProcessMaker رکورد فایل را ایجاد کرد اما تکمیل بارگذاری را تأیید نکرد؛ '
+        'پیش از تکرار، همان پرونده را بررسی کنید.')
+
+  return {
+   'app_doc_uid':app_doc_uid,
+   'app_doc_version':record.get('docVersion') or 1,
+   'app_doc_filename':record.get('appDocFilename') or name,
+   'app_doc_type':record.get('appDocType') or 'INPUT',
+   'app_doc_create_date':record.get('appDocCreateDate'),
+   'app_doc_create_user':record.get('appDocCreateUser'),
+   'app_doc_index':record.get('appDocIndex'),
+   'doc_uid':input_doc_uid,
+   'field_name':field,
+  }
+
  def execute_trigger(self,case,trigger,*,operation='اجرای Trigger'):
   return self.call('PUT',f'/cases/{uid(case)}/execute-trigger/{uid(trigger)}',operation=operation)
  def route(self,case,index):
