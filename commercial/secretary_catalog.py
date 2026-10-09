@@ -174,7 +174,11 @@ def _requiredness_unavailable(pack,stage,reason):
   'ویرایش و گفت‌وگو در AVAN باز می‌ماند، اما ارسال نهایی تا بازیابی این metadata متوقف است.'
  )
  result['live_requiredness_error']=str(reason or '')[:240]
- result['live_requiredness_hash']=''
+ # A stable degraded fingerprint invalidates old AVAN-only clarification
+ # questions once, without touching any values already extracted into the draft.
+ result['live_requiredness_hash']=hashlib.sha256(
+  ('requiredness-unavailable:'+stage).encode()
+ ).hexdigest()
  return result
 
 
