@@ -180,7 +180,7 @@ def test_complete_dense_invitation_satisfies_coverage(pack):
 
 
 def test_model_partial_first_answer_is_retried_until_full_coverage(pack):
-    scope=dense_scope();values=full_values(scope);calls=[]
+    scope=dense_scope();values=full_values(scope);calls=[];budgets=[]
     partial=runtime.ConversationExtraction(
         intent="update",reply="تاریخ ثبت شد.",
         assignments=[runtime.legacy.Assignment(
@@ -191,11 +191,13 @@ def test_model_partial_first_answer_is_retried_until_full_coverage(pack):
         assignments=assignments_for(values),questions=[])
     def parse(**kwargs):
         calls.append(json.loads(kwargs["input"][1]["content"]))
+        budgets.append(kwargs["max_output_tokens"])
         return SimpleNamespace(status="completed",output_parsed=partial if len(calls)==1 else complete)
     client=SimpleNamespace(responses=SimpleNamespace(parse=parse))
     extracted,questions,reply,intent=runtime.extract(
         NOTES,task(pack,"invitation"),{},scope,client=client,model="fixture",with_reply=True)
     assert len(calls)==2
+    assert budgets==[7000,7000]
     assert calls[1]["coverage_failures"]
     assert extracted["MTG_MeetingTitle"]=="بررسی برنامه توسعه و استقرار AVAN"
     assert len(extracted["MTG_Participants"])==8
