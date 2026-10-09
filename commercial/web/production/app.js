@@ -1519,6 +1519,8 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const d=r.draft,t=r.task,values=structuredClone(d.values||{});let assistant=r.assistant||{};
   const stageLabels={invitation:"دعوت‌نامه",invitation_approval:"تأیید دعوت‌نامه",minutes:"صورت‌جلسه",minutes_approval:"تأیید صورت‌جلسه",action_execution:"گزارش اجرای اقدام",action_review:"بررسی اقدام",monitoring:"پایش و اختتام"};
   const p=card(t.title||"دبیر هوشمند",isSession?"ایجاد دعوت‌نامه با گفت‌وگو":"مرحله: "+(stageLabels[t.stage]||t.stage));p.classList.add("secretary-editor-card");
+  const requirednessLive=r.requiredness?.live!==false;
+  if(!requirednessLive)add(p,note(r.requiredness?.warning||"تنظیم Required زنده ProcessMaker فعلاً قابل خواندن نیست. می‌توانید اطلاعات را ویرایش کنید، اما ارسال نهایی تا بازیابی metadata متوقف است.",true));
   const stageProgress=el("div","secretary-editor-progress");stageProgress.setAttribute("aria-label","مرحله جاری پرونده");
   stages.forEach(([key,label],i)=>{const step=el("span",key===t.stage?"is-current":"",fmt(i+1)+" · "+label);if(key===t.stage)step.setAttribute("aria-current","step");add(stageProgress,step)});add(editor,stageProgress);
   const path=isSession?"/sessions/"+encodeURIComponent(d.id):"/tasks/"+t.case_uid+"/"+t.index;
@@ -1644,9 +1646,12 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    progress.textContent=missing.length?("برای تکمیل این مرحله "+missing.length+" مورد باقی مانده؛ دبیر آن‌ها را یکی‌یکی می‌پرسد."):"اطلاعات این مرحله کامل است.";
    summaryBody.textContent=assistant.summary||"";
    contextSummary.hidden=!assistant.summary;
-   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected;
-   if(sessionStart){sessionStart.hidden=missing.length>0;sessionStart.disabled=locked||dirty||missing.length>0||!info.oauth_connected}
-   if(sessionStartHint)sessionStartHint.hidden=missing.length>0||!!info.oauth_connected;
+   if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
+   if(sessionStart){sessionStart.hidden=missing.length>0;sessionStart.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive}
+   if(sessionStartHint){
+    sessionStartHint.textContent=!requirednessLive?"قبل از ایجاد پرونده، AVAN باید تنظیم Required زنده ProcessMaker را بخواند. دسترسی SELECT جدول DYNAFORM را بررسی کنید.":"پیش‌نویس کامل است؛ برای ایجاد پرونده و ارسال آن به کارتابل رئیس، ابتدا «اتصال حساب خودم» را فعال کنید.";
+    sessionStartHint.hidden=missing.length>0||(!!info.oauth_connected&&requirednessLive);
+   }
    if(chatMinutesHint){
     chatMinutesHint.textContent=missing.length?(missing.length+" مورد باید قبل از ارسال تکمیل شود؛ دبیر آن‌ها را یکی‌یکی می‌پرسد."):"صورت‌جلسه کامل است و آماده ارسال برای تأیید است.";
     chatMinutesHint.classList.toggle("ok",!missing.length);
@@ -1673,7 +1678,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   function setSending(value,label=""){
    sending=value;composer.classList.toggle("is-sending",value);notes.disabled=value;
    if(sendMessage)sendMessage.disabled=value||locked;
-   if(sessionStart)sessionStart.disabled=value||locked||dirty||missing.length>0||!info.oauth_connected;
+   if(sessionStart)sessionStart.disabled=value||locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(stopButton)stopButton.hidden=!value;
    statusLine.textContent=label;
   }
@@ -1876,7 +1881,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   if(["invitation_approval","minutes_approval"].includes(t.stage)){
    const quick=el("div","secretary-quick-actions");
    const approveText=t.stage==="invitation_approval"?"دعوت‌نامه را تأیید می‌کنم":"صورت‌جلسه را تأیید می‌کنم";
-   const approve=link("✓ تأیید و ارسال",()=>sendTurn(approveText).catch(e=>toast(e.message)),"button primary");approve.disabled=!info.oauth_connected;
+   const approve=link("✓ تأیید و ارسال",()=>sendTurn(approveText).catch(e=>toast(e.message)),"button primary");approve.disabled=!info.oauth_connected||!requirednessLive;
    add(quick,approve,link("↩ نیاز به اصلاح",()=>{notes.value="نیاز به اصلاح: ";notes.focus();autosize()},"button secondary"));
    add(composer,quick);
   }
@@ -1891,10 +1896,10 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
      editor.replaceChildren(note("صورت‌جلسه با موفقیت به مرحله «تأیید صورت‌جلسه» ارسال شد."));
      setTimeout(()=>load().catch(()=>{}),400);
     }finally{
-     if(chatMinutesSend?.isConnected)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected;
+     if(chatMinutesSend?.isConnected)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
     }
    }),"button primary");
-   chatMinutesSend.disabled=locked||dirty||!info.oauth_connected;
+   chatMinutesSend.disabled=locked||dirty||!info.oauth_connected||!requirednessLive;
    add(quick,chatMinutesSend);
    if(missing.length)add(quick,el("small","muted","کنترل نهایی الزامات هنگام ارسال توسط خود ProcessMaker انجام می‌شود."));
    add(composer,quick);
@@ -1959,9 +1964,9 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     editor.replaceChildren(note(t.stage==="minutes"?"صورت‌جلسه با موفقیت به مرحله «تأیید صورت‌جلسه» ارسال شد.":"اطلاعات در BPMS ثبت و به مرحله بعد ارسال شد."));
     if(t.stage==="minutes"){setTimeout(()=>load().catch(()=>{}),500)}
     else await load();
-   }finally{if(send?.isConnected)send.disabled=locked||dirty||missing.length>0||!info.oauth_connected}
+   }finally{if(send?.isConnected)send.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive}
   }),"button primary");
-  send.disabled=locked||missing.length>0||!info.oauth_connected;
+  send.disabled=locked||missing.length>0||!info.oauth_connected||!requirednessLive;
   add(formBody,save,send,status);add(p,formDetails);
 
   if(!isSession&&t.stage==="monitoring")add(p,link("پیشنهاد جلسه پیگیری اقدامات باز",checked(async()=>{const row=await post(path+"/followup"+query);await session(row.id);await load()})));
