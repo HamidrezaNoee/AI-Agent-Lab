@@ -577,6 +577,11 @@ def resolve_extracted_people(field,value,spec,directory,evidence="",current=None
   if not matches:
    matches=[uid for uid,p in active.items()
             if any(p.get(k) and person_text(p[k])==person_text(text) for k in ('name','avan_name'))]
+  if not matches:
+   # Exact/unique role aliases (position/title or safe manager+unit aliases)
+   # are resolved by the deterministic identity layer, never by directory order.
+   candidate=resolution.unique_person(text,directory)
+   if candidate:matches=[candidate]
   if len(matches)==1:return matches[0]
   reason='چند حساب مطابق دارد' if matches else 'در کاربران فعال این اتصال پیدا نشد'
   questions.append(str(label)+': «'+text[:100]+'» '+reason+'؛ شخص درست را در فرم انتخاب کنید.')
