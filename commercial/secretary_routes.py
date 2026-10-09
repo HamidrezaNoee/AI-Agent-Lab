@@ -5,6 +5,7 @@ from . import secretary_workflow as flow
 from .agent_routes import snapshot,guard_model,ensure_still_authorized
 from .agent_workspace import RevisionConflict
 from .meeting_agent import run_slot
+from .processmaker_store import ProductionUnavailable
 
 class Turn(BaseModel):
  model_config=ConfigDict(extra='forbid')
@@ -28,6 +29,10 @@ def register(app,authorized,csrf):
   try:return guard_model(fn)
   except PermissionError:raise HTTPException(403,'این پرونده یا مرحله دبیر در دسترس شما نیست.')
   except RevisionConflict:raise HTTPException(409,'پرونده تغییر کرده یا ارسال شده است؛ دوباره بارگذاری کنید.')
+  except ProductionUnavailable as exc:
+   if str(exc)=='ProcessMaker DynaForm metadata unavailable':
+    raise HTTPException(503,'AVAN نمی‌تواند تنظیم Required فرم زنده ProcessMaker را بخواند؛ دسترسی SELECT روی جدول DYNAFORM را برای کاربر فقط‌خواندنی AVAN فعال کنید.')
+   raise HTTPException(503,'اتصال خواندنی ProcessMaker در دسترس نیست.')
   except ValueError as exc:raise HTTPException(422,str(exc))
  @app.get(base)
  def listing(source_id:str,value=Depends(authorized)):
