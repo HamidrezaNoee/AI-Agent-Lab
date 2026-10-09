@@ -190,6 +190,40 @@ def form(task):
   result['MTG_ActionSummary']={**live,'type':'grid','label':live.get('label') or 'بررسی نهایی اقدامات','columns':columns}
  return result
 
+def file_controls(task):
+ """Return only reviewed native ProcessMaker file controls for this stage."""
+ stage=task['stage'];specs=task['pack']['stages'][stage]['fields'];result={}
+ for field,spec in specs.items():
+  if spec.get('type') not in ('file','multipleFile'):continue
+  doc_uid=str(spec.get('inp_doc_uid') or '').strip()
+  if not re.fullmatch(r'[a-zA-Z0-9]{32}',doc_uid):
+   # A file field without its native Input Document binding is not safe to expose
+   # as an upload target. The DynaForm may still render it in ProcessMaker.
+   continue
+  mode=str(spec.get('mode') or 'edit').lower()
+  result[field]={
+   'field':field,
+   'label':str(spec.get('label') or field),
+   'type':spec.get('type'),
+   'mode':mode,
+   'required':bool(spec.get('required')),
+   'inp_doc_uid':doc_uid,
+   'input_document':str(spec.get('inputDocument') or ''),
+   'extensions':str(spec.get('extensions') or '.*'),
+   'multiple':bool(spec.get('multiple')),
+  }
+ return result
+
+
+def file_control(task,field,*,write=False):
+ controls=file_controls(task)
+ spec=controls.get(str(field or ''))
+ if not spec:raise ValueError('فیلد فایل این مرحله در قرارداد ProcessMaker وجود ندارد.')
+ if write and spec.get('mode') in ('view','disabled'):
+  raise PermissionError('این فایل در مرحله جاری فقط قابل مشاهده است.')
+ return spec
+
+
 def _blank_required(value):
  return value in (None,'',{}) or value==[]
 
