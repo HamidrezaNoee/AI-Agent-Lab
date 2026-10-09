@@ -783,3 +783,42 @@ def test_direct_minutes_submit_sends_labels_not_raw_uids(pack,store,monkeypatch)
  assert row['MTG_ActionOwnerUID']==owner
  assert row['MTG_ActionOwnerUID_label']=='مدیر استراتژی'
  assert row['MTG_ActionOwnerUID_label']!=owner
+
+
+
+def test_opening_minutes_approval_repairs_legacy_suggest_labels(pack,store,monkeypatch):
+ scope=copy.deepcopy(S)
+ owner='3'*32
+ scope['directory'][owner]={
+  'active':True,
+  'username':'mgr.strategy',
+  'name':'مدیر استراتژی',
+  'position':'مدیر استراتژی',
+  'unit':'استراتژی',
+ }
+ native={
+  'MTG_Actions':{'1':{
+   'MTG_ActionDecisionNo':'D-001',
+   'MTG_ActionNo':'A-001',
+   'MTG_ActionDescription':'تدوین برنامه استراتژی',
+   'MTG_ActionOwnerUID':'',
+   'MTG_ActionOwnerPosition':'مدیر استراتژی',
+   'MTG_persiandate_ActionDueDateTime':'1405/07/20',
+   'MTG_ActionPriority':'High',
+  }}
+ }
+ t=task(pack,'minutes_approval',native)
+ written={}
+ class PM:
+  def __init__(self,*a,**kw):pass
+  def assigned(self,*a):return 1
+  def execute_trigger(self,*a,**kw):pass
+  def set_variables(self,case,index,values,operation=None):
+   written.update(copy.deepcopy(values))
+  def close(self):pass
+ monkeypatch.setattr(r,'PM',PM)
+ monkeypatch.setattr(r,'token',lambda *a,**kw:'token')
+ r.prepare(t,scope,'actor')
+ row=written['MTG_Actions']['1']
+ assert row['MTG_ActionOwnerUID']==owner
+ assert row['MTG_ActionOwnerUID_label']=='مدیر استراتژی'
