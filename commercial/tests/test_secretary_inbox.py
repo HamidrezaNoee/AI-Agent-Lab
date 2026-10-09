@@ -13,6 +13,9 @@ def pack():
  return {**p,'id':'1'*24,'source_id':'source','enabled':True,'revision':1,'monitor_lead_minutes':1440,'action_lead_minutes':60}
 @pytest.fixture
 def store(monkeypatch,pack):
+ # Unit tests use the reviewed fixture contract; live DynaForm requiredness is
+ # covered separately without opening a real ProcessMaker database.
+ monkeypatch.setattr(c,'with_live_requiredness',lambda source_id,pack,stage,con=None:pack)
  data={c.STORE:[copy.deepcopy(pack)]}
  class Tx:
   def get(self,k,default=None,**kw):return copy.deepcopy(data.get(k,default))
