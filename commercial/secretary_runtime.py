@@ -1020,12 +1020,44 @@ def reconcile_task_route(scope,actor,task,revision,*,pm=None):
   if owned:pm.close()
 
 
+def _identity_grid_repair_payload(task,scope):
+ """Build an idempotent PM payload that restores labels for Suggest cells.
+
+ This is intentionally limited to existing grid data in the native case. It
+ never creates a business row or changes free-text facts. Action owner UID may
+ be filled only from an existing row position that resolves to one active user.
+ """
+ specs=form(task);values={}
+ for field,spec in specs.items():
+  if spec.get('type')!='grid':continue
+  columns=spec.get('columns') or []
+  if not any(str(c.get('type') or '')=='suggest' for c in columns):continue
+  native=task.get('native',{}).get(field)
+  if isinstance(native,dict) and native:
+   values[field]=copy.deepcopy(native)
+ if not values:return {}
+ return labelled(values,task,scope)
+
+
 def prepare(task,scope,actor):
  pm=PM(scope['source_id'],process_uid=process_for(task['pack'],task['stage']),bearer=token(scope,actor))
  try:
-  if pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])!=task['index']:raise RevisionConflict()
+  index=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
+  if index!=task['index']:raise RevisionConflict()
   for trigger in task['pack']['stages'][task['stage']]['before']:
    pm.execute_trigger(task['case_uid'],trigger,operation='اجرای Trigger قبل از فرم')
+  # Cases routed by older direct-minutes builds can contain Suggest values
+  # without their ProcessMaker *_label companions. Repair presentation metadata
+  # when the approval task is explicitly opened in AVAN. This also safely fills
+  # a blank action owner from its already-stored unique position alias.
+  if task['stage']=='minutes_approval':
+   repair=_identity_grid_repair_payload(task,scope)
+   if repair:
+    pm.set_variables(task['case_uid'],index,repair,operation='ترمیم برچسب‌های کاربران صورت‌جلسه')
+    with agent_storage.transaction() as tx:
+     tx.audit(scope['tenant_id'],actor,'SECRETARY_PM_LABELS_REPAIRED',{
+      'case_uid':task['case_uid'],'stage':task['stage'],'grids':sorted(repair)
+     })
  finally:pm.close()
 
 
