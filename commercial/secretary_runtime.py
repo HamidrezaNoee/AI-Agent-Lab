@@ -849,11 +849,16 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
 
 
   if values:
-   pending=legacy.missing(values,'minutes')
+   # Re-read current ProcessMaker DynaForm requiredness even on the direct
+   # minutes route. Chat, form rendering and submit must share one authority.
+   configured=catalog.get(source_id,pack_id)
+   live_pack=catalog.with_live_requiredness(source_id,configured,'minutes')
+   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':{}}
+   pending=gaps(values,live_task)
    if pending:
     first='؛ '.join(str(x.get('question') or '') for x in pending[:3] if x.get('question'))
     extra=len(pending)-min(len(pending),3)
-    detail=f'صورت‌جلسه هنوز {len(pending)} مورد ناقص دارد'
+    detail=f'صورت‌جلسه هنوز {len(pending)} فیلد Required در ProcessMaker دارد'
     if first:detail+=': '+first
     if extra>0:detail+=f'؛ و {extra} مورد دیگر'
     raise ValueError(detail)
