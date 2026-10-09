@@ -62,6 +62,8 @@ def task(con,scope,case,index,pack_id):
  if len(found)!=1:raise PermissionError('این وظیفه جاری به حساب متصل شما تعلق ندارد.')
  stage=next((s for s,v in pack['stages'].items() if v['task_uid']==str(found[0][3]) and process_for(pack,s)==str(found[0][0])),None)
  if not stage:raise PermissionError('این وظیفه ابزار دبیر فعال ندارد.')
+ # Required/optional state is owned by the live ProcessMaker DynaForm.
+ pack=catalog.with_live_requiredness(scope['source_id'],pack,stage,con=con)
  if stage=='monitoring':
   visible=next((r for r in inbox(con,scope,pack_id=pack_id)['tasks'] if r['case_uid']==case and r['index']==int(index)),None)
   if not visible or not visible['available']:raise PermissionError('زمان پایش این جلسه هنوز نرسیده است.')
@@ -171,44 +173,55 @@ def form(task):
    result[key].update(type='dropdown',label=title,mode='edit',options=[
     {'value':'Approved','label':'تأیید'},{'value':'NeedsRevision','label':'نیاز به اصلاح'}])
  if stage=='monitoring':
-  result['MTG_ActionSummary']={'type':'grid','label':'بررسی نهایی اقدامات','columns':[{'id':k,'label':label,'type':'text','options':([{'value':'Closed','label':'تأیید و بستن'},{'value':'Rework','label':'ادامه / اصلاح'}] if k=='MTG_MonSecReviewStatus' else [])} for k,label in [('MTG_MonActionNo','شماره اقدام'),('MTG_MonSecReviewStatus','نتیجه'),('MTG_MonSecProgress','درصد تأییدشده'),('MTG_MonSecActualDate','تاریخ'),('MTG_MonSecActualTime','ساعت'),('MTG_MonSecEffort','دقیقه'),('MTG_MonSecComment','نظر دبیر')]]}
+  live=result.get('MTG_ActionSummary') or {'type':'grid','label':'بررسی نهایی اقدامات','columns':[]}
+  by_id={str(c.get('id')):c for c in live.get('columns',[]) if c.get('id')}
+  columns=[]
+  for k,label in [('MTG_MonActionNo','شماره اقدام'),('MTG_MonSecReviewStatus','نتیجه'),('MTG_MonSecProgress','درصد تأییدشده'),('MTG_MonSecActualDate','تاریخ'),('MTG_MonSecActualTime','ساعت'),('MTG_MonSecEffort','دقیقه'),('MTG_MonSecComment','نظر دبیر')]:
+   column=copy.deepcopy(by_id.get(k) or {'id':k,'type':'text'})
+   column['label']=label
+   if k=='MTG_MonSecReviewStatus':
+    column['options']=[{'value':'Closed','label':'تأیید و بستن'},{'value':'Rework','label':'ادامه / اصلاح'}]
+   columns.append(column)
+  result['MTG_ActionSummary']={**live,'type':'grid','label':live.get('label') or 'بررسی نهایی اقدامات','columns':columns}
  return result
 
+def _blank_required(value):
+ return value in (None,'',{}) or value==[]
+
+
+def _pm_required(spec):
+ return bool((spec or {}).get('required'))
+
+
 def gaps(values,task):
- stage=task['stage'];required=[]
- if stage in ('invitation','minutes'):
-  result=legacy.missing(values,stage)
-  for i,row in legacy.indexed_rows(values.get('MTG_Participants')):
-   if not row.get('MTG_ParticipantUserUID'):
-    result.append({'field':f'MTG_Participants.{i}.MTG_ParticipantUserUID','question':f'شرکت‌کننده ردیف {i} را از کاربران فعال همین اتصال انتخاب کنید.'})
-  # FR-MTG-001 generates the meeting number in its native BEFORE trigger.
-  # A conversational session does not have a Case UID yet, so asking the user
-  # for MTG_MeetingNo would duplicate a system-owned field.
-  if stage=='invitation' and not task.get('case_uid'):
-   result=[x for x in result if x.get('field')!='MTG_MeetingNo']
-  # The latest FR-MTG-001 does not require agenda presenter/duration or even
-  # participant/agenda grids for routing. Do not invent stricter AVAN-only gaps.
-  # legacy.missing() is the canonical source for invitation/minutes requirements.
-  # Adding end-date/time questions again here produced duplicate pending items
-  # with slightly different wording and incorrect "N items remaining" counts.
-  return result
- if stage=='invitation_approval':required=['MTG_InvitationApproval'];decision='MTG_InvitationApproval'
- elif stage=='minutes_approval':required=['MTG_MinutesApproval'];decision='MTG_MinutesApproval'
- elif stage=='action_execution':
-  required=['MTGA_SubmissionType','MTGA_ProgressPercent','MTGA_ExecutionDescription']
- elif stage=='action_review':
-  required=['MTGA_ReviewStatus2','MTGA_SecretaryProgressPercent2']
-  if values.get('MTGA_ReviewStatus2')=='Rework':required+=['MTGA_SecretaryComment1']
- elif stage=='monitoring':required=['MTG_ClosingNote']
- if stage in ('invitation_approval','minutes_approval') and values.get(decision)=='Approved':
-  underlying='invitation' if stage=='invitation_approval' else 'minutes'
-  inherited={**task['native'],**values}
-  pending=legacy.missing(inherited,underlying)
-  if stage=='minutes_approval' and not legacy.rows(inherited.get('MTG_Actions')):
-   pending.append({'field':'MTG_Actions','question':'برای تأیید صورت‌جلسه حداقل یک اقدام معتبر لازم است.'})
-  return pending
- specs=form(task)
- return [{'field':k,'question':'لطفاً '+str(specs.get(k,{}).get('label') or k)+' را مشخص کنید.'} for k in required if values.get(k) in (None,'',{})]
+ """Return only requirements declared by the live ProcessMaker DynaForm.
+
+ AVAN may validate values for safety/consistency, but it must not invent a
+ mandatory field that ProcessMaker currently marks optional.
+ """
+ stage=task['stage'];specs=form(task);result=[]
+ for field,spec in specs.items():
+  mode=str(spec.get('mode') or '').lower()
+  # Read-only/system values are populated by PM/triggers; never ask the user.
+  user_editable=mode not in ('view','disabled')
+  if _pm_required(spec) and user_editable and _blank_required(values.get(field)):
+   # FR-MTG-001 meeting number is generated by the native BEFORE trigger.
+   if stage=='invitation' and not task.get('case_uid') and field=='MTG_MeetingNo':
+    continue
+   result.append({'field':field,'question':'لطفاً '+str(spec.get('label') or field)+' را مشخص کنید.'})
+  if spec.get('type')!='grid' or not isinstance(values.get(field),dict):
+   continue
+  required_columns={str(c.get('id')):c for c in spec.get('columns',[])
+                    if c.get('id') and _pm_required(c)
+                    and str(c.get('mode') or '').lower() not in ('view','disabled')}
+  if not required_columns:continue
+  for index,row in legacy.indexed_rows(values.get(field)):
+   for column_id,column in required_columns.items():
+    if _blank_required(row.get(column_id)):
+     label=str(column.get('label') or column_id)
+     result.append({'field':field+'.'+str(index)+'.'+column_id,
+                    'question':label+' در ردیف '+str(index)+' را مشخص کنید.'})
+ return result
 
 def _rows(value):
  if value in (None,''):return []
@@ -449,7 +462,6 @@ def validate(values,task,scope):
    seen.add(no)
    status=r.get('MTG_MonSecReviewStatus','')
    if status not in ('','Closed','Rework'):raise ValueError('وضعیت پایش معتبر نیست.')
-   if status=='Rework' and not r.get('MTG_MonSecComment'):raise ValueError('نظر برای ادامه اقدام لازم است.')
    for k,limit in [('MTG_MonSecProgress',100),('MTG_MonSecEffort',100000)]:
     if r.get(k,'')!='':
      try:n=int(r[k])
@@ -912,6 +924,7 @@ def sessions(scope,actor):
 def session_create(scope,actor,pack_id,values=None):
  pack=catalog.get(scope['source_id'],pack_id)
  if pack.get('adapter')!='meeting_v2':raise PermissionError('ایجاد جلسه برای این بسته مجاز نیست.')
+ pack=catalog.with_live_requiredness(scope['source_id'],pack,'invitation')
  values=values or {'MTG_SecretaryUserUID':scope['external_user_id']}
  item={'pack':pack,'stage':'invitation','native':{}}
  validate(values,item,scope)
@@ -929,6 +942,7 @@ def session_load(scope,actor,identifier):
  if not row:raise PermissionError()
  pack=catalog.get(scope['source_id'],row['pack_id'])
  if row['pack_revision']!=pack['revision']:raise RevisionConflict('تنظیم بسته فرایند تغییر کرده است.')
+ pack=catalog.with_live_requiredness(scope['source_id'],pack,'invitation')
  return row,{'pack':pack,'stage':'invitation','native':{},'case_uid':None}
 
 def session_update(scope,actor,identifier,revision,values,questions=(),*,turn_text=None,turn_source='text',attachment=None,reply=None,pending_confirmation=_KEEP_PENDING,agent_receipt=None,checkpoint=True):
