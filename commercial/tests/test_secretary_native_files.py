@@ -232,3 +232,57 @@ def test_field_documents_prefers_pmx_multiplefile_refs_without_document_step(mon
         "app_doc_type":"INPUT",
         "doc_uid":"6343078616ac0d6c53a98d9079721622",
     }]
+
+
+
+def test_live_dynaform_promotes_reviewed_file_control_into_older_pack():
+    from commercial import secretary_catalog as catalog
+
+    p=pack()
+    p["stages"]["action_execution"]["fields"].pop("MTGA_EvidenceFile1",None)
+    p["action"]["stages"]["action_execution"]["fields"].pop("MTGA_EvidenceFile1",None)
+
+    live=copy.deepcopy(pack()["stages"]["action_execution"]["fields"])
+    overlaid=catalog._overlay_live_requiredness(p,"action_execution",live)
+
+    control=runtime.file_controls({
+        "stage":"action_execution",
+        "pack":overlaid,
+    })["MTGA_EvidenceFile1"]
+
+    assert control["mode"]=="edit"
+    assert control["inp_doc_uid"]=="6343078616ac0d6c53a98d9079721622"
+
+
+def test_live_file_mode_changes_from_upload_to_view_between_stages():
+    from commercial import secretary_catalog as catalog
+
+    p=pack()
+
+    live_execution=copy.deepcopy(p["stages"]["action_execution"]["fields"])
+    live_execution["MTGA_EvidenceFile1"]["mode"]="edit"
+    execution=catalog._overlay_live_requiredness(
+        p,"action_execution",live_execution)
+
+    live_review=copy.deepcopy(p["stages"]["action_review"]["fields"])
+    live_review["MTGA_EvidenceFile1"]["mode"]="view"
+    review=catalog._overlay_live_requiredness(
+        p,"action_review",live_review)
+
+    assert runtime.file_controls({
+        "stage":"action_execution","pack":execution
+    })["MTGA_EvidenceFile1"]["mode"]=="edit"
+
+    assert runtime.file_controls({
+        "stage":"action_review","pack":review
+    })["MTGA_EvidenceFile1"]["mode"]=="view"
+
+
+def test_minutes_attachment_uses_same_native_input_document_for_approval():
+    p=pack()
+    minutes=runtime.file_controls({"stage":"minutes","pack":p})
+    approval=runtime.file_controls({"stage":"minutes_approval","pack":p})
+
+    assert minutes["MTG002_MeetingAttachment"]["inp_doc_uid"] == (
+        approval["MTG002_MeetingAttachment"]["inp_doc_uid"]
+    )
