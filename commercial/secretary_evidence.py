@@ -54,7 +54,7 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
   assigned=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
   if assigned!=task['index']:raise RevisionConflict()
   result=pm.upload_input_document(
-   task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],spec['inp_doc_uid'],
+   task['case_uid'],spec['inp_doc_uid'],field,
    filename,data,content_type,comment='AVAN · '+str(spec.get('label') or field))
   # Do not perform a second remote read here. The write already succeeded and a
   # later list-permission/transient failure must never make the browser retry
