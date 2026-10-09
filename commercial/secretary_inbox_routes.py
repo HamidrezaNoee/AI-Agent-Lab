@@ -212,7 +212,7 @@ def register(app,authorized,csrf):
      bearer=credentials.token(s,p.subject)
      sent=runtime.advance_minutes_direct(
       str(p.tenant_id),p.subject,source_id,s['external_user_id'],
-      case_uid,index,pack_id,bearer,revision=row['revision'])
+      case_uid,index,pack_id,bearer,revision=row['revision'],directory=s.get('directory',{}))
      return {'result':{'advanced':True,'status':sent['status'],'assistant':{
       'stage':'minutes','summary':'','missing':[],'can_submit':False,
       'message':'صورت‌جلسه به مرحله «تأیید صورت‌جلسه» ارسال شد.'
@@ -247,7 +247,7 @@ def register(app,authorized,csrf):
        bearer=credentials.token(fresh_scope,p2.subject)
        sent=runtime.advance_minutes_direct(
         str(p2.tenant_id),p2.subject,source_id,fresh_scope['external_user_id'],
-        case_uid,index,pack_id,bearer,revision=updated['revision'])
+        case_uid,index,pack_id,bearer,revision=updated['revision'],directory=fresh_scope.get('directory',{}))
       else:
        sent=runtime.submit(fresh_scope,p2.subject,fresh,updated['revision'])
       return {'advanced':True,'status':sent['status'],'assistant':{
