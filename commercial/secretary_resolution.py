@@ -295,13 +295,20 @@ def _question_targets_path(text,path):
     action=re.fullmatch(r"MTG_Actions\.(\d+)\.MTG_ActionOwnerUID",path)
     if action:
         row=action.group(1)
-        has_row=bool(re.search(r"(?:اقدام|ردیف)\s*(?:a\s*-?\s*)?0*"+re.escape(row)+r"\b",normalized))
+        has_row=bool(
+            re.search(r"(?:اقدام|ردیف)\s*(?:a\s*-?\s*)?0*"+re.escape(row)+r"\b",normalized)
+            or re.search(r"/\s*0*"+re.escape(row)+r"\s*/",normalized)
+        )
         has_owner=any(word in normalized for word in ("مسئول","اقدام کننده","اقدام‌کننده","owner"))
         return has_row and has_owner
     agenda=re.fullmatch(r"MTG_Agenda\.(\d+)\.MTG_AgendaPresenterUID",path)
     if agenda:
         row=agenda.group(1)
-        return bool(re.search(r"(?:دستور جلسه|ردیف)\s*0*"+re.escape(row)+r"\b",normalized)) and "ارائه" in normalized
+        has_row=bool(
+            re.search(r"(?:دستور جلسه|ردیف)\s*0*"+re.escape(row)+r"\b",normalized)
+            or re.search(r"/\s*0*"+re.escape(row)+r"\s*/",normalized)
+        )
+        return has_row and "ارائه" in normalized
     if path=="MTG_ChairUserUID":
         return "رئیس" in normalized or "رییس" in normalized
     if path=="MTG_SecretaryUserUID":
