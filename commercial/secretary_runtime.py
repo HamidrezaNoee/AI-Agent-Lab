@@ -894,18 +894,18 @@ def submit(scope,actor,task,revision,*,pm=None):
   # Detect a task opened without preparation before mutating ProcessMaker.
   if task['stage']=='minutes' and not isinstance(current_native.get('MTG_LockedPlan'),dict):
    raise ValueError('اطلاعات پایه تأییدشده جلسه در ProcessMaker آماده نیست؛ وظیفه را از کارتابل دوباره باز کنید تا آماده‌سازی فرم انجام شود.')
+  required_native=[x for x in file_controls(task).values() if x.get('required') and x.get('mode') not in ('view','disabled')]
+  if required_native:
+   docs=pm.call('GET','/cases/'+str(task['case_uid'])+'/input-documents',operation='کنترل مستندات الزامی مرحله')
+   file_missing=native_file_gaps(task,docs)
+   if file_missing:
+    raise ValueError('فایل الزامی ProcessMaker بارگذاری نشده است: '+'؛ '.join(x['question'] for x in file_missing))
   with agent_storage.transaction() as tx:
    key=task_key(scope,task['case_uid'],task['index']);row=tx.get(key,lock=True)
    if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
    if row['revision']!=revision or row['status']!='draft' or row['pack_revision']!=task['pack']['revision'] or row.get('native_stamp')!=native_stamp(task):raise RevisionConflict()
    validate(row['values'],task,scope)
    if gaps(row['values'],task):raise ValueError('اطلاعات ضروری این مرحله را تکمیل کنید.')
-   required_native=[x for x in file_controls(task).values() if x.get('required') and x.get('mode') not in ('view','disabled')]
-   if required_native:
-    docs=pm.call('GET','/cases/'+str(task['case_uid'])+'/input-documents',operation='کنترل مستندات الزامی مرحله')
-    file_missing=native_file_gaps(task,docs)
-    if file_missing:
-     raise ValueError('فایل الزامی ProcessMaker بارگذاری نشده است: '+'؛ '.join(x['question'] for x in file_missing))
    row.update(status='executing',revision=revision+1);tx.put(key,row)
   try:
    pm.submit_stage(task['case_uid'],task['pack']['stages'][task['stage']],scope['external_user_id'],labelled(row['values'],task,scope),task['index'])
