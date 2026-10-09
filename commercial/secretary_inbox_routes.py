@@ -340,7 +340,9 @@ def register(app,authorized,csrf):
   if not external_user_id:
    raise HTTPException(403,'کاربر ProcessMaker متناظر این حساب مشخص نیست.')
   bearer=credentials.token_for_bound_source(str(principal.tenant_id),principal.subject,source_id)
-  rows=directory_users(source_id)
+  # Final direct routing must resolve action owners against a fresh
+  # ProcessMaker USERS/DEPARTMENT snapshot, not a potentially stale cache.
+  rows=directory_users(source_id,refresh=True)
   directory={
    str(u.get('external_user_id') or ''):{
     'active':bool(u.get('active')),
