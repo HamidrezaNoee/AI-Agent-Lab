@@ -139,7 +139,22 @@ def agenda_expectations(notes,directory):
         minutes=None
         match=re.search(r'(?:در\s+مدت|مدت)\s*([0-9۰-۹٠-٩]+)\s*دقیقه',body)
         if match:minutes=str(int(match.group(1).translate(_DIGITS)))
-        result.append({"no":no,"presenter_uid":uids[0] if len(uids)==1 else None,"minutes":minutes})
+        normalized=_norm(body)
+        has_existing_action="اقدام قبلی" in normalized or "اقدام قبلي" in normalized
+        existing_owner=(uids[0] if len(uids)==1 and has_existing_action and any(x in normalized for x in ("به خودش","مربوط به خودش")) else None)
+        existing_due=None
+        if has_existing_action and any(x in normalized for x in ("موعد","مهلت")):
+            try:
+                from .secretary_time import jalali_date
+                existing_due=jalali_date(body)
+            except ValueError:
+                existing_due=None
+        result.append({
+            "no":no,"presenter_uid":uids[0] if len(uids)==1 else None,"minutes":minutes,
+            "has_existing_action":has_existing_action,
+            "existing_owner_uid":existing_owner,
+            "existing_due":existing_due,
+        })
     return result
 
 
@@ -155,7 +170,7 @@ def coverage_issues(notes,task,values,assignments,directory):
     for req in explicit_field_requirements(notes,task):
         field=req["field"]
         if field not in allowed:continue
-        if field not in assigned and not values.get(field):
+        if field not in assigned:
             issues.append(req["label"]+" از پیام استخراج نشد.")
 
     expected=participant_expectations(notes,directory)
@@ -192,6 +207,12 @@ def coverage_issues(notes,task,values,assignments,directory):
                 issues.append("ارائه‌دهنده دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
             if exp["minutes"] and str(row.get("MTG_AgendaPlannedMinutes") or "")!=exp["minutes"]:
                 issues.append("مدت دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
+            if exp.get("has_existing_action") and not str(row.get("MTG_ExistingActionText") or "").strip():
+                issues.append("اقدام قبلی مرتبط دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
+            if exp.get("existing_owner_uid") and str(row.get("MTG_ExistingOwnerUID") or "")!=exp["existing_owner_uid"]:
+                issues.append("مسئول اقدام قبلی دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
+            if exp.get("existing_due") and str(row.get("MTG_persiandate_ExistingDueDate") or "")!=exp["existing_due"]:
+                issues.append("موعد اقدام قبلی دستور جلسه ردیف "+exp["no"]+" استخراج نشد.")
     return list(dict.fromkeys(issues))
 
 
@@ -205,5 +226,10 @@ def coverage_prompt(notes,task,directory):
         "all_participants_member":participants["all_member"],
         "all_participants_required":participants["all_required"],
         "agenda_count":len(agenda),
-        "agenda_rows":[{"row":x["no"],"has_presenter":bool(x["presenter_uid"]),"minutes":x["minutes"]} for x in agenda],
+        "agenda_rows":[{
+            "row":x["no"],"has_presenter":bool(x["presenter_uid"]),"minutes":x["minutes"],
+            "has_existing_action":x.get("has_existing_action",False),
+            "has_existing_owner":bool(x.get("existing_owner_uid")),
+            "existing_due":x.get("existing_due"),
+        } for x in agenda],
     }
