@@ -93,7 +93,7 @@ def is_compound_minutes(notes,task):
     signals=(
         ("status",("جلسه تشکیل شد","جلسه تشکیل نشد","جلسه برگزار شد","جلسه برگزار نشد")),
         ("discussion",("شرح مذاکرات","شرح و جمع بندی","شرح و جمع‌بندی","جمع بندی مذاکرات","جمع‌بندی مذاکرات")),
-        ("parking",("موضوعات خارج از دستور","خارج از دستور","parking lot")),
+        ("parking",("موضوعات خارج از دستور","موضوعات خارچ از دستور","خارج از دستور","خارچ از دستور","parking lot")),
         ("decisions",("مصوبات","مصوبه")),
         ("actions",("اقدامات","اثدامات","اقدام‌ها","اقدام ها")),
         ("priority",("اولویت همه اقدامات","اوليت همه اقدامات","اولیت همه اقدامات")),
@@ -130,7 +130,7 @@ def explicit_field_requirements(notes,task):
     elif stage=="minutes":
         add("MTG_MeetingHeld","وضعیت تشکیل جلسه",any(x in raw for x in ("جلسه تشکیل شد","جلسه تشکیل نشد","جلسه برگزار شد","جلسه برگزار نشد")))
         add("MTG_MeetingDiscussionSummary","شرح مذاکرات",any(x in raw for x in ("شرح مذاکرات","شرح و جمع بندی","شرح و جمع‌بندی","جمع بندی مذاکرات","جمع‌بندی مذاکرات")))
-        add("MTG_ParkingLot","موضوعات خارج از دستور",any(x in raw for x in ("موضوعات خارج از دستور","خارج از دستور","parking lot")))
+        add("MTG_ParkingLot","موضوعات خارج از دستور",any(x in raw for x in ("موضوعات خارج از دستور","موضوعات خارچ از دستور","خارج از دستور","خارچ از دستور","parking lot")))
         add("MTG_Decisions","مصوبات",any(x in raw for x in ("مصوبات","مصوبه")))
         add("MTG_Actions","اقدامات",any(x in raw for x in ("اقدامات","اثدامات","اقدام‌ها","اقدام ها")))
     return result
@@ -206,12 +206,18 @@ def decision_expectations(notes):
     return result
 
 
-def _decision_ref(text):
+def _decision_ref(text,decision_count=None):
     normalized=_norm(text)
     match=re.search(r'مصوبه\s*([0-9]+|یک|اول|دو|دوم|سه|سوم|چهار|چهارم|پنج|پنجم|شش|ششم|هفت|هفتم|هشت|هشتم|نه|نهم|ده|دهم)\b',normalized)
-    if not match:return None
-    token=match.group(1)
-    return str(int(token)) if token.isdigit() else _DECISION_WORDS.get(token)
+    if match:
+        token=match.group(1)
+        return str(int(token)) if token.isdigit() else _DECISION_WORDS.get(token)
+    # Common speech-to-text typo in the owner's real minutes: «مصوبه کار» for
+    # «مصوبه چهار». Apply only when the message itself has exactly four
+    # numbered decisions; otherwise leave it ambiguous.
+    if decision_count==4 and re.search(r'\bمصوبه\s+کار\b',normalized):
+        return "4"
+    return None
 
 
 def _action_lines(notes):
@@ -236,12 +242,13 @@ def _action_lines(notes):
 
 def action_expectations(notes,directory):
     result=[]
+    decision_count=len(decision_expectations(notes))
     for index,line in enumerate(_action_lines(notes),1):
         people=resolution.strict_identity_mentions(line,directory)
         normalized=_norm(line)
         result.append({
             "row":str(index),
-            "decision_index":_decision_ref(line),
+            "decision_index":_decision_ref(line,decision_count),
             "owner_uid":people[0] if len(people)==1 else None,
             "has_owner_phrase":("مدیر" in normalized or bool(people)),
             "has_due":bool(re.search(r'(?:تا\s+تاریخ|موعد|مهلت).{0,60}(?:مهر|آبان|آذر|دی|بهمن|اسفند|فروردین|اردیبهشت|خرداد|تیر|مرداد|شهریور|[0-9]{4}[/\-])',normalized)),
