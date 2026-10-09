@@ -215,6 +215,18 @@ def file_controls(task):
  return result
 
 
+def native_file_gaps(task,documents):
+ """Required native file controls are satisfied only by matching PM documents."""
+ docs=documents if isinstance(documents,list) else []
+ result=[]
+ for field,spec in file_controls(task).items():
+  if not spec.get('required') or spec.get('mode') in ('view','disabled'):continue
+  target=str(spec.get('inp_doc_uid') or '')
+  if not any(str(doc.get('doc_uid') or '')==target for doc in docs if isinstance(doc,dict)):
+   result.append({'field':field,'question':'لطفاً '+str(spec.get('label') or field)+' را بارگذاری کنید.'})
+ return result
+
+
 def file_control(task,field,*,write=False):
  controls=file_controls(task)
  spec=controls.get(str(field or ''))
@@ -888,6 +900,12 @@ def submit(scope,actor,task,revision,*,pm=None):
    if row['revision']!=revision or row['status']!='draft' or row['pack_revision']!=task['pack']['revision'] or row.get('native_stamp')!=native_stamp(task):raise RevisionConflict()
    validate(row['values'],task,scope)
    if gaps(row['values'],task):raise ValueError('اطلاعات ضروری این مرحله را تکمیل کنید.')
+   required_native=[x for x in file_controls(task).values() if x.get('required') and x.get('mode') not in ('view','disabled')]
+   if required_native:
+    docs=pm.call('GET','/cases/'+str(task['case_uid'])+'/input-documents',operation='کنترل مستندات الزامی مرحله')
+    file_missing=native_file_gaps(task,docs)
+    if file_missing:
+     raise ValueError('فایل الزامی ProcessMaker بارگذاری نشده است: '+'؛ '.join(x['question'] for x in file_missing))
    row.update(status='executing',revision=revision+1);tx.put(key,row)
   try:
    pm.submit_stage(task['case_uid'],task['pack']['stages'][task['stage']],scope['external_user_id'],labelled(row['values'],task,scope),task['index'])
@@ -985,6 +1003,12 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
     if first:detail+=': '+first
     if extra>0:detail+=f'؛ و {extra} مورد دیگر'
     raise ValueError(detail)
+   required_native=[x for x in file_controls(live_task).values() if x.get('required') and x.get('mode') not in ('view','disabled')]
+   if required_native:
+    docs=pm.call('GET','/cases/'+str(case_uid)+'/input-documents',operation='کنترل فایل الزامی صورت‌جلسه')
+    file_missing=native_file_gaps(live_task,docs)
+    if file_missing:
+     raise ValueError('فایل الزامی ProcessMaker بارگذاری نشده است: '+'؛ '.join(x['question'] for x in file_missing))
 
   # Claim the exact draft version before REST writes. Concurrent edits/sends
   # must not overwrite a newer draft or route the same delegation twice.
