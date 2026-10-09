@@ -148,14 +148,43 @@ def _overlay_live_requiredness(pack,stage,live_fields):
  result['live_requiredness_hash']=hashlib.sha256(
   json.dumps(canonical,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
  ).hexdigest()
+ result['live_requiredness_available']=True
+ result['live_requiredness_warning']=''
  return result
 
 
-def with_live_requiredness(source_id,pack,stage,*,con=None):
+def _requiredness_unavailable(pack,stage,reason):
+ """Keep the reviewed editor usable when live PM form metadata is unavailable.
+
+ No stale field is allowed to become a new AVAN blocker. Final workflow mutations
+ re-read the live contract in strict mode before any ProcessMaker write/route.
+ """
+ result=copy.deepcopy(pack)
+ target=result.get('stages',{}).get(stage,{}).get('fields',{})
+ for spec in target.values():
+  spec['required']=False
+  for column in spec.get('columns',[]) or []:
+   column['required']=False
+ owner='action' if stage.startswith('action_') else 'meeting'
+ if stage in result.get(owner,{}).get('stages',{}):
+  result[owner]['stages'][stage]=copy.deepcopy(result['stages'][stage])
+ result['live_requiredness_available']=False
+ result['live_requiredness_warning']=(
+  'تنظیم Required زنده ProcessMaker فعلاً قابل خواندن نیست؛ '
+  'ویرایش و گفت‌وگو در AVAN باز می‌ماند، اما ارسال نهایی تا بازیابی این metadata متوقف است.'
+ )
+ result['live_requiredness_error']=str(reason or '')[:240]
+ result['live_requiredness_hash']=''
+ return result
+
+
+def with_live_requiredness(source_id,pack,stage,*,con=None,strict=False):
  """Read current DynaForm required flags directly from ProcessMaker.
 
- The reviewed adapter continues to define which fields AVAN is allowed to touch.
- ProcessMaker is the sole source of truth for whether those fields are mandatory.
+ Editor/chat reads are non-strict so a metadata permission outage never replaces
+ the Smart Secretary UI with an emergency send page. Every final mutation calls
+ this function with strict=True and therefore cannot bypass ProcessMaker's live
+ Required contract.
  """
  if pack.get('adapter')!='meeting_v2':return pack
  if stage not in pack.get('stages',{}):raise ValueError('مرحله فرایند در بسته جلسات شناخته‌شده نیست.')
@@ -165,12 +194,13 @@ def with_live_requiredness(source_id,pack,stage,*,con=None):
  form_uid=stage_spec['form_uid']
  from .processmaker_store import query,ProductionUnavailable
  owned=con is None
- if owned:
-  from .user_bpms_bindings import processmaker_profile
-  from .processmaker_store import open_production
-  manager=open_production(processmaker_profile(source_id)['mysql'])
-  con=manager.__enter__()
+ manager=None
  try:
+  if owned:
+   from .user_bpms_bindings import processmaker_profile
+   from .processmaker_store import open_production
+   manager=open_production(processmaker_profile(source_id)['mysql'])
+   con=manager.__enter__()
   try:
    rows=query(con,'SELECT DYN_CONTENT FROM DYNAFORM WHERE DYN_UID=%s AND PRO_UID=%s LIMIT 2',
               (form_uid,process_uid))
@@ -180,10 +210,12 @@ def with_live_requiredness(source_id,pack,stage,*,con=None):
    raise ValueError('فرم زنده ProcessMaker برای مرحله جاری به‌صورت یکتا پیدا نشد.')
   live=_form_fields(str(rows[0][0] or '{}'))
   return _overlay_live_requiredness(pack,stage,live)
+ except Exception as exc:
+  if strict:raise
+  return _requiredness_unavailable(pack,stage,exc)
  finally:
-  if owned:
+  if owned and manager is not None:
    manager.__exit__(None,None,None)
-
 
 def _installed_process(con,process_uid):
  from .processmaker_store import query
