@@ -551,6 +551,28 @@ def _evidence_in_notes(quote,notes):
  q=_evidence_text(quote);n=_evidence_text(notes)
  return bool(q) and q in n
 
+def _prune_resolved_identity_questions(values,questions):
+ """Drop identity clarifications whose target was resolved later in the same turn."""
+ remaining=[]
+ for question in questions or []:
+  resolved=False
+  for index,row in legacy.indexed_rows(values.get('MTG_Actions')):
+   if row.get('MTG_ActionOwnerUID') and resolution._question_targets_path(
+    question,'MTG_Actions.'+str(index)+'.MTG_ActionOwnerUID'):
+    resolved=True;break
+  if not resolved:
+   for index,row in legacy.indexed_rows(values.get('MTG_Agenda')):
+    if row.get('MTG_AgendaPresenterUID') and resolution._question_targets_path(
+     question,'MTG_Agenda.'+str(index)+'.MTG_AgendaPresenterUID'):
+     resolved=True;break
+  if not resolved and values.get('MTG_ChairUserUID') and resolution._question_targets_path(
+   question,'MTG_ChairUserUID'):resolved=True
+  if not resolved and values.get('MTG_SecretaryUserUID') and resolution._question_targets_path(
+   question,'MTG_SecretaryUserUID'):resolved=True
+  if not resolved:remaining.append(question)
+ return remaining
+
+
 def _model_failure(exc):
  name=exc.__class__.__name__
  status=getattr(exc,'status_code',None)
@@ -711,6 +733,7 @@ def extract(notes,task,current,scope,*,questions=(),history=(),client=None,model
      identity_questions.extend(issues)
      values[a.field]=_merge_assignment(a.field,values.get(a.field),val,notes)
     values=coverage.apply_system_defaults(notes,task,values,scope.get('directory',{}))
+    identity_questions=_prune_resolved_identity_questions(values,identity_questions)
     validate(values,task,scope)
     coverage_issues=coverage.coverage_issues(notes,task,values,parsed.assignments,scope.get('directory',{}))
     if coverage_issues and attempt<2:
