@@ -301,3 +301,46 @@ def test_identity_question_is_pruned_after_minutes_defaults_resolve_owner():
     ]
     remaining=runtime._prune_resolved_identity_questions(values,questions)
     assert remaining==[]
+
+
+def test_dense_minutes_resolves_pending_confirmation_then_extracts_rest(pack,monkeypatch):
+    """A leading confirmation must not swallow the rest of a dense user turn."""
+    scope=minutes_scope()
+    values=final_values(scope)
+    owner=uid(scope,"mgr.strategy")
+    values["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]=""
+    question="مسئول اصلی اقدام A-001 را مشخص کنید."
+    pending={
+        "version":1,
+        "kind":"set_identity",
+        "field_path":"MTG_Actions.1.MTG_ActionOwnerUID",
+        "value":owner,
+        "display":"مدیر استراتژی",
+        "expected_value":"",
+        "question":question,
+    }
+    notes="""بله همان است
+جلسه تشکیل شد
+شرح مذاکرات: جمع‌بندی جدید جلسه ثبت شود."""
+    assert coverage.is_compound_turn(notes,task(pack,"minutes"))
+
+    seen=[]
+    def fake_extract(_notes,_task,current,_scope,**kwargs):
+        seen.append(copy.deepcopy(current))
+        assert current["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]==owner
+        updated=copy.deepcopy(current)
+        updated["MTG_MeetingDiscussionSummary"]="جمع‌بندی جدید جلسه ثبت شود."
+        return updated,[],"شرح مذاکرات جدید ثبت شد.","update"
+
+    monkeypatch.setattr(runtime,"extract",fake_extract)
+    result=runtime.converse(
+        notes,task(pack,"minutes"),values,scope,
+        questions=[question],pending_confirmation=pending)
+
+    assert len(seen)==1
+    assert result[0]["MTG_Actions"]["1"]["MTG_ActionOwnerUID"]==owner
+    assert result[0]["MTG_MeetingDiscussionSummary"]=="جمع‌بندی جدید جلسه ثبت شود."
+    assert result[1]==[]
+    assert "تأیید شد" in result[2]
+    assert "شرح مذاکرات جدید ثبت شد" in result[2]
+    assert result.receipt["tool"]=="draft.extract"
