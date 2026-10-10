@@ -872,3 +872,53 @@ def test_unmatched_role_text_is_cleared_not_written_as_uid(pack):
  }
  repaired=r._repair_user_grid_rows(values,scope['directory'])
  assert repaired['MTG_Actions']['1']['MTG_ActionOwnerUID']==''
+
+
+def test_action_direct_advance_does_not_reopen_mysql_reader(pack,store,monkeypatch):
+ native={
+  'MTGA_SubmissionType':'CompletionClaim',
+  'MTGA_ProgressPercent':'100',
+  'MTGA_ExecutionDescription':'کار انجام شد',
+ }
+ t=task(pack,'action_execution',copy.deepcopy(native))
+ row=r.draft(S,'actor',t)
+ key=r.task_key(S,t['case_uid'],t['index'])
+ with r.agent_storage.transaction() as tx:
+  saved=tx.get(key,lock=True)
+  saved['requiredness_hash']='live-requiredness-snapshot'
+  tx.put(key,saved)
+
+ calls=[]
+ class PM:
+  def __init__(self,*args,**kwargs):calls.append(('init',args,kwargs))
+  def info(self,case):
+   calls.append(('info',case))
+   return {'current_task':[{
+    'tas_uid':pack['stages']['action_execution']['task_uid'],
+    'usr_uid':S['external_user_id'],
+    'del_thread_status':'OPEN',
+    'del_index':t['index'],
+   }]}
+  def variables(self,case):
+   calls.append(('variables',case))
+   return copy.deepcopy(native)
+  def submit_stage(self,case,stage,person,values,index):
+   calls.append(('submit_stage',case,stage['task_uid'],person,index,copy.deepcopy(values)))
+  def close(self):calls.append(('close',))
+
+ monkeypatch.setattr(r,'PM',PM)
+ monkeypatch.setattr(
+  r,'_native_case_values',
+  lambda *a,**kw:pytest.fail('direct action transition must never read ProcessMaker MySQL'))
+
+ result=r.advance_action_direct(
+  S['tenant_id'],'actor',S['source_id'],S['external_user_id'],
+  t['case_uid'],t['index'],pack['id'],'bearer-token',revision=row['revision'])
+
+ assert result['status']=='sent'
+ assert result['stage']=='action_execution'
+ assert any(x[0]=='variables' for x in calls)
+ assert any(x[0]=='submit_stage' for x in calls)
+ assert calls[-1]==('close',)
+ saved=store[key]
+ assert saved['status']=='sent'
