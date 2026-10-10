@@ -934,7 +934,10 @@ def submit(scope,actor,task,revision,*,pm=None):
   # Fresh native assignment and delegation, before any mutation or trigger.
   index=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
   if index!=task['index']:raise RevisionConflict('Native task changed')
-  current_native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
+  # Final submission already has an authenticated ProcessMaker transport.
+  # Re-open no MySQL reader here: a transient read-only DB outage must not
+  # block a write/trigger/route that ProcessMaker REST itself can authorize.
+  current_native=normalize(pm.variables(task['case_uid']))
   current={**task,'native':current_native}
   if native_stamp(current)!=native_stamp(task):raise RevisionConflict('Native data changed before submission')
   # FR-MTG-003 AFTER depends on the native BEFORE trigger's locked baseline.
@@ -1112,6 +1115,135 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
   pm.close()
 
 
+def advance_action_direct(tenant_id,actor,source_id,external_user_id,case_uid,index,pack_id,bearer,*,revision=None):
+ """Submit an already-open action task through ProcessMaker REST only.
+
+ The task/draft was previously opened through the normal authorized inbox. This
+ final transition deliberately avoids the read-only MySQL path so a transient
+ reader outage cannot strand a completed action report. Authorization is
+ re-checked against the current native ProcessMaker task and the bound external
+ user before any write.
+ """
+ configured=catalog.get(source_id,pack_id)
+ if configured.get('adapter')!='meeting_v2':
+  raise PermissionError('این بسته برای فرایند اقدام AVAN معتبر نیست.')
+ pm=PM(source_id,process_uid=configured['action']['process_uid'],bearer=bearer)
+ minimal_scope={'tenant_id':tenant_id,'source_id':source_id}
+ key=task_key(minimal_scope,case_uid,index)
+ row=None;claimed=False;routed=False
+ try:
+  with agent_storage.transaction() as tx:
+   row=tx.get(key,lock=True)
+   if not row or row.get('actor')!=actor:
+    raise PermissionError('پیش‌نویس این اقدام متعلق به حساب فعلی نیست.')
+   if row.get('pack_revision')!=configured.get('revision'):
+    raise RevisionConflict('تنظیم بسته فرایند بعد از باز شدن وظیفه تغییر کرده است.')
+   if row.get('status')=='sent':
+    return {'status':'sent','already_advanced':True,'revision':row.get('revision')}
+   if row.get('status')=='executing' or (revision is not None and row.get('revision')!=revision):
+    raise RevisionConflict('پیش‌نویس تغییر کرده یا در حال ارسال است.')
+   values=copy.deepcopy(row.get('values') or {})
+
+  info=pm.info(case_uid)
+  open_tasks=[t for t in (info.get('current_task') or []) if t.get('del_thread_status')=='OPEN']
+  matches=[]
+  for stage in ('action_execution','action_review'):
+   spec=configured['stages'][stage]
+   for native_task in open_tasks:
+    if (str(native_task.get('tas_uid'))==spec['task_uid']
+        and str(native_task.get('usr_uid'))==str(external_user_id)):
+     matches.append((stage,native_task))
+  if len(matches)!=1:
+   raise ValueError('پرونده دیگر در مرحله اقدام و در کارتابل همین کاربر نیست.')
+  stage,native_task=matches[0]
+  native_index=int(native_task.get('del_index') or 0)
+  if native_index!=int(index):
+   raise ValueError('شماره وظیفه ProcessMaker تغییر کرده است؛ کارتابل را تازه‌سازی کنید.')
+
+  current_native=normalize(pm.variables(case_uid))
+  direct_task={
+   'case_uid':case_uid,'index':native_index,'pack_id':pack_id,'stage':stage,
+   'native':current_native,'pack':configured,
+  }
+  if row.get('native_stamp')!=native_stamp(direct_task):
+   raise RevisionConflict('اطلاعات Native پرونده بعد از باز شدن وظیفه تغییر کرده است.')
+
+  # The page was opened with live DynaForm metadata. If that live snapshot was
+  # never available, keep the existing safety rule and do not invent Required
+  # flags from a stale UI. A later MySQL outage is safe: the reviewed PMX
+  # contract plus the native AFTER trigger remain authoritative.
+  if not row.get('requiredness_hash'):
+   raise ValueError('تنظیم Required زنده ProcessMaker هنگام باز شدن این وظیفه در دسترس نبود؛ کارتابل را پس از بازیابی Reader دوباره باز کنید.')
+
+  validate(values,direct_task,{'directory':{}})
+  pending=gaps(values,direct_task)
+  if pending:
+   first='؛ '.join(str(x.get('question') or '') for x in pending[:3] if x.get('question'))
+   extra=len(pending)-min(len(pending),3)
+   detail=f'مرحله اقدام هنوز {len(pending)} فیلد Required دارد'
+   if first:detail+=': '+first
+   if extra>0:detail+=f'؛ و {extra} مورد دیگر'
+   raise ValueError(detail)
+
+  required_native=[x for x in file_controls(direct_task).values()
+                   if x.get('required') and x.get('mode') not in ('view','disabled')]
+  if required_native:
+   file_missing=native_file_gaps(direct_task,[])
+   if file_missing:
+    docs=pm.call('GET','/cases/'+str(case_uid)+'/input-documents',
+                 operation='کنترل مستندات الزامی اقدام')
+    file_missing=native_file_gaps(direct_task,docs)
+   if file_missing:
+    raise ValueError('فایل الزامی ProcessMaker بارگذاری نشده است: '+
+                     '؛ '.join(x['question'] for x in file_missing))
+
+  with agent_storage.transaction() as tx:
+   latest=tx.get(key,lock=True)
+   if (not latest or latest.get('actor')!=actor
+       or latest.get('status')!='draft'
+       or latest.get('revision')!=row.get('revision')):
+    raise RevisionConflict('پیش‌نویس تغییر کرده یا در حال ارسال است.')
+   latest.update(status='executing')
+   tx.put(key,latest)
+   row=latest;claimed=True
+
+  try:
+   pm.submit_stage(
+    case_uid,configured['stages'][stage],external_user_id,
+    labelled(values,direct_task,{'directory':{}}),native_index)
+   routed=True
+   row.update(status='sent',revision=int(row.get('revision') or 0)+1,
+              last_error='',recovery='',failure_phase='',upstream_status=None)
+  except Exception as exc:
+   detail=_session_failure_text(exc)
+   phase=str(getattr(exc,'pm_phase','') or '')
+   upstream_status=getattr(exc,'upstream_status',None)
+   safe_validation_retry=(
+    phase=='variables'
+    or (phase=='after_trigger' and upstream_status in (400,422))
+   )
+   if safe_validation_retry:
+    row.update(status='draft',last_error=detail,recovery='',
+               failure_phase=phase,upstream_status=upstream_status)
+   else:
+    recovery='route_only' if phase=='route' else 'manual'
+    row.update(status='reconciliation_required',last_error=detail,recovery=recovery,
+               failure_phase=phase,upstream_status=upstream_status)
+   with agent_storage.transaction() as tx:tx.put(key,row)
+   raise
+
+  with agent_storage.transaction() as tx:
+   tx.put(key,row)
+   tx.audit(tenant_id,actor,'SECRETARY_ACTION_SENT_DIRECT',{
+    'case_uid':case_uid,'index':native_index,'source_id':source_id,
+    'process_uid':configured['action']['process_uid'],'pack_id':pack_id,'stage':stage,
+   })
+  return {'status':'sent','stage':stage,'revision':row.get('revision'),
+          'already_advanced':False}
+ finally:
+  pm.close()
+
+
 def _route_recovery_row(row):
  if not isinstance(row,dict) or row.get('status')!='reconciliation_required':return False
  if row.get('recovery')=='route_only':return True
@@ -1130,7 +1262,9 @@ def reconcile_task_route(scope,actor,task,revision,*,pm=None):
    row=tx.get(key,lock=True)
    if not row or row['scope']!=scope_stamp(scope) or row['actor']!=actor:raise PermissionError()
    if row['revision']!=revision or not _route_recovery_row(row):raise RevisionConflict()
-  native=_native_case_values(scope,task['case_uid']) if owned else normalize(pm.variables(task['case_uid']))
+  # Route recovery verifies the submitted payload through the same authorized
+  # ProcessMaker REST transport instead of opening a second MySQL connection.
+  native=normalize(pm.variables(task['case_uid']))
   if not _submitted_subset(native,row['values']):
    raise ValueError('اطلاعات ثبت‌شده ProcessMaker با پیش‌نویس تأییدشده AVAN یکسان نیست؛ Route خودکار متوقف شد.')
   pm.route(task['case_uid'],index)
