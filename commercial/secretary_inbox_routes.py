@@ -65,6 +65,45 @@ def register(app,authorized,csrf):
   except RevisionConflict:raise HTTPException(409,'وظیفه، پیش‌نویس یا تنظیم فرایند تغییر کرده است.')
   except ux.OperationCancelled as exc:raise HTTPException(409,str(exc))
   except ValueError as exc:raise HTTPException(422,str(exc))
+
+ def direct_action_identity(value,source_id):
+  """Authorize a final action transition without opening ProcessMaker MySQL."""
+  from . import native_access
+  from .production_license import entitlement,ProductionLicenseDenied
+  from .setup_console import is_godadmin
+  from .user_bpms_bindings import binding_for
+  principal=value[2]
+  data=native_access.read()
+  if str(data.get('tenant_id') or '')!=str(principal.tenant_id):
+   raise HTTPException(403,'حساب AVAN متعلق به این سازمان نیست.')
+  user=next((u for u in data.get('users',[])
+             if u.get('subject')==principal.subject and u.get('enabled')),None)
+  if not user:
+   raise HTTPException(403,'حساب AVAN شما فعال نیست.')
+  role=user.get('role')
+  if role not in ('Expert','Manager','SysAdmin','GodAdmin'):
+   raise HTTPException(403,'نقش فعلی AVAN برای این عملیات معتبر نیست.')
+  if role=='SysAdmin' and 'SysAdmin' not in getattr(principal,'roles',()):
+   raise HTTPException(403,'نقش مدیر سیستم در سرویس هویت تأیید نشده است.')
+  if role=='GodAdmin' and not is_godadmin(principal):
+   raise HTTPException(403,'هویت GodAdmin سازمانی کامل متصل نشده است.')
+  try:
+   licensed=entitlement(
+    tenant_id=str(data['tenant_id']),company_name=str(data.get('company_name') or ''))
+  except ProductionLicenseDenied:
+   raise HTTPException(403,'لایسنس AVAN برای دسترسی به دبیر معتبر نیست.')
+  if 2 not in native_access.effective_modules(user,licensed.get('modules',())):
+   raise HTTPException(403,'ماژول دبیر برای این حساب فعال نیست.')
+  binding=binding_for(principal.subject,source_id)
+  if not binding:
+   raise HTTPException(403,'این ProcessMaker به حساب AVAN شما Binding فعال ندارد.')
+  external_user_id=str(binding.get('external_user_id') or '')
+  if not external_user_id:
+   raise HTTPException(403,'کاربر ProcessMaker متناظر این حساب مشخص نیست.')
+  bearer=credentials.token_for_bound_source(
+   str(principal.tenant_id),principal.subject,source_id)
+  return principal,external_user_id,bearer
+
  def operation_start(p,request_id,kind,detail=None):
   if request_id:ux.start_operation(str(p.tenant_id),p.subject,request_id,kind,detail or {})
  def operation_active(p,request_id):
@@ -406,6 +445,22 @@ def register(app,authorized,csrf):
    if str(exc) in ('ProcessMaker DynaForm metadata unavailable','Read-only ProcessMaker MySQL unavailable'):
     raise HTTPException(503,'تنظیم Required زنده ProcessMaker قابل خواندن نیست؛ دسترسی SELECT روی DYNAFORM را برای avan_reader بررسی کنید.')
    raise HTTPException(503,'اتصال خواندنی ProcessMaker در دسترس نیست.')
+
+ @app.post(base+'/tasks/{case_uid}/{index}/advance-action')
+ def advance_action(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
+  if not body.confirmed:raise HTTPException(422,'ارسال اقدام را پس از بازبینی تأیید کنید.')
+  Ref(case_uid=case_uid,index=index,pack_id=pack_id)
+  principal,external_user_id,bearer=direct_action_identity(value,source_id)
+  try:
+   return runtime.advance_action_direct(
+    str(principal.tenant_id),principal.subject,source_id,external_user_id,
+    case_uid,index,pack_id,bearer,revision=body.revision)
+  except PermissionError as exc:
+   raise HTTPException(403,str(exc) or 'ارسال این اقدام برای حساب فعلی مجاز نیست.')
+  except RevisionConflict:
+   raise HTTPException(409,'وظیفه ProcessMaker تغییر کرده است؛ کارتابل را تازه‌سازی کنید.')
+  except ValueError as exc:
+   raise HTTPException(422,str(exc))
 
  @app.post(base+'/tasks/{case_uid}/{index}/submit')
  def send_task(source_id:str,case_uid:str,index:int,pack_id:str,body:Submit,value=Depends(csrf)):
