@@ -26,7 +26,7 @@ class TurnResult(tuple):
         return result
 
 
-def _confirmation(r,c):
+def _confirmation(r,c,text=None):
     pending=c['pending']
     if not pending:
         last=next((str(x.get('text') or '') for x in reversed(c['history'])
@@ -35,8 +35,24 @@ def _confirmation(r,c):
             pending=r.resolution.propose_identity_confirmation(last,c['current'],
                 r.gaps(c['current'],c['task']),c['scope'].get('directory',{}))
     c['pending']=pending
-    return r.resolution.resolve_pending(c['notes'],c['current'],c['questions'],pending,
-                                        c['scope'].get('directory',{}))
+    return r.resolution.resolve_pending(
+        c['notes'] if text is None else text,
+        c['current'],c['questions'],pending,c['scope'].get('directory',{}))
+
+
+def _compound_confirmation_text(text):
+    """Return only a leading confirmation/correction clause from a dense turn.
+
+    A user may answer a pending identity question and continue with several new
+    meeting facts in the same message. Passing the whole dense message to the
+    deterministic confirmation parser makes an otherwise clear leading
+    "بله/نه/username" look ambiguous. Only the first line/clause is eligible;
+    the complete message is still sent to exhaustive extraction afterwards.
+    """
+    raw=str(text or '').strip()
+    if not raw:return raw
+    first=re.split(r'[\r\n؛]+',raw,maxsplit=1)[0].strip()
+    return first or raw
 
 
 def _identity(r,c):
@@ -124,12 +140,22 @@ def run(runtime,notes,task,current,scope,*,questions=(),pending_confirmation=Non
     c=dict(notes=notes,task=task,current=copy.deepcopy(current),scope=scope,
            questions=list(questions),pending=pending_confirmation,history=list(history or [])[-40:])
     started=time.monotonic()
-    # High-density invitation/minutes messages must be read as one semantic
-    # unit. A partial deterministic match (date/status/identity/command) must
-    # never stop the rest of the message from reaching exhaustive extraction.
+    # High-density messages must be read as one semantic unit. A partial
+    # deterministic match (date/status/identity/command) must never stop the
+    # rest of the message from reaching exhaustive extraction. A pending
+    # confirmation may still be resolved first, but it becomes a prelude to
+    # extraction rather than an early return.
     tools=TOOLS
-    if secretary_coverage.is_compound_turn(notes,task):
-        tools=(TOOLS[0],TOOLS[-1])  # confirmation, then full extraction
+    confirmation_reply=''
+    compound=secretary_coverage.is_compound_turn(notes,task)
+    if compound:
+        resolved=_confirmation(runtime,c,text=_compound_confirmation_text(notes))
+        if resolved is not None:
+            c['current']=copy.deepcopy(resolved['values'])
+            c['questions']=list(resolved.get('questions') or [])
+            c['pending']=resolved.get('pending_confirmation')
+            confirmation_reply=str(resolved.get('reply') or '').strip()
+        tools=(TOOLS[-1],)
     for tool in tools:
         result=tool.handler(runtime,c)
         if result is None:continue
@@ -145,6 +171,8 @@ def run(runtime,notes,task,current,scope,*,questions=(),pending_confirmation=Non
             runtime.validate({k:v for k,v in values.items()
                               if k in allowed or current.get(k)!=v},task,scope)
         reply=result['reply'];remaining=result['questions']
+        if confirmation_reply and confirmation_reply not in reply:
+            reply=confirmation_reply+'\n\n'+reply
         if tool.name in ('confirmation.resolve','identity.resolve','draft.command','temporal.resolve','draft.extract'):
             state=runtime.assistant_state(values,task,scope,remaining)
             if state['message'] and state['message'] not in reply and (intent!='question' or state['missing']):
