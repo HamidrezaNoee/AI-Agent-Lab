@@ -1929,7 +1929,8 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     if(missing.length)throw Error("ابتدا موارد الزامی این مرحله را تکمیل کنید.");
     chatStageSend.disabled=true;
     try{
-     await post(path+"/submit"+query,{revision:d.revision||1,confirmed:true});
+     const submitEndpoint=["action_execution","action_review"].includes(t.stage)?"/advance-action":"/submit";
+     await post(path+submitEndpoint+query,{revision:d.revision||1,confirmed:true});
      editor.dataset.editing="false";
      editor.replaceChildren(note(
       t.stage==="action_execution"?"گزارش اقدام ثبت و برای بررسی دبیر ارسال شد.":
