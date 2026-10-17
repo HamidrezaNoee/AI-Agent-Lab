@@ -78,7 +78,10 @@ def _compile_pair(meeting,action):
    'minutes_approval':['MTG_MinutesApproval','MTG_ChairComment'],
    'action_execution':['MTGA_SubmissionType','MTGA_ProgressPercent','MTGA_ExecutionDescription'],
    'action_review':['MTGA_ReviewStatus2','MTGA_SecretaryProgressPercent2']}.items():
-  if not set(keys)<=stages[s]['fields'].keys():raise ValueError('قرارداد مرحله '+s+' با آداپتور جلسات سازگار نیست.')
+  available=set(stages[s]['fields'])
+  if s=='invitation_approval' and 'MTG_InvitationChairComment_1' in available:
+   available.add('MTG_InvitationChairComment')
+  if not set(keys)<=available:raise ValueError('قرارداد مرحله '+s+' با آداپتور جلسات سازگار نیست.')
  # These four controls are part of the reviewed PMX workflow contract. The edit
  # stage and its following review stage must point to the same native Input
  # Document so files uploaded in AVAN remain visible after routing.
@@ -555,4 +558,5 @@ def install_reviewed(source_id,actor,expected_revisions):
   tx.audit('',actor,'SECRETARY_REVIEWED_PAIR_INSTALLED',{'source_id':source_id,'pack_id':row['id'],
            'meeting_sha256':pack['meeting']['pmx_sha256'],'action_sha256':pack['action']['pmx_sha256']})
  return row
+
 

@@ -262,7 +262,7 @@ async function request(url,options={}){
    sessionExpired();throw Error("نشست سازمانی پایان یافته است. دوباره وارد شوید.")
  }
  if(!response.ok){
-   let message="دریافت اطلاعات با خطا مواجه شد.",code="HTTP_"+response.status,serverRequestId=null;
+   let message="دریافت اطلاعات با خطا مواجه شد.",code="HTTP_"+response.status,serverRequestId=response.headers.get("X-AVAN-Request-ID");
    try{
     const e=await response.json();
     if(typeof e.detail==="string")message=e.detail;
@@ -718,10 +718,18 @@ async function supportLogsPage(){
  }
  function labelField(title,control,wide=false){const x=el("label","field"+(wide?" support-log-wide":""));control.setAttribute("aria-label",title);add(x,el("span","",title),control);return x}
  const refresh=link("↻ تازه‌سازی",()=>{filterOptionsLoaded=false;load()},"button secondary");
+ const exportButton=link("دریافت گزارش تشخیصی",async()=>{
+  try{
+   const data=await request("/api/support/diagnostics?request_id="+encodeURIComponent(requestId.value.trim()),{audit:false});
+   const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
+   const a=el("a");a.href=url;a.download="avan-diagnostics-"+new Date().toISOString().replace(/[:.]/g,"-")+".json";
+   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+  }catch(e){toast(errorDescription(e))}
+ },"button secondary");
  const clear=link("پاک‌کردن فیلترها",()=>{for(const x of [event,actor,source,process,stage])x.value="";for(const x of [caseUid,requestId,search])x.value="";load()},"button secondary");
  add(controls,labelField("جستجو",search,true),labelField("کاربر",actor),labelField("اتصال BPMS",source),labelField("فرایند",process),
   labelField("مرحله",stage),labelField("نوع رویداد",event),labelField("Case UID",caseUid),labelField("Request ID",requestId),labelField("تعداد",limit),
-  add(el("div","support-log-actions"),refresh,clear));
+  add(el("div","support-log-actions"),refresh,clear,exportButton));
  let timer=null;search.addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(load,350)});
  for(const x of [event,actor,source,process,stage,limit])x.addEventListener("change",load);
  for(const x of [caseUid,requestId])x.addEventListener("change",load);
@@ -1778,7 +1786,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    if(send)send.disabled=locked||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(chatMinutesSend)chatMinutesSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
    if(chatStageSend)chatStageSend.disabled=locked||dirty||missing.length>0||!info.oauth_connected||!requirednessLive;
-   if(app.preferences.secretary_auto_play_voice)await detachedSpeech();
+   if(app.preferences.secretary_auto_play_voice&&!liveVoice?.active)await detachedSpeech();
 
    // If the form is currently open, tell the user that its values changed
    // without destroying/rebuilding the conversation DOM.
@@ -1804,7 +1812,7 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
    let operation=beginOperation("secretary_turn");
    setSending(true,retry?"در حال تلاش مجدد...":"در حال پردازش پیام... برای توقف از دکمه «توقف» استفاده کنید.");
    const submit=async revision=>post(path+"/turn"+query,{
-     revision,text,auto_advance:!!info.oauth_connected,request_id:operation.id
+     revision,text,auto_advance:!fromVoice&&!!info.oauth_connected,request_id:operation.id
     },{signal:operation.controller.signal,requestId:operation.id});
    try{
     let result;
@@ -1837,8 +1845,31 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
   const file=el("input","secretary-hidden-input");file.type="file";
   file.accept=".pdf,.docx,.txt,.md,.csv,.json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/csv,application/json";
   file.setAttribute("aria-label","افزودن فایل به گفت‌وگوی دبیر");
-  const attachButton=link("فایل",()=>file.click(),"button icon-button");attachButton.title="افزودن فایل";
+  const attachButton=link("خواندن فایل",()=>file.click(),"button icon-button");attachButton.title="استخراج متن فایل؛ برای پیوست پرونده از بخش مستندات استفاده کنید";
   add(tools,attachButton,file);
+
+  let liveVoice=null;
+  const liveButton=link("گفتگوی صوتی",async()=>{
+   if(dirty||sending||locked){toast("ابتدا پردازش یا اصلاح فرم را تمام کنید.");return}
+   liveVoice?.close();
+   audio.pause();
+   liveVoice=new window.AvanLiveVoice({
+    transcribe:async(blob,signal)=>{
+     const result=await request(sourceApi(sourceId,"/voice/transcribe"),{method:"POST",signal,headers:{"Content-Type":blob.type||"audio/webm"},body:blob});
+     return result.text;
+    },
+    turn:async text=>{if(!await sendTurn(text,true))throw Error("پردازش پیام صوتی انجام نشد؛ جزئیات در گفتگو نمایش داده شده است.")},
+    speech:async(part,signal)=>{
+     const suffix=isSession?"?part="+part:query+"&part="+part;
+     const response=await request(base+path+"/speech"+suffix,{method:"POST",binary:true,signal});
+     return {blob:await response.blob(),parts:response.headers.get("X-AVAN-Audio-Parts")};
+    },
+    cancelCurrent:()=>{if(sending)cancelCurrent()}
+   });
+   await liveVoice.open();
+  },"button icon-button");
+  add(tools,liveButton);
+  app.cleanup.push(()=>liveVoice?.close());
 
   attachVoiceInput(tools,notes,false,sourceId,async text=>{if(app.preferences.voice_auto_send)await sendTurn(text,true)},true);
   stopButton=link("■ توقف",cancelCurrent,"button danger secretary-stop");stopButton.hidden=true;stopButton.title="توقف پردازش جاری";
@@ -1989,19 +2020,20 @@ async function secretaryPage(sourceId=null,packId=null,sectionId="inbox",initial
     const section=el("div","secretary-native-file-control"),head=el("div","secretary-native-file-head"),list=el("div","secretary-native-file-list");
     add(head,el("strong","",spec.label||field));
     if(spec.mode!=="view"&&spec.mode!=="disabled"){
-     const picker=el("input");picker.type="file";picker.setAttribute("aria-label","انتخاب "+(spec.label||"فایل"));
+     const picker=el("input");picker.type="file";picker.multiple=!!spec.multiple;picker.setAttribute("aria-label","انتخاب "+(spec.label||"فایل"));
      const upload=link("بارگذاری فایل در ProcessMaker",checked(async()=>{
-      const selected=picker.files?.[0];if(!selected)throw Error("ابتدا فایل را انتخاب کنید.");
+      const selections=Array.from(picker.files||[]);if(!selections.length)throw Error("ابتدا فایل را انتخاب کنید.");
+      if(selections.some(f=>f.size>25*1024*1024))throw Error("حداکثر حجم هر فایل ۲۵ مگابایت است.");
       upload.disabled=true;
       try{
-       await request(nativeFileUrl(field),{
+       for(const selected of selections)await request(nativeFileUrl(field),{
         method:"POST",
         headers:{"Content-Type":selected.type||"application/octet-stream","X-AVAN-Filename":encodeURIComponent(selected.name)},
         body:selected
        });
        toast("فایل با موفقیت در ProcessMaker ثبت شد.");
        picker.value="";await loadFiles();
-      }finally{upload.disabled=false}
+      }finally{upload.disabled=false;picker.value="";await loadFiles()}
      }),"button secondary");
      add(head,picker,upload);
     }else add(head,el("span","badge","فقط مشاهده"));
@@ -2451,3 +2483,4 @@ function refreshProcessMenu(sourceId,manifest){
  const target=Array.from(document.querySelectorAll('[data-process-menu]')).find(x=>x.dataset.processMenu===sourceId);if(!target)return;
  target.replaceChildren();for(const section of manifest.navigation){const b=link(section.label+(section.count?" · "+fmt(section.count):""),()=>{app.selectedSourceId=sourceId;app.processChoices[sourceId].section=section.id;select("source-process")});b.dataset.page="source-process";b.dataset.sourceId=sourceId;b.dataset.packId=manifest.process.id;b.dataset.section=section.id;b.classList.toggle("active",sourceId===app.selectedSourceId&&section.id===choice.section);add(target,b)}
 }
+

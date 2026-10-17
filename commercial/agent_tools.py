@@ -39,6 +39,7 @@ class ActionQuery(Arguments):
 
 
 class MeetingQuery(Arguments):
+    match: Literal['ranked','substring']='ranked'
     text: str = Field('',max_length=200)
     meeting_no: str | None = Field(None,max_length=80)
     meeting_held: Literal['all','Held','NotHeld','unknown'] = 'all'
@@ -121,7 +122,7 @@ class MeetingTools:
 
     def definitions(self):
         calendar_name='Jalali' if self.calendar=='jalali' else 'Gregorian'
-        specs=[('search_meetings',f'Search authorized meeting titles, discussion and parking-lot text. Text is an exact normalized substring; try shorter related terms for semantic exploration. Named month periods use {calendar_name} months.',MeetingQuery,1),
+        specs=[('search_meetings',f'Search authorized meeting titles, discussion and parking-lot text. Default ranked mode matches all normalized query tokens in any order and ranks lexical relevance, including action descriptions. Use match=substring for exact phrases. This is lexical, not semantic search. Named month periods use {calendar_name} months.',MeetingQuery,1),
                ('analyze_actions','Filter and calculate action totals, progress, delays and grouped unit/person/meeting/month performance. Counts cover ALL matching snapshot rows, even if displayed rows/groups are paginated. Missing dates/progress are explicit.',ActionQuery,3),
                ('monitor_actions','Detect overdue, approaching due dates, missing deadlines/owners, unclosed 100% submissions, and progress stalls observed by AVAN. Returns risk signals, not proven business causes.',MonitorQuery,4)]
         return [{'type':'function','name':name,'description':description,'parameters':cls.model_json_schema(),'strict':False}
@@ -156,10 +157,14 @@ class MeetingTools:
         for m in self.meetings:
             if q.meeting_no and normal(q.meeting_no)!=normal(m['meeting_no']):continue
             if q.meeting_held != 'all' and (m.get('meeting_held') or 'unknown') != q.meeting_held:continue
-            if q.text and normal(q.text) not in normal(' '.join(str(m.get(k) or '') for k in ('title','discussion','parking_lot','not_held_reason'))):continue
+            if q.match=='substring' and q.text and normal(q.text) not in normal(' '.join(str(m.get(k) or '') for k in ('title','discussion','parking_lot','not_held_reason'))):continue
             date=instant(m.get('meeting_date_utc'))
             if start and (not date or not start<=date<=end):continue
             found.append(m)
+        if q.text and q.match=='ranked':
+            from .retrieval import ranked_indices
+            documents=[' '.join([str(m.get('title') or '')]*3 + [str(m.get(k) or '') for k in ('discussion','parking_lot','not_held_reason')] + [str(a.get('description') or '') for a in m.get('actions',[])]) for m in found]
+            found=[found[i] for i in ranked_indices(q.text,documents)]
         rows=[]
         for m in found[q.offset:q.offset+q.limit]:
             rows.append({'source':source(m),'title':m['title'],'meeting_date_utc':m.get('meeting_date_utc'),
@@ -175,7 +180,7 @@ class MeetingTools:
                          'open_actions':sum(not a.get('is_closed') for a in m.get('actions',[])),
                          'actions':[action_record(m,a,self.now) for a in m.get('actions',[])[:12]],
                          'actions_truncated':len(m.get('actions',[]))>12})
-        return {'total':len(found),'rows':rows,'has_more':q.offset+len(rows)<len(found),
+        return {'retrieval':q.match,'total':len(found),'rows':rows,'has_more':q.offset+len(rows)<len(found),
                 'next_offset':q.offset+len(rows),'period_start':start.isoformat() if start else None,
                 'period_end':end.isoformat() if end else None}
 
@@ -293,3 +298,4 @@ class MeetingTools:
         return {'total':len(alerts),'alerts':alerts[:100],'truncated':len(alerts)>100,
                 'notes':['توقف پیشرفت فقط از تاریخ شروع مشاهده آوان قابل تشخیص است.',
                          'هشدار نبود گزارش فقط در صورت وجود تاریخچه ارسال قابل محاسبه است.']}
+

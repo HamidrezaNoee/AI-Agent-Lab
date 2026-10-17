@@ -4,7 +4,7 @@ import pytest
 from commercial import secretary_runtime as runtime
 from commercial import secretary_catalog as catalog
 from commercial import secretary_time
-from commercial.tests.test_secretary_inbox import task
+from commercial.tests.test_secretary_inbox import task,pack
 from commercial.tests.test_secretary_workflow import S
 
 
@@ -37,6 +37,9 @@ def test_avan_invents_no_required_fields_when_pm_marks_all_optional(pack,stage):
         values={"MTG_MeetingHeld":"Held","MTG_Participants":{
             "1":{"MTG_ParticipantUserUID":"c"*32}
         }}
+    if stage=="action_review":
+        # An explicit human routing decision is required by the reviewed trigger.
+        values={"MTGA_ReviewStatus2":"Closed"}
     if stage=="monitoring":
         values={"MTG_ActionSummary":{}}
     assert runtime.gaps(values,t)==[]
@@ -289,3 +292,4 @@ def test_live_metadata_success_marks_editor_contract_live(pack,monkeypatch):
     assert live["live_requiredness_available"] is True
     assert live["live_requiredness_warning"]==""
     assert live["live_requiredness_hash"]
+

@@ -85,6 +85,21 @@ def register(app,authorized,csrf):
   result["filters"]=filters
   return result
 
+ @app.get("/api/support/diagnostics")
+ def support_diagnostics(request_id:str=Query('',max_length=80,pattern=r'^[A-Za-z0-9_-]*$'),value=Depends(authorized)):
+  from .diagnostics import export_runtime,sanitize
+  principal,role=_identity(value)
+  result=export_runtime(selected_request_id=request_id) if role=='GodAdmin' else {'schema':1,'includes_payloads':False,'runtime':[]}
+  audit=ux.logs(str(principal.tenant_id),principal.subject,role,limit=500,request_id=request_id or None)
+  result['scope']=audit.get('scope','personal')
+  result['audit']=[]
+  for item in audit.get('logs',[]):
+   detail=sanitize(item.get('detail') or {})
+   code=str(item.get('event_code') or '')
+   if not __import__('re').fullmatch(r'[A-Z0-9_-]{1,80}',code):continue
+   result['audit'].append({'event':code,'detail':detail})
+  return result
+
  @app.post("/api/user/password")
  def change_own_password(body:SelfPasswordChange,value=Depends(csrf)):
   principal,_=_identity(value)
@@ -129,3 +144,4 @@ def register(app,authorized,csrf):
   from .meeting_agent import cancel_run_slot
   result["slot_released"]=cancel_run_slot((str(principal.tenant_id),principal.subject))
   return result
+

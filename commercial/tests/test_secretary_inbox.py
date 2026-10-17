@@ -15,7 +15,7 @@ def pack():
 def store(monkeypatch,pack):
  # Unit tests use the reviewed fixture contract; live DynaForm requiredness is
  # covered separately without opening a real ProcessMaker database.
- monkeypatch.setattr(c,'with_live_requiredness',lambda source_id,pack,stage,con=None:pack)
+ monkeypatch.setattr(c,'with_live_requiredness',lambda source_id,pack,stage,con=None,strict=False:pack)
  data={c.STORE:[copy.deepcopy(pack)]}
  class Tx:
   def get(self,k,default=None,**kw):return copy.deepcopy(data.get(k,default))
@@ -75,7 +75,7 @@ def test_native_change_rejects_stale_draft(pack,store):
  reopened=r.draft(S,'actor',t);assert reopened['revision']>row['revision'] and reopened['values']['MTG_Location']=='محل جدید'
 
 def test_timeout_is_not_retried(pack,store):
- t=task(pack,'invitation_approval',copy.deepcopy(V));row=r.draft(S,'actor',t);row=r.update(S,'actor',t,row['revision'],{'MTG_InvitationApproval':'Approved'})
+ t=task(pack,'invitation_approval',copy.deepcopy(V));row=r.draft(S,'actor',t);row=r.update(S,'actor',t,row['revision'],{**row['values'],'MTG_InvitationApproval':'Approved'})
  class PM:
   def assigned(self,*a):return 1
   def variables(self,*a):return t["native"]
@@ -589,6 +589,7 @@ def test_minutes_direct_advance_uses_rest_only_and_routes_same_case(pack,store,m
     'usr_uid':S['external_user_id'],
     'del_thread_status':'OPEN','del_index':1,
    }]}
+  def variables(self,*args):return copy.deepcopy(native)
   def set_variables(self,case,index,values,operation=None):
    calls.append(('variables',case,index,operation))
   def execute_trigger(self,case,trigger,operation=None):
@@ -681,8 +682,8 @@ def test_minutes_approval_does_not_invent_minimum_action_requirement(pack):
 
 def test_latest_reviewed_pmx_pair_is_the_only_runtime_contract():
  trusted=c._trusted_meeting_pack()
- assert trusted['meeting']['pmx_sha256']=='153492224d92b8df34aa4502e92ff7a8b4c9ec76cc41acffed184db5e5d72015'
- assert trusted['action']['pmx_sha256']=='a44a7703546218ed84f32030822b6f14dccb92c7877ca7114badaa81235d8fdb'
+ assert trusted['meeting']['pmx_sha256']=='2eb3b866d76e8b016c0ed91abeb96578ef9cf91a505e9f6e14249347a74839c9'
+ assert trusted['action']['pmx_sha256']=='b28875c4cb46839ada725181d58e0f52e8410150ff6f632c170767d735c79353'
  assert set(trusted['meeting']['stages'])=={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}
  assert set(trusted['action']['stages'])=={'action_execution','action_review'}
  assert trusted['meeting']['stages']['minutes']['task_uid']=='a07e9ed93a4b3244aca40996c45eb227'
@@ -768,6 +769,7 @@ def test_direct_minutes_submit_sends_labels_not_raw_uids(pack,store,monkeypatch)
     'usr_uid':scope['external_user_id'],
     'del_thread_status':'OPEN','del_index':1,
    }]}
+  def variables(self,*args):return copy.deepcopy(native)
   def set_variables(self,case,index,values,operation=None):
    written.update(copy.deepcopy(values))
   def execute_trigger(self,*a,**kw):pass
@@ -922,3 +924,4 @@ def test_action_direct_advance_does_not_reopen_mysql_reader(pack,store,monkeypat
  assert calls[-1]==('close',)
  saved=store[key]
  assert saved['status']=='sent'
+

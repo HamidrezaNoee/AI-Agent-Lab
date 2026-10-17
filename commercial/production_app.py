@@ -79,7 +79,24 @@ app.add_middleware(TrustedHostMiddleware,allowed_hosts=hosts or ["localhost"])
 
 @app.middleware("http")
 async def security_headers(request:Request,call_next):
-    response=await call_next(request)
+    from . import diagnostics
+    from time import monotonic
+    import secrets,re
+    incoming=request.headers.get('X-AVAN-Request-ID','')
+    identifier=incoming if re.fullmatch(r'[A-Za-z0-9_-]{16,80}',incoming) else secrets.token_hex(16)
+    token=diagnostics.request_id.set(identifier);started=monotonic()
+    try:
+        try:
+            response=await call_next(request)
+        except Exception as exc:
+            diagnostics.emit('http.unhandled',error=exc)
+            from fastapi.responses import JSONResponse
+            response=JSONResponse({'detail':'خطای داخلی اوان؛ شناسه درخواست را در لاگ پشتیبانی بررسی کنید.','request_id':identifier},status_code=500)
+        route=getattr(request.scope.get('route'),'path','unmatched')
+        diagnostics.emit('http.complete',method=request.method,route=route,status=response.status_code,duration_ms=(monotonic()-started)*1000)
+    finally:
+        diagnostics.request_id.reset(token)
+    response.headers['X-AVAN-Request-ID']=identifier
     response.headers["Cache-Control"]="no-store"
     response.headers["X-Content-Type-Options"]="nosniff"
     embedded_admin=request.url.path.startswith("/admin/")
@@ -367,6 +384,11 @@ def home(request:Request):
 @app.get("/assets/app.css")
 def css():
     return FileResponse(ROOT/"app.css",media_type="text/css; charset=utf-8")
+
+
+@app.get("/assets/live-voice.js")
+def live_voice_asset():
+    return FileResponse(ROOT/"live-voice.js",media_type="text/javascript; charset=utf-8")
 
 
 @app.get("/assets/app.js")
@@ -1143,3 +1165,4 @@ register_process_workspaces(app,_authorized)
 
 from .process_context import install as install_process_context
 install_process_context(app)
+

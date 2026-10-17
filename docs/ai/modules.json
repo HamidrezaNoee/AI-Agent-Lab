@@ -114,14 +114,16 @@
         "commercial/tests/test_secretary_resolution.py",
         "commercial/tests/test_secretary_conversation_regressions.py",
         "commercial/tests/test_process_case_graph.py",
-        "commercial/tests/test_secretary_orchestrator.py"
+        "commercial/tests/test_secretary_orchestrator.py",
+        "commercial/tests/test_secretary_native_files.py",
+        "commercial/tests/test_secretary_live_requiredness.py"
       ],
       "depends_on": [
         "bpms",
         "access",
         "storage"
       ],
-      "contract": "Pack task IDs and roles are validated. Runtime grants and external task ownership must both permit the action. Native read-only packs require explicit reviewed upgrade."
+      "contract": "Pack task IDs and roles are validated. Runtime grants and external task ownership must both permit the action. Native read-only packs require explicit reviewed upgrade. Reviewed meeting-20/action-19 uses the chair-comment alias, native multipleFile arrays and explicit review decision. Conditional reasons follow reviewed AFTER triggers."
     },
     "ai": {
       "summary": "Agent orchestration, tools, completion, monitoring and usage.",
@@ -134,12 +136,14 @@
         "commercial/agent*.py",
         "commercial/meeting_agent.py",
         "commercial/platform_agent.py",
-        "commercial/quota.py"
+        "commercial/quota.py",
+        "commercial/retrieval.py"
       ],
       "tests": [
         "commercial/tests/test_agent_completion.py",
         "commercial/tests/test_production_agent.py",
-        "commercial/tests/test_agent_connections.py"
+        "commercial/tests/test_agent_connections.py",
+        "commercial/tests/test_avan_diagnostics_retrieval.py"
       ],
       "depends_on": [
         "access",
@@ -147,7 +151,7 @@
         "storage",
         "licensing"
       ],
-      "contract": "Read bounded evidence; verify authorization before tool calls. Current vendor coupling and process-local run limiting remain migration work; a provider-neutral gateway is not yet implemented."
+      "contract": "Read bounded evidence; verify authorization before tool calls. Current vendor coupling and process-local run limiting remain migration work; a provider-neutral gateway is not yet implemented. Meeting search ranks lexical matches only inside the freshly authorized snapshot; no shared retrieval cache."
     },
     "storage": {
       "summary": "AVAN SQL persistence and installation configuration.",
@@ -161,11 +165,15 @@
         "commercial/agent_storage.py",
         "commercial/setup_console.py",
         "commercial/sql/**",
-        "commercial/product_state.py"
+        "commercial/product_state.py",
+        "commercial/diagnostics.py",
+        "scripts/export-avan-diagnostics.ps1",
+        "temp-logs/**"
       ],
       "tests": [
         "commercial/tests/test_agent_storage.py",
-        "commercial/tests/test_operational_bootstrap.py"
+        "commercial/tests/test_operational_bootstrap.py",
+        "commercial/tests/test_avan_diagnostics_retrieval.py"
       ],
       "depends_on": [],
       "contract": "AVAN owns its database. Preserve state, encryption keys and volumes. Encrypted aggregate state is current behavior; relational migration needs versioning, rollback and tenant constraints."
