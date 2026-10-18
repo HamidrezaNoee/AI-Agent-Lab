@@ -551,3 +551,5 @@ body.flow-snapshot-open{overflow:hidden}
 .live-voice-dialog .voice-hint{font-size:12px;color:#a7bfd6;line-height:1.9;margin:18px auto;max-width:380px}
 .live-voice-dialog [role=status]{min-height:30px;margin:0;font-size:17px}
 @media(prefers-reduced-motion:reduce){.live-voice-dialog::backdrop{backdrop-filter:none}}
+
+.support-log-actions{grid-column:1 / -1;flex-wrap:wrap}.support-log-actions .button{white-space:nowrap}

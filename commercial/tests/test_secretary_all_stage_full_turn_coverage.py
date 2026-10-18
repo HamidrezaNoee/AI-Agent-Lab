@@ -6,7 +6,7 @@ import pytest
 from commercial import secretary_runtime as runtime
 from commercial import secretary_coverage as coverage
 from commercial import secretary_time
-from commercial.tests.test_secretary_inbox import task
+from commercial.tests.test_secretary_inbox import task,pack
 from commercial.tests.test_secretary_workflow import S
 
 
@@ -188,3 +188,4 @@ def test_single_focused_field_stays_fast_path_eligible(pack):
     # The safeguard must not force every tiny answer through the LLM.
     assert not coverage.is_compound_turn("پیشرفت 80 درصد",task(pack,"action_execution"))
     assert not coverage.is_compound_turn("نظر دبیر: مدرک ناقص است",task(pack,"action_review"))
+

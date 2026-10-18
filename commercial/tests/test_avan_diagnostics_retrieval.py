@@ -105,3 +105,22 @@ def test_support_export_enforces_identity_scope_and_omits_free_text(monkeypatch)
     assert calls==[('tenant','actor','Expert')]
     role[0]='GodAdmin'
     assert client.get('/api/support/diagnostics').json()['runtime']
+
+
+def test_coverage_tracks_canonical_chair_comment_alias():
+    from commercial.secretary_coverage import coverage_issues
+    problems=coverage_issues('توضیحات رئیس: اصلاح شود',task('invitation_approval'),{},[],{})
+    assert any('توضیحات' in message for message in problems)
+
+
+def test_runtime_export_survives_unavailable_audit_store(monkeypatch):
+    from commercial import user_experience_routes as routes
+    principal=SimpleNamespace(tenant_id='tenant',subject='owner')
+    monkeypatch.setattr(routes,'_identity',lambda value:(principal,'GodAdmin'))
+    def unavailable(*args,**kwargs):raise RuntimeError('private SQL connection')
+    monkeypatch.setattr(routes.ux,'logs',unavailable)
+    monkeypatch.setattr(diagnostics,'export_runtime',lambda **kw:{'schema':1,'includes_payloads':False,'runtime':[]})
+    app=FastAPI();routes.register(app,lambda:None,lambda:None)
+    response=TestClient(app).get('/api/support/diagnostics')
+    assert response.status_code==200 and response.json()['audit_unavailable']
+    assert 'private SQL' not in response.text

@@ -90,7 +90,13 @@ def register(app,authorized,csrf):
   from .diagnostics import export_runtime,sanitize
   principal,role=_identity(value)
   result=export_runtime(selected_request_id=request_id) if role=='GodAdmin' else {'schema':1,'includes_payloads':False,'runtime':[]}
-  audit=ux.logs(str(principal.tenant_id),principal.subject,role,limit=500,request_id=request_id or None)
+  try:
+   audit=ux.logs(str(principal.tenant_id),principal.subject,role,limit=500,request_id=request_id or None)
+  except Exception as exc:
+   from .diagnostics import emit
+   emit('diagnostics.audit_unavailable',error=exc)
+   audit={'scope':'self','logs':[]}
+   result['audit_unavailable']=True
   result['scope']=audit.get('scope','personal')
   result['audit']=[]
   for item in audit.get('logs',[]):
