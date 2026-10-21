@@ -128,6 +128,8 @@ def acknowledge(scope,identifier):
 
 def initial(task):
  stage=task['stage'];v={k:copy.deepcopy(task['native'].get(k,'')) for k in FIELDS[stage] if k in task['pack']['stages'][stage]['fields'] or (stage=='monitoring' and k=='MTG_ActionSummary')}
+ if stage=='invitation_approval' and 'MTG_InvitationChairComment_1' in task['pack']['stages'][stage]['fields']:
+  v['MTG_InvitationChairComment']=task['native'].get('MTG_InvitationChairComment_1') or task['native'].get('MTG_InvitationChairComment','')
  if stage in ('invitation_approval','minutes_approval'):
   v['MTG_InvitationApproval' if stage=='invitation_approval' else 'MTG_MinutesApproval']=''
  if stage=='action_review':
@@ -176,6 +178,11 @@ def draft(scope,actor,task):
 def form(task):
  stage=task['stage'];specs=task['pack']['stages'][stage]['fields']
  result={k:copy.deepcopy(specs[k]) for k in sorted(FIELDS[stage]) if k in specs and specs[k]['type'] not in ('file','multipleFile')}
+ if stage=='invitation_approval' and 'MTG_InvitationChairComment_1' in specs:
+  result['MTG_InvitationChairComment']=copy.deepcopy(specs['MTG_InvitationChairComment_1'])
+ if stage=='action_review' and 'MTGA_ReviewStatus2' in result:
+  result['MTGA_ReviewStatus2'].update(type='dropdown',mode='edit',required=True,options=[
+   {'value':'Closed','label':'تأیید و بستن'},{'value':'Rework','label':'برگشت برای اصلاح'}])
  # Native PMX uses hidden fields written by approval buttons. Expose typed human
  # choices in AVAN without making other hidden/system fields writable.
  for key,title in [('MTG_InvitationApproval','تأیید دعوت‌نامه'),('MTG_MinutesApproval','تأیید صورت‌جلسه')]:
@@ -215,7 +222,9 @@ def file_controls(task):
    'inp_doc_uid':doc_uid,
    'input_document':str(spec.get('inputDocument') or ''),
    'extensions':str(spec.get('extensions') or '.*'),
-   'multiple':bool(spec.get('multiple')),
+   'multiple':spec.get('type')=='multipleFile' or spec.get('multiple') in (True,1,'true','1'),
+   'size':spec.get('size'),
+   'sizeUnity':spec.get('sizeUnity'),
   }
  return result
 
@@ -233,8 +242,9 @@ def native_file_refs(value):
    # authorize an AVAN download until ProcessMaker's own migration trigger
    # resolves them, so do not invent a document reference here.
    return []
- if isinstance(value,dict) and value.get('appDocUid'):
-  value=[value]
+ if isinstance(value,dict):
+  if value.get('appDocUid') or value.get('app_doc_uid'):value=[value]
+  elif all(str(k).isdigit() for k in value):value=list(value.values())
  if not isinstance(value,list):return []
  result=[]
  seen=set()
@@ -288,10 +298,10 @@ def _pm_required(spec):
 
 
 def gaps(values,task):
- """Return only requirements declared by the live ProcessMaker DynaForm.
+ """Live DynaForm requirements plus reviewed conditional trigger invariants.
 
- AVAN may validate values for safety/consistency, but it must not invent a
- mandatory field that ProcessMaker currently marks optional.
+ The action decision is an explicit human routing choice; conditional reasons
+ are required by the reviewed PMX AFTER triggers, not guessed by the model.
  """
  stage=task['stage'];specs=form(task);result=[]
  for field,spec in specs.items():
@@ -319,6 +329,16 @@ def gaps(values,task):
      label=str(column.get('label') or column_id)
      result.append({'field':field+'.'+str(index)+'.'+column_id,
                     'question':label+' در ردیف '+str(index)+' را مشخص کنید.'})
+ # Native AFTER triggers reject these conditional omissions even though the
+ # corresponding DynaForm controls are unconditionally optional.
+ conditions=[]
+ if stage=='minutes' and values.get('MTG_MeetingHeld')=='NotHeld':
+  conditions.append(('MTG_NotHeldReason','علت برگزار نشدن جلسه را مشخص کنید.'))
+ if stage=='action_review' and values.get('MTGA_ReviewStatus2')=='Rework':
+  conditions.append(('MTGA_SecretaryComment1','برای برگشت اقدام، توضیح اصلاح موردنیاز را وارد کنید.'))
+ for field,question in conditions:
+  if _blank_required(values.get(field)) and not any(x['field']==field for x in result):
+   result.append({'field':field,'question':question})
  return result
 
 def _rows(value):
@@ -905,6 +925,8 @@ def _repair_user_grid_rows(values,directory):
 def labelled(values,task,scope):
  directory=scope.get('directory',{})
  result=_repair_user_grid_rows(values,directory);specs=form(task)
+ if task['stage']=='invitation_approval' and 'MTG_InvitationChairComment_1' in task['pack']['stages'][task['stage']]['fields'] and 'MTG_InvitationChairComment' in result:
+  result['MTG_InvitationChairComment_1']=result['MTG_InvitationChairComment']
  for k,v in list(result.items()):
   if isinstance(v,dict):
    cols={c['id']:c for c in specs.get(k,{}).get('columns',[])}
@@ -1039,8 +1061,14 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
    # minutes route. Chat, form rendering and submit must share one authority.
    configured=catalog.get(source_id,pack_id)
    live_pack=catalog.with_live_requiredness(source_id,configured,'minutes',strict=True)
-   live_native=normalize(pm.variables(case_uid))
-   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':live_native}
+   # ProcessMaker may authorize the assigned secretary to update/route this
+   # case while denying GET /cases/{uid}/variables. The owned AVAN draft is
+   # already loaded above; live DynaForm Required flags come from ProcessMaker.
+   # Do not trust cached/draft file references as proof of an uploaded document:
+   # use the case's native Input Documents endpoint when a file is Required.
+   # This keeps authorization, file validation and routing intact without an
+   # unrelated REST case-variable read permission.
+   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':{}}
    # Resolve a blank owner from the explicit row position only when that role
    # maps to one active ProcessMaker user. This also repairs drafts created
    # before the row-context resolver fix.
@@ -1520,3 +1548,4 @@ def undo_session(scope,actor,identifier,revision):
  return session_update(scope,actor,identifier,revision,saved['values'],saved['questions'],
   turn_text='آخرین تغییر پیش‌نویس را برگردان',reply='آخرین تغییر پیش‌نویس بازگردانده شد.',pending_confirmation=None,
   checkpoint=False,agent_receipt={'version':1,'tool':'draft.undo','label':'بازگردانی پیش‌نویس','effect':'draft','model_used':False})
+

@@ -538,3 +538,18 @@ body.flow-snapshot-open{overflow:hidden}
  .secretary-native-file-head strong,.secretary-native-file-row>small{margin-inline-end:0}
  .secretary-native-file-head input[type="file"]{max-width:100%}
 }
+
+
+/* Voice conversation uses the real input/output signal, with bounded media lifetime. */
+.live-voice-dialog{width:min(560px,92vw);max-height:92dvh;overflow:auto;border:1px solid #7bb8e55c;border-radius:30px;background:#0c1730;color:#e8f5ff;padding:24px;text-align:center;box-shadow:0 24px 100px #07122588}
+.live-voice-dialog::backdrop{background:#040e20b8;backdrop-filter:blur(8px)}
+.live-voice-dialog h2{font-size:22px;margin:16px 0 0}
+.live-voice-dialog canvas{display:block;width:100%;height:auto;max-height:42vh;object-fit:contain}
+.live-voice-dialog button{font:inherit;border:1px solid #5d91b7;border-radius:22px;background:#183653;color:#fff;padding:10px 24px;cursor:pointer}
+.live-voice-dialog button:disabled{opacity:.45;cursor:wait}
+.live-voice-dialog .voice-close{position:absolute;top:14px;left:14px;padding:2px 12px;font-size:28px}
+.live-voice-dialog .voice-hint{font-size:12px;color:#a7bfd6;line-height:1.9;margin:18px auto;max-width:380px}
+.live-voice-dialog [role=status]{min-height:30px;margin:0;font-size:17px}
+@media(prefers-reduced-motion:reduce){.live-voice-dialog::backdrop{backdrop-filter:none}}
+
+.support-log-actions{grid-column:1 / -1;flex-wrap:wrap}.support-log-actions .button{white-space:nowrap}

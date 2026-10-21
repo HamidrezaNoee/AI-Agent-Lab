@@ -1,0 +1,714 @@
+{
+  "review_date": "2026-10-17",
+  "live_verified": false,
+  "processes": [
+    {
+      "filename": "فرایند_اقدام_مصوب_جلسه-19.pmx",
+      "process_uid": "cd66870095907431106b6dd110e06fa7",
+      "title": "فرایند اقدام مصوب جلسه",
+      "sha256": "b28875c4cb46839ada725181d58e0f52e8410150ff6f632c170767d735c79353",
+      "adapter": "meeting_v2",
+      "forms": [
+        {
+          "uid": "42ba129e30d6f03e685e81a4301cdaa4",
+          "title": "FR-MTG-A02 - بررسی اقدام",
+          "files": [
+            {
+              "variable": "MTGA_EvidenceFile1",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "6343078616ac0d6c53a98d9079721622",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        },
+        {
+          "uid": "a6f690be582466ab0c0ad6649ba8b93f",
+          "title": "FR-MTG-A01 - اجرای اقدام",
+          "files": [
+            {
+              "variable": "MTGA_EvidenceFile1",
+              "type": "multipleFile",
+              "mode": "edit",
+              "inp_doc_uid": "6343078616ac0d6c53a98d9079721622",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "tas_uid": "1bc65198c9b4cf2fae5d3ffbfeea3c00",
+          "rou_next_task": "473bb4e227460a3ea6ac0f2cbf8ef8d4",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTGA_ReviewStatus == \"Rework\""
+        },
+        {
+          "tas_uid": "473bb4e227460a3ea6ac0f2cbf8ef8d4",
+          "rou_next_task": "1bc65198c9b4cf2fae5d3ffbfeea3c00",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "1bc65198c9b4cf2fae5d3ffbfeea3c00",
+          "rou_next_task": "-1",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTGA_ReviewStatus == \"Closed\""
+        }
+      ],
+      "triggers": [
+        {
+          "uid": "290a2731cf20d1515dc2e8202b9fc94e",
+          "title": "TRG-MTG-001-BEFORE-LoadActionExecutionContext",
+          "sha256": "5abc412e9e9f760286d63c1570f1ca7555a79dfaa31e24e428b4be583f302a56"
+        },
+        {
+          "uid": "8666274ec4af8ae2eab09a4af385b4d5",
+          "title": "TRG-MTG-002-BEFORE-LoadActionReviewContext",
+          "sha256": "3f46cee25c8a3566aabe298a986047f66244de59e02860486a121332bfdaac93"
+        },
+        {
+          "uid": "a4f666dadb04c365e1762e0b33495692",
+          "title": "TRG-MTG-001-AFTER-SaveActionProgress_SQLMirrorFailOpen",
+          "sha256": "7ca4f34609a2db04edc6459c0c2c055b8d3ee3110fa644564c82f110c9f6498d"
+        },
+        {
+          "uid": "b12993814458ae485790da734d84eb38",
+          "title": "TRG-MTG-002-AFTER-SaveActionReview_SQLMirrorFailOpen",
+          "sha256": "c911df4d0abc7be2f2b80560a585e4e35c06629f95d58adeed37c1c02e6a50f3"
+        }
+      ]
+    },
+    {
+      "filename": "فرایند_مدیریت_جلسات-20.pmx",
+      "process_uid": "f7f263ea31d8731d212820f220c65a48",
+      "title": "فرایند مدیریت جلسات",
+      "sha256": "2eb3b866d76e8b016c0ed91abeb96578ef9cf91a505e9f6e14249347a74839c9",
+      "adapter": "meeting_v2",
+      "forms": [
+        {
+          "uid": "1b4a9033de82d5d38afb8a471d4bd5b1",
+          "title": "FR-MTG-001 - برنامه‌ریزی و دعوت جلسه",
+          "files": []
+        },
+        {
+          "uid": "366ac686c45b9ecc2ad8c41a00846db7",
+          "title": "FR-MTG-004- تأیید صورت‌جلسه",
+          "files": [
+            {
+              "variable": "MTG002_MeetingAttachment",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "8069894396a958d0a5007d7087550366",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "5e84e43db54993a49119997cb0b5df34",
+          "title": "FR-MTG-003 - صورت‌جلسه و اقدامات",
+          "files": [
+            {
+              "variable": "MTG002_MeetingAttachment",
+              "type": "multipleFile",
+              "mode": "edit",
+              "inp_doc_uid": "8069894396a958d0a5007d7087550366",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "7774ba689f3c4c46b3d5efaa55fde907",
+          "title": "FR-MTG-002 -بررسی و تأیید دعوت‌نامه توسط رئیس جلسه",
+          "files": []
+        },
+        {
+          "uid": "d30094992baf2ab00fce7f558ba7160a",
+          "title": "FR-MTG-005 - پایش و اختتام جلسه",
+          "files": []
+        }
+      ],
+      "routes": [
+        {
+          "tas_uid": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_next_task": "af8402c57b05992f6b6e6c6d9eb5276a",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MeetingHeld == \"Held\""
+        },
+        {
+          "tas_uid": "af8402c57b05992f6b6e6c6d9eb5276a",
+          "rou_next_task": "cb9f098d6b9462db552ae29d4622950a",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MinutesApproval == \"Approved\""
+        },
+        {
+          "tas_uid": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_next_task": "-1",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MeetingHeld == \"NotHeld\""
+        },
+        {
+          "tas_uid": "4a6419a60141d7d36001ba9344db4eac",
+          "rou_next_task": "f040c82fd83e47fd908770b62d967384",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "cb9f098d6b9462db552ae29d4622950a",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "f040c82fd83e47fd908770b62d967384",
+          "rou_next_task": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_InvitationApproval == \"Approved\""
+        },
+        {
+          "tas_uid": "f040c82fd83e47fd908770b62d967384",
+          "rou_next_task": "4a6419a60141d7d36001ba9344db4eac",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_InvitationApproval == \"NeedsRevision\""
+        },
+        {
+          "tas_uid": "af8402c57b05992f6b6e6c6d9eb5276a",
+          "rou_next_task": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MinutesApproval == \"NeedsRevision\""
+        }
+      ],
+      "triggers": [
+        {
+          "uid": "09a5c128a12a358797021feb3e8b2ab8",
+          "title": "TRG-MTG-004-BEFORE-PrepareMinutesApprovalContext",
+          "sha256": "e593583845aa8312c6d302fe8bcc6cfc077a9b1e77d263ecc124a6a72bfde2f6"
+        },
+        {
+          "uid": "2593597a9d5a6de465784bf8dc338439",
+          "title": "TRG-MTG-004-AFTER-ApproveMinutes_CreateActionCases_FailOpen",
+          "sha256": "d0035222cfc5885587fa67044e2194be9cf693afe85c8d2ea694360f5dd08e60"
+        },
+        {
+          "uid": "2cce620239ad07d5d415eedee1916175",
+          "title": "TRG-MTG-002-AFTER-CHAIR-INVITATION-DECISION",
+          "sha256": "a540e8d3894f8edd81f65e772f1ca05c6024b7fb4682e55fa5fc7d5b54b5ee67"
+        },
+        {
+          "uid": "408334d60c9cca3317668fba26f7e8b5",
+          "title": "TRG-MTG-005-BEFORE-LoadMonitoring_PM_CORE_V2",
+          "sha256": "c1f31f2eb3e114a5eff5d16f4a610815eb42c9a5ebc5378445981113ba165eef"
+        },
+        {
+          "uid": "575a453b1e1dc60a52f64edf2c0a57f0",
+          "title": "TRG-MTG-003-BEFORE-NORMALIZE-CASE-CONTEXT",
+          "sha256": "e94059b79811b83b3c391e2b167d0b73afedd8d2fde546414b4b0765357d8912"
+        },
+        {
+          "uid": "7942584696aa92ab223c498087838907",
+          "title": "TRG-MTG-003-BEFORE-FORM-REHYDRATE",
+          "sha256": "cee97fc30ebe2b6653c7d4ce15e9409e9c8dafd5ef2323d0fe258ae268c42f5b"
+        },
+        {
+          "uid": "7c9d0f8ea4e54f92b1f7931fb6f97a01",
+          "title": "TRG-MTG-001-AFTER-SUBMIT-Meeting-Planing",
+          "sha256": "6cd08f0a839713a82e9ab071f69cc3b8cbc8ceb997656330099b55732ba8bd64"
+        },
+        {
+          "uid": "8bfb9a18e7b6d6ae82441e22101b7909",
+          "title": "TRG-MTG-001-BEFORE-FORM-INIT-LOCKED",
+          "sha256": "e8c0cdd3b8ef4043565ec75ae89ee648a22c2dacab1487a02708a5eaf26b4859"
+        },
+        {
+          "uid": "91931df32c7d442392b95defbf4b3677",
+          "title": "TRG-MTG-Notice-002-004-005-After",
+          "sha256": "e9ad3068c4ec32b9ac244840f18332dd0558e2bda8f89d88133a0540e6fd58a6"
+        },
+        {
+          "uid": "9cfa2876edd7cfa8fa5016a2f25f771d",
+          "title": "MTG - اختتام جلسه",
+          "sha256": "59c35845422879003996e3d941861ee6b69d7a53e8a10e5697083396d10789cb"
+        },
+        {
+          "uid": "fe88e8afc98ca69585ab0f5fb16bbf74",
+          "title": "TRG-MTG-003-AFTER-SaveMeetingMinutesAndSyncSQL",
+          "sha256": "ffb8f021208417274b5a9b2c451a130e2f01417f129163bd4698b46fb1454873"
+        }
+      ]
+    },
+    {
+      "filename": "ابلاغ_داخلی_جلسات_(فقط_خواندنی)-1 (3).pmx",
+      "process_uid": "44896d94f59e4f9191b23f967cc5cd5b",
+      "title": "ابلاغ داخلی جلسات (فقط خواندنی)",
+      "sha256": "2608f8341f87bf95649a283ccecc15c21c2077ded7588052cdef2cd5f2232802",
+      "adapter": "native_tasks_v1 (read only)",
+      "forms": [
+        {
+          "uid": "d71385fdb9424aea9c982ee1c51d53fd",
+          "title": " مشاهده ابلاغ داخلی جلسه",
+          "files": []
+        }
+      ],
+      "routes": [
+        {
+          "tas_uid": "d22139d7ceea4e7896e7e57049547b0c",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        }
+      ],
+      "triggers": [
+        {
+          "uid": "45b42da1699f4d2e856b0711196b1b17",
+          "title": "TRG-MTGN-001-Before-ValidateRecipient",
+          "sha256": "869f97b8fa67217cb4dad8ccf38f4f976107623742cc93a2070a4c18752c929b"
+        },
+        {
+          "uid": "e9b9db7d7eb74700beea6e68213d352b",
+          "title": "TRG-MTGN-001-After-Acknowledge",
+          "sha256": "39e2fa10404645381fc9e3e4161e492e4cb4da4d8e59dd66a41d901ccfee00aa"
+        }
+      ]
+    },
+    {
+      "filename": "فرآیند_درخواست_پرداخت_هلدینگ_ایرانیان_رور-4.pmx",
+      "process_uid": "8382263186a3663ef619043069961010",
+      "title": "فرآیند درخواست پرداخت هلدینگ ایرانیان رور",
+      "sha256": "0465fc0fb368691dbed18e6a1a85f735b4883d6497847386c0c04810014e024d",
+      "adapter": "native_tasks_v1 (read only)",
+      "forms": [
+        {
+          "uid": "1902465826a3663f2425329091173496",
+          "title": "پرداخت",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "KB"
+            },
+            {
+              "variable": "multipleFileVar004",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "1474914556ac0ae903b85f3097903206",
+              "multiple": false,
+              "extensions": "*",
+              "size": 0,
+              "sizeUnity": "MB"
+            },
+            {
+              "variable": "multipleFileVar005",
+              "type": "multipleFile",
+              "mode": "edit",
+              "inp_doc_uid": "5063476566ac0afbe741126062370741",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        },
+        {
+          "uid": "2193298336a3663f241d8a4005990826",
+          "title": "ابلاغ مدیر مالی به کارشناس",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "",
+              "multiple": false,
+              "extensions": "*",
+              "size": 1024,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "2459716796a3663f2422b00046830222",
+          "title": "بررسی مدیر مالی",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": "*",
+              "size": 0,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "3359985356a3663f241bff9017987395",
+          "title": "اطلاع از رد مالی",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "4328613286a3663f2427b29042676101",
+          "title": "اطلاع از نتیجه مدیر مربوطه",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "",
+              "multiple": false,
+              "extensions": "*",
+              "size": 1024,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "7501525876a3663f2423f16056883709",
+          "title": "نهایی",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "",
+              "multiple": false,
+              "extensions": "*",
+              "size": 1024,
+              "sizeUnity": "KB"
+            },
+            {
+              "variable": "multipleFileVar004",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "KB"
+            },
+            {
+              "variable": "multipleFileVar005",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "",
+              "multiple": false,
+              "extensions": "*",
+              "size": 1024,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "8002624516a3663f2421718047696666",
+          "title": "کارشناس مالی",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": "*",
+              "size": 0,
+              "sizeUnity": "MB"
+            },
+            {
+              "variable": "multipleFileVar004",
+              "type": "multipleFile",
+              "mode": "edit",
+              "inp_doc_uid": "1474914556ac0ae903b85f3097903206",
+              "multiple": false,
+              "extensions": "*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        },
+        {
+          "uid": "8618164066a3663f241edc0025007991",
+          "title": "فرم درخواست پرداخت",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "edit",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": "*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        },
+        {
+          "uid": "9164428716a3663f2420305028969148",
+          "title": "بررسی پرداخت توسط مدیر مربوطه",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": "*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        },
+        {
+          "uid": "9336242676a3663f2429022043325452",
+          "title": "بررسی مدیر عامل",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "3905639646a3a8111427145041951616",
+              "multiple": false,
+              "extensions": "*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        },
+        {
+          "uid": "9573669436a3663f2426748080338518",
+          "title": "اطلاع از رد مدیر عامل",
+          "files": [
+            {
+              "variable": "multipleFileVar001",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "",
+              "multiple": false,
+              "extensions": "*",
+              "size": 1024,
+              "sizeUnity": "KB"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "tas_uid": "8993530276a3663f00b1510067506855",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "gtg-056646a3663f1cb02e8069063220",
+          "rou_next_task": "4369201666a3663efb0e3f5049369842",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "7961730956a3663efbfd824005256874",
+          "rou_next_task": "gtg-056646a3663f1cb02e8069063220",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "5621948246a3663f0278743012838353",
+          "rou_next_task": "3882141116a3663ef9e1009062390124",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "2783203126a3663f0036401017610107",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "gtg-140136a3663f19d0c25079132925",
+          "rou_next_task": "7015380856a3663f0129dd0002619370",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "4390869146a3663efe64d95018932274",
+          "rou_next_task": "gtg-158206a3663f17c6522035323504",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@ceo_app==2"
+        },
+        {
+          "tas_uid": "1929626466a3663efb86fe2054151017",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "3882141116a3663ef9e1009062390124",
+          "rou_next_task": "7961730956a3663efbfd824005256874",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "7015380856a3663f0129dd0002619370",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "gtg-056646a3663f1cb02e8069063220",
+          "rou_next_task": "8913269046a3663efaa7e25095427914",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "7961730956a3663efbfd824005256874",
+          "rou_next_task": "8423461916a3663efeebb51015715315",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "2747192386a3663f019ad23077654136",
+          "rou_next_task": "8213195806a3663efdd83e8008833932",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "8213195806a3663efdd83e8008833932",
+          "rou_next_task": "1020202636a3663efc65f07036504101",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@man_app==2"
+        },
+        {
+          "tas_uid": "8913269046a3663efaa7e25095427914",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "7961730956a3663efbfd824005256874",
+          "rou_next_task": "8993530276a3663f00b1510067506855",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "1020202636a3663efc65f07036504101",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "5524902346a3663f0205083006683740",
+          "rou_next_task": "gtg-140136a3663f19d0c25079132925",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@fin_app==2"
+        },
+        {
+          "tas_uid": "4369201666a3663efb0e3f5049369842",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "gtg-158206a3663f17c6522035323504",
+          "rou_next_task": "1929626466a3663efb86fe2054151017",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "4390869146a3663efe64d95018932274",
+          "rou_next_task": "5621948246a3663f0278743012838353",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@ceo_app==1"
+        },
+        {
+          "tas_uid": "8213195806a3663efdd83e8008833932",
+          "rou_next_task": "5524902346a3663f0205083006683740",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@man_app==1"
+        },
+        {
+          "tas_uid": "gtg-158206a3663f17c6522035323504",
+          "rou_next_task": "2783203126a3663f0036401017610107",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "5524902346a3663f0205083006683740",
+          "rou_next_task": "4390869146a3663efe64d95018932274",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@fin_app==1"
+        },
+        {
+          "tas_uid": "gtg-056646a3663f1cb02e8069063220",
+          "rou_next_task": "8372497556a3663efd43c69000728011",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "9347229006a3663efcce199004376575",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "8423461916a3663efeebb51015715315",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "8372497556a3663efd43c69000728011",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "gtg-140136a3663f19d0c25079132925",
+          "rou_next_task": "9347229006a3663efcce199004376575",
+          "rou_type": "PARALLEL",
+          "rou_condition": ""
+        }
+      ],
+      "triggers": [
+        {
+          "uid": "2496032716a3663f24404e5064607198",
+          "title": "نام درخواست کننده",
+          "sha256": "4649585789cf3226e3f7588e3695067e012148f6ba64ada9c4d30b4a46af397e"
+        },
+        {
+          "uid": "6436157226a3663f243f073001967235",
+          "title": "نگهداری آیدی مدیر",
+          "sha256": "2a514b905a33d60d6f4450afde9380e36b1b9e82913865317d0c0089024e0e75"
+        },
+        {
+          "uid": "6616210936a3663f2441821063170545",
+          "title": "نگهداری آیدی درخواست کننده",
+          "sha256": "2dbf9cb8d826ae4013b5ce5eb01037ab47db87c93f5b1d5b7cf1660a392bd193"
+        }
+      ]
+    }
+  ]
+}

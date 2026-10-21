@@ -368,7 +368,8 @@ def _rows(value):
 def coverage_issues(notes,task,values,assignments,directory):
     """Return precise omissions. Empty means all explicitly detectable facts were covered."""
     issues=[];assigned={str(a.field) for a in assignments}
-    allowed=set((task.get("pack",{}).get("stages",{}).get(task.get("stage"),{}).get("fields",{}) or {}).keys())
+    from .secretary_runtime import form
+    allowed=set(form(task))  # Match typed aliases and writable fields used by extraction.
     for req in explicit_field_requirements(notes,task):
         field=req["field"]
         if field not in allowed:continue
@@ -511,3 +512,4 @@ def coverage_prompt(notes,task,directory):
         "monitoring_action_count":len(monitoring_expectations(notes)),
         "monitoring_actions":monitoring_expectations(notes),
     }
+

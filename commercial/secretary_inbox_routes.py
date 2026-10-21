@@ -500,7 +500,7 @@ def register(app,authorized,csrf):
    from .agent_voice import speak
    t=runtime.task(con,s,case_uid,index,pack_id);row=runtime.draft(s,p.subject,t)
    assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
-   text=(assistant.get('summary','')+'\n'+assistant.get('message','')).strip()
+   text=next((str(item.get('text')) for item in reversed(row.get('history') or []) if item.get('role')=='assistant' and item.get('text')), '') or (assistant.get('summary','')+'\n'+assistant.get('message','')).strip()
    with run_slot((str(p.tenant_id),p.subject)):data,count=speak({'clarification':text},part)
    return Response(data,media_type='audio/mpeg',headers={'Cache-Control':'no-store','X-AVAN-Audio-Parts':str(count)})
   return access(value,source_id,run)
@@ -639,7 +639,7 @@ def register(app,authorized,csrf):
    from .agent_voice import speak
    row,t=runtime.session_load(s,p.subject,identifier)
    assistant=runtime.assistant_state(row['values'],t,s,row.get('questions',[]))
-   text=(assistant.get('summary','')+'\n'+assistant.get('message','')).strip()
+   text=next((str(item.get('text')) for item in reversed(row.get('history') or []) if item.get('role')=='assistant' and item.get('text')), '') or (assistant.get('summary','')+'\n'+assistant.get('message','')).strip()
    with run_slot((str(p.tenant_id),p.subject)):data,count=speak({'clarification':text},part)
    return Response(data,media_type='audio/mpeg',headers={'Cache-Control':'no-store','X-AVAN-Audio-Parts':str(count)})
   return access(value,source_id,run)
@@ -653,3 +653,4 @@ def register(app,authorized,csrf):
  def reconcile_session(source_id:str,identifier:str,body:Submit,value=Depends(csrf)):
   if not body.confirmed:raise HTTPException(422,'ادامه همان پرونده ProcessMaker را صریحاً تأیید کنید.')
   return access(value,source_id,lambda con,s,p:public_session(runtime.session_reconcile(s,p.subject,identifier,body.revision)))
+

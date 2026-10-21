@@ -100,9 +100,13 @@ def guard_model(fn):
     from .security import AuthenticationFailed,ConfigurationFailed
     try:return fn()
     except (AuthenticationFailed,ConfigurationFailed):raise HTTPException(401,"اعتبار نشست پایان یافته است؛ دوباره وارد شوید.")
-    except AgentBusy as exc:raise HTTPException(429,str(exc))
-    except AgentUnavailable as exc:raise HTTPException(503,str(exc))
-    except AgentInvalid as exc:raise HTTPException(502,_agent_invalid_detail(exc))
+    except (AgentBusy,AgentUnavailable,AgentInvalid) as exc:
+        from .diagnostics import emit
+        emit('model.failed',error=exc)
+        if isinstance(exc,AgentBusy):raise HTTPException(429,str(exc)) from exc
+        if isinstance(exc,AgentUnavailable):raise HTTPException(503,str(exc)) from exc
+        raise HTTPException(502,_agent_invalid_detail(exc)) from exc
+
 
 
 def monitor_for(principal,source_id=None):
@@ -442,3 +446,4 @@ def register(app,authorized,csrf):
     @app.post('/api/sources/{source_id}/voice/speech')
     def source_speech(source_id:str,body:SpeechRequest,value=Depends(csrf)):
         return speech(body,value,source_id)
+

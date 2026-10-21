@@ -6,7 +6,7 @@ import pytest
 from commercial import secretary_runtime as runtime
 from commercial import secretary_coverage as coverage
 from commercial import secretary_time
-from commercial.tests.test_secretary_inbox import task
+from commercial.tests.test_secretary_inbox import task,pack
 from commercial.tests.test_secretary_workflow import S
 
 
@@ -344,3 +344,4 @@ def test_dense_minutes_resolves_pending_confirmation_then_extracts_rest(pack,mon
     assert "تأیید شد" in result[2]
     assert "شرح مذاکرات جدید ثبت شد" in result[2]
     assert result.receipt["tool"]=="draft.extract"
+

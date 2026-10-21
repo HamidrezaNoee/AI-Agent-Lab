@@ -1,5 +1,7 @@
 """Bounded native evidence reading and explicitly advisory review proposals."""
-import hashlib,io,json,mimetypes,subprocess,sys
+import hashlib,io,json,mimetypes,subprocess,sys,re
+from fastapi import HTTPException
+from .diagnostics import emit
 from pydantic import BaseModel,ConfigDict,Field
 from . import agent_storage,secretary_runtime as runtime
 from .secretary_processmaker import PM,uid
@@ -61,7 +63,21 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
   raise ValueError('فایل خالی است.')
  if len(data)>MAX_NATIVE_FILE_BYTES:
   raise ValueError('حداکثر حجم هر فایل ۲۵ مگابایت است.')
+ # Reject invalid payloads before creating a native document record.
+ name=str(filename or '').replace('\\','/').split('/')[-1]
+ extensions=str(spec.get('extensions') or '.*').strip().lower()
+ allowed={v.strip().lstrip('*.') for v in re.split(r'[,;|\s]+',extensions) if v.strip()}
+ if extensions not in ('*','.*') and name.rsplit('.',1)[-1].lower() not in allowed:
+  raise ValueError('پسوند فایل با تنظیم کنترل فایل در ProcessMaker سازگار نیست.')
+ try:limit=float(spec.get('size') or 0)
+ except (ValueError,TypeError):limit=0
+ unit=str(spec.get('sizeUnity') or 'MB').upper()
+ multiplier={'KB':1024,'MB':1024**2,'GB':1024**3}.get(unit,1)
+ if limit>0 and len(data)>limit*multiplier:
+  raise ValueError('حجم فایل از محدودیت کنترل فایل در ProcessMaker بیشتر است.')
+ emit('native_file.start',bytes=len(data))
  pm=PM(scope['source_id'],process_uid=runtime.process_for(task['pack'],task['stage']),bearer=token(scope,actor))
+ phase='upload'
  try:
   assigned=pm.assigned(task['case_uid'],task['pack']['stages'][task['stage']]['task_uid'],scope['external_user_id'])
   if assigned!=task['index']:raise RevisionConflict()
@@ -77,6 +93,7 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
   # Keep APP_DATA synchronized with the PMX multipleFile variable. Both uploaded
   # processes normalize this exact {appDocUid,name,version} shape in their
   # BEFORE triggers, so the following approval/review DynaForm can render it.
+  phase='link'
   current=pm.variables(task['case_uid'])
   refs=runtime.native_file_refs(current.get(field))
   if not any(x['appDocUid']==new_ref['appDocUid'] and int(x['version'])==new_ref['version'] for x in refs):
@@ -88,6 +105,7 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
    task['case_uid'],assigned,{field:refs},
    operation='اتصال فایل به کنترل '+str(spec.get('label') or field))
 
+  emit('native_file.complete',bytes=len(data))
   # Do not perform a second document-list read here. The native file write and
   # APP_DATA link already succeeded; a later list-permission failure must never
   # make the browser retry and create a duplicate ProcessMaker document.
@@ -98,6 +116,11 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
    'app_doc_type':result.get('app_doc_type') or 'INPUT',
    'doc_uid':result.get('doc_uid') or spec['inp_doc_uid'],
   }
+ except Exception as exc:
+  emit('native_file.'+phase+'.failed',error=exc,bytes=len(data))
+  if phase=='link':
+   raise HTTPException(502,'فایل به ProcessMaker منتقل شد اما اتصال آن به فیلد فرم تأیید نشد؛ قبل از بارگذاری دوباره پرونده را بررسی کنید.') from exc
+  raise
  finally:pm.close()
 
 
@@ -195,4 +218,5 @@ if __name__=='__main__':
   text+=(page.extract_text() or '')+'\n'
   if len(text)>18000:sys.exit(2)
  sys.stdout.write(text)
+
 

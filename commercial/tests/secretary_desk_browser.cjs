@@ -99,6 +99,7 @@ const server=http.createServer((req,res)=>{
   await page.getByRole('button',{name:'↑',exact:true}).click();
   await start.waitFor({state:'hidden'});
   await page.clock.install();
+  await page.clock.pauseAt(new Date(Date.now()+1000));
   await page.evaluate(()=>window.avanQA.toast('این وظیفه جاری به حساب متصل شما تعلق ندارد.',{error:true}));
   assert(await page.getByRole('button',{name:'بستن پیام',exact:true}).isVisible());
   await page.clock.fastForward(9999);assert(await page.locator('#toast').isVisible());
@@ -123,4 +124,5 @@ const server=http.createServer((req,res)=>{
   assert.deepEqual(errors,[]);console.log('Secretary desk browser passed: stage order, case gates, counts, filtering, responsive layout.');
  }finally{if(browser)await browser.close();server.close()}
 })().catch(e=>{console.error(e);process.exitCode=1;server.close()});
+
 

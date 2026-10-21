@@ -64,9 +64,11 @@ class PM:
     headers={'Authorization':'Bearer '+(bearer or api['bearer_token'])})
  def close(self):self.client.close()
  def call(self,method,path,data=None,*,operation=None):
+  from .diagnostics import emit
   label=str(operation or 'عملیات ProcessMaker')
   try:
    r=self.client.request(method,self.base+path,**({'json':data} if data is not None else {}))
+   emit('processmaker.response',method=method,upstream_status=r.status_code,route=re.sub(r'[a-zA-Z0-9]{32}', '{uid}', path.split('?')[0]))
    if not 200<=r.status_code<300:
     message=''
     try:
@@ -172,6 +174,7 @@ class PM:
    response=self.client.post(
     self.base+f'/light/case/{case}/upload/{app_doc_uid}',
     files={f'form[{field}]':(name,bytes(data),mime)},
+    timeout=httpx.Timeout(120,connect=15),
    )
   except httpx.HTTPError as exc:
    logger.warning('ProcessMaker file upload transport failure app_doc_uid=%s type=%s',
@@ -194,9 +197,9 @@ class PM:
         'پیش از تکرار، همان پرونده را بررسی کنید.')
 
   try:uploaded=response.json() if response.content else {}
-  except ValueError:
-   uploaded={}
-  if isinstance(uploaded,dict) and uploaded.get('status') not in (None,'ok','OK',True):
+  except ValueError as exc:
+   raise HTTPException(502,'پاسخ تأیید فایل از ProcessMaker نامعتبر است؛ قبل از تکرار پرونده را بررسی کنید.') from exc
+  if not isinstance(uploaded,dict) or uploaded.get('error') or uploaded.get('status') not in (None,'ok','OK',True):
    raise HTTPException(
     502,'ProcessMaker رکورد فایل را ایجاد کرد اما تکمیل بارگذاری را تأیید نکرد؛ '
         'پیش از تکرار، همان پرونده را بررسی کنید.')
@@ -243,4 +246,5 @@ class PM:
    try:exc.pm_phase='route'
    except Exception:pass
    raise
+
 

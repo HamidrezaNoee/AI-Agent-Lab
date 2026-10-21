@@ -213,3 +213,43 @@ invitation turns without reopening the editor, accessible manual dismissal, and 
 exact 10-second timeout using the browser clock. Existing desk/graph/settings/logs
 and DOM integration pass. Screenshot invitation-ready.png inspected locally. No
 live ProcessMaker account routing or production deployment was performed.
+
+
+## Reviewed PMX, voice and diagnostics — 2026-10-18
+
+Based on main 293bcdb. Reviewed meeting-20/action-19 now define the bundled
+contract, including notice AFTER trigger hashes/order. Preserve raw audited
+field names; expose the chair-comment alias through the typed adapter and write
+both names. Action review exposes Closed/Rework; the native trigger requires an
+explicit decision and a reason on Rework. NotHeld requires its native reason.
+Attendance time remains optional. Existing packs require explicit reviewed
+upgrade; no live PM schema/trigger installation or read-only pack promotion occurs.
+
+Native multipleFile refs preserve prior documents despite multiple=false metadata,
+including PHP numeric-key arrays. Validate size/extensions before record creation;
+allow 120s byte transfer and reject malformed success responses. Partial upload/link
+failures are explicit and never automatically retried. Personal OAuth, ownership,
+revision, requiredness and source checks remain mandatory.
+
+Secretary live voice is hands-free turn-based STT/chat/TTS with a WebAudio-reactive
+orb, interruption and bounded media cleanup. It is not WebRTC Realtime/full-duplex.
+Voice edits drafts; final routing remains an explicit UI action. Speech reads the
+latest assistant reply. Meeting retrieval uses deterministic Persian lexical BM25
+inside the current authorized snapshot, with explicit substring compatibility.
+
+Payload-free rotating diagnostics correlate request IDs, route templates, timings,
+HTTP/PM status and exception types/stack locations. No raw messages/content/secrets
+are exported. Support exports retain audit authorization; runtime is GodAdmin-only.
+The CLI works without SQL; scripts/export-avan-diagnostics.ps1 optionally commits
+and pushes only the generated temp-logs JSON. Normal Git push includes other local
+commits on the current branch. Rotation and Git history retention are documented.
+
+See docs/processmaker/REVIEW_20261017_FA.md and review-20261017.json for source
+fingerprints, deployment/live acceptance and the payment final-form Input Document
+mismatch. Payment and notices remain native read-only adapters, not AI write packs.
+No production Docker, SQL, Keycloak, PM trigger or paid-model verification was done.
+
+Validation: 138 focused Python tests and both Chromium fixture suites pass. Full
+local suite: 681 passed, 24 failed, 8 setup errors (+55 subtests); baseline comparison
+and exact failures are in docs/ai/VALIDATION_20261018.md. Full CI/live acceptance
+remain release gates; branch is for review, not an already deployed release.
