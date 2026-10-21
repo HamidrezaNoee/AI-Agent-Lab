@@ -589,7 +589,7 @@ def test_minutes_direct_advance_uses_rest_only_and_routes_same_case(pack,store,m
     'usr_uid':S['external_user_id'],
     'del_thread_status':'OPEN','del_index':1,
    }]}
-  def variables(self,*args):return copy.deepcopy(native)
+  def variables(self,*args):pytest.fail('sending minutes must never GET all ProcessMaker case variables (HTTP 403)')
   def set_variables(self,case,index,values,operation=None):
    calls.append(('variables',case,index,operation))
   def execute_trigger(self,case,trigger,operation=None):
