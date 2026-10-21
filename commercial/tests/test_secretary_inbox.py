@@ -655,8 +655,8 @@ def test_minutes_direct_respects_required_native_document_without_get_variables(
           S['external_user_id'],t['case_uid'],1,pack['id'],'token',
           revision=row['revision'],directory=S['directory'])
   assert ('write',) not in calls
- assert any(op=='GET' and path.endswith('/input-documents')
-            for op,path in calls if len((op,path))==2)
+ assert any(call[0]=='GET' and call[1].endswith('/input-documents')
+            for call in calls if len(call)==2)
 
 
 def test_minutes_direct_advance_is_idempotent_after_case_reaches_approval(pack,store,monkeypatch):
