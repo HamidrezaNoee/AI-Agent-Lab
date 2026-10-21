@@ -112,14 +112,15 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
                 "app_doc_type":"INPUT",
             }
         def variables(self,case):
-            calls["variables"]=case
-            return {}
+            raise AssertionError("native upload must not GET ProcessMaker case variables (403)")
         def set_variables(self,case,index,values,operation=None):
             calls["set_variables"]=(case,index,copy.deepcopy(values),operation)
         def close(self):pass
 
     monkeypatch.setattr(evidence,"PM",PM)
     monkeypatch.setattr(evidence,"token",lambda *a,**kw:"token")
+    monkeypatch.setattr(evidence.runtime,"_native_case_values",
+                        lambda scope,case: {})
     monkeypatch.setattr(evidence,"field_documents",lambda *a,**kw:[{
         "app_doc_uid":"3"*32,
         "app_doc_version":"1",
@@ -146,6 +147,39 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
     }]
     assert result["app_doc_filename"]=="proof.pdf"
 
+
+
+
+def test_native_upload_preserves_previous_refs_when_rest_variables_is_forbidden(monkeypatch):
+    t=task("minutes")
+    field="MTG002_MeetingAttachment"
+    previous={"appDocUid":"1"*32,"name":"previous.pdf","version":1}
+    recorded={}
+    class PM:
+        def __init__(self,*a,**kw):pass
+        def assigned(self,*a):return t["index"]
+        def variables(self,*a):
+            raise AssertionError("ProcessMaker GET /cases/{uid}/variables returns 403")
+        def upload_input_document(self,*a,**kw):
+            return {"app_doc_uid":"2"*32,"app_doc_version":1,
+                    "app_doc_filename":"new.pdf"}
+        def set_variables(self,case,index,payload,**kw):
+            recorded.update(copy.deepcopy(payload))
+        def close(self):pass
+
+    monkeypatch.setattr(evidence,"PM",PM)
+    monkeypatch.setattr(evidence,"token",lambda *a,**kw:"personal")
+    monkeypatch.setattr(
+        evidence.runtime,"_native_case_values",
+        lambda scope,case:{field:[previous]},
+    )
+    scope={"source_id":"source","external_user_id":"u"*32}
+    result=evidence.upload_field_document(
+        t,scope,"actor",field,"new.pdf","application/pdf",b"%PDF-test")
+    assert result["app_doc_uid"]=="2"*32
+    assert recorded[field]==[previous,{
+        "appDocUid":"2"*32,"name":"new.pdf","version":1
+    }]
 
 
 def test_pm3_light_upload_uses_field_name_and_two_step_protocol():
