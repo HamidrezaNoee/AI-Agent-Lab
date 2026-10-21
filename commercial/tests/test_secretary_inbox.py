@@ -732,8 +732,8 @@ def test_minutes_approval_does_not_invent_minimum_action_requirement(pack):
 
 def test_latest_reviewed_pmx_pair_is_the_only_runtime_contract():
  trusted=c._trusted_meeting_pack()
- assert trusted['meeting']['pmx_sha256']=='2eb3b866d76e8b016c0ed91abeb96578ef9cf91a505e9f6e14249347a74839c9'
- assert trusted['action']['pmx_sha256']=='b28875c4cb46839ada725181d58e0f52e8410150ff6f632c170767d735c79353'
+ assert trusted['meeting']['pmx_sha256']=='666162dad4d8a7319a35769b82e8e9ccb8723e6894645bd250d0e81a651fce9a'
+ assert trusted['action']['pmx_sha256']=='cdb6ce268ec6593425e553af52f8b87029b5d0f93cb53b8ff55e4b5e5905a82a'
  assert set(trusted['meeting']['stages'])=={'invitation','invitation_approval','minutes','minutes_approval','monitoring'}
  assert set(trusted['action']['stages'])=={'action_execution','action_review'}
  assert trusted['meeting']['stages']['minutes']['task_uid']=='a07e9ed93a4b3244aca40996c45eb227'
