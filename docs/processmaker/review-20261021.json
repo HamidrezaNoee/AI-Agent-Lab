@@ -1,0 +1,287 @@
+{
+  "review_date": "2026-10-21",
+  "live_verified": false,
+  "source": "user-uploaded PMX exports; source XML/trigger bodies not included",
+  "processes": [
+    {
+      "filename": "فرایند_مدیریت_جلسات-3.pmx",
+      "process_uid": "f7f263ea31d8731d212820f220c65a48",
+      "title": "فرایند مدیریت جلسات",
+      "sha256": "666162dad4d8a7319a35769b82e8e9ccb8723e6894645bd250d0e81a651fce9a",
+      "adapter": "meeting_v2",
+      "forms": [
+        {
+          "uid": "1b4a9033de82d5d38afb8a471d4bd5b1",
+          "title": "FR-MTG-001 - برنامه‌ریزی و دعوت جلسه",
+          "files": []
+        },
+        {
+          "uid": "366ac686c45b9ecc2ad8c41a00846db7",
+          "title": "FR-MTG-004- تأیید صورت‌جلسه",
+          "files": [
+            {
+              "variable": "MTG002_MeetingAttachment",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "8069894396a958d0a5007d7087550366",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "5e84e43db54993a49119997cb0b5df34",
+          "title": "FR-MTG-003 - صورت‌جلسه و اقدامات",
+          "files": [
+            {
+              "variable": "MTG002_MeetingAttachment",
+              "type": "multipleFile",
+              "mode": "edit",
+              "inp_doc_uid": "8069894396a958d0a5007d7087550366",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "KB"
+            }
+          ]
+        },
+        {
+          "uid": "7774ba689f3c4c46b3d5efaa55fde907",
+          "title": "FR-MTG-002 -بررسی و تأیید دعوت‌نامه توسط رئیس جلسه",
+          "files": []
+        },
+        {
+          "uid": "d30094992baf2ab00fce7f558ba7160a",
+          "title": "FR-MTG-005 - پایش و اختتام جلسه",
+          "files": []
+        }
+      ],
+      "routes": [
+        {
+          "tas_uid": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_next_task": "af8402c57b05992f6b6e6c6d9eb5276a",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MeetingHeld == \"Held\""
+        },
+        {
+          "tas_uid": "af8402c57b05992f6b6e6c6d9eb5276a",
+          "rou_next_task": "cb9f098d6b9462db552ae29d4622950a",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MinutesApproval == \"Approved\""
+        },
+        {
+          "tas_uid": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_next_task": "-1",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MeetingHeld == \"NotHeld\""
+        },
+        {
+          "tas_uid": "4a6419a60141d7d36001ba9344db4eac",
+          "rou_next_task": "f040c82fd83e47fd908770b62d967384",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "cb9f098d6b9462db552ae29d4622950a",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "f040c82fd83e47fd908770b62d967384",
+          "rou_next_task": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_InvitationApproval == \"Approved\""
+        },
+        {
+          "tas_uid": "f040c82fd83e47fd908770b62d967384",
+          "rou_next_task": "4a6419a60141d7d36001ba9344db4eac",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_InvitationApproval == \"NeedsRevision\""
+        },
+        {
+          "tas_uid": "af8402c57b05992f6b6e6c6d9eb5276a",
+          "rou_next_task": "a07e9ed93a4b3244aca40996c45eb227",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTG_MinutesApproval == \"NeedsRevision\""
+        }
+      ],
+      "triggers": [
+        {
+          "uid": "09a5c128a12a358797021feb3e8b2ab8",
+          "title": "TRG-MTG-004-BEFORE-PrepareMinutesApprovalContext",
+          "sha256": "e593583845aa8312c6d302fe8bcc6cfc077a9b1e77d263ecc124a6a72bfde2f6"
+        },
+        {
+          "uid": "2593597a9d5a6de465784bf8dc338439",
+          "title": "TRG-MTG-004-AFTER-ApproveMinutes_CreateActionCases_FailOpen",
+          "sha256": "d0035222cfc5885587fa67044e2194be9cf693afe85c8d2ea694360f5dd08e60"
+        },
+        {
+          "uid": "2cce620239ad07d5d415eedee1916175",
+          "title": "TRG-MTG-002-AFTER-CHAIR-INVITATION-DECISION",
+          "sha256": "a540e8d3894f8edd81f65e772f1ca05c6024b7fb4682e55fa5fc7d5b54b5ee67"
+        },
+        {
+          "uid": "408334d60c9cca3317668fba26f7e8b5",
+          "title": "TRG-MTG-005-BEFORE-LoadMonitoring_PM_CORE_V2",
+          "sha256": "c1f31f2eb3e114a5eff5d16f4a610815eb42c9a5ebc5378445981113ba165eef"
+        },
+        {
+          "uid": "575a453b1e1dc60a52f64edf2c0a57f0",
+          "title": "TRG-MTG-003-BEFORE-NORMALIZE-CASE-CONTEXT",
+          "sha256": "e94059b79811b83b3c391e2b167d0b73afedd8d2fde546414b4b0765357d8912"
+        },
+        {
+          "uid": "7942584696aa92ab223c498087838907",
+          "title": "TRG-MTG-003-BEFORE-FORM-REHYDRATE",
+          "sha256": "cee97fc30ebe2b6653c7d4ce15e9409e9c8dafd5ef2323d0fe258ae268c42f5b"
+        },
+        {
+          "uid": "7c9d0f8ea4e54f92b1f7931fb6f97a01",
+          "title": "TRG-MTG-001-AFTER-SUBMIT-Meeting-Planing",
+          "sha256": "6cd08f0a839713a82e9ab071f69cc3b8cbc8ceb997656330099b55732ba8bd64"
+        },
+        {
+          "uid": "8bfb9a18e7b6d6ae82441e22101b7909",
+          "title": "TRG-MTG-001-BEFORE-FORM-INIT-LOCKED",
+          "sha256": "e8c0cdd3b8ef4043565ec75ae89ee648a22c2dacab1487a02708a5eaf26b4859"
+        },
+        {
+          "uid": "91931df32c7d442392b95defbf4b3677",
+          "title": "TRG-MTG-Notice-002-004-005-After",
+          "sha256": "599166f9cb7e09a0e60955936004e738058517ba5da2b3ab0791b723d0a0776f"
+        },
+        {
+          "uid": "9cfa2876edd7cfa8fa5016a2f25f771d",
+          "title": "MTG - اختتام جلسه",
+          "sha256": "59c35845422879003996e3d941861ee6b69d7a53e8a10e5697083396d10789cb"
+        },
+        {
+          "uid": "fe88e8afc98ca69585ab0f5fb16bbf74",
+          "title": "TRG-MTG-003-AFTER-SaveMeetingMinutesAndSyncSQL",
+          "sha256": "ffb8f021208417274b5a9b2c451a130e2f01417f129163bd4698b46fb1454873"
+        }
+      ]
+    },
+    {
+      "filename": "فرایند_اقدام_مصوب_جلسه-3(1).pmx",
+      "process_uid": "cd66870095907431106b6dd110e06fa7",
+      "title": "فرایند اقدام مصوب جلسه",
+      "sha256": "cdb6ce268ec6593425e553af52f8b87029b5d0f93cb53b8ff55e4b5e5905a82a",
+      "adapter": "meeting_v2",
+      "forms": [
+        {
+          "uid": "42ba129e30d6f03e685e81a4301cdaa4",
+          "title": "FR-MTG-A02 - بررسی اقدام",
+          "files": [
+            {
+              "variable": "MTGA_EvidenceFile1",
+              "type": "multipleFile",
+              "mode": "view",
+              "inp_doc_uid": "6343078616ac0d6c53a98d9079721622",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        },
+        {
+          "uid": "a6f690be582466ab0c0ad6649ba8b93f",
+          "title": "FR-MTG-A01 - اجرای اقدام",
+          "files": [
+            {
+              "variable": "MTGA_EvidenceFile1",
+              "type": "multipleFile",
+              "mode": "edit",
+              "inp_doc_uid": "6343078616ac0d6c53a98d9079721622",
+              "multiple": false,
+              "extensions": ".*",
+              "size": 0,
+              "sizeUnity": "MB"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "tas_uid": "1bc65198c9b4cf2fae5d3ffbfeea3c00",
+          "rou_next_task": "473bb4e227460a3ea6ac0f2cbf8ef8d4",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTGA_ReviewStatus == \"Rework\""
+        },
+        {
+          "tas_uid": "473bb4e227460a3ea6ac0f2cbf8ef8d4",
+          "rou_next_task": "1bc65198c9b4cf2fae5d3ffbfeea3c00",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        },
+        {
+          "tas_uid": "1bc65198c9b4cf2fae5d3ffbfeea3c00",
+          "rou_next_task": "-1",
+          "rou_type": "EVALUATE",
+          "rou_condition": "@@MTGA_ReviewStatus == \"Closed\""
+        }
+      ],
+      "triggers": [
+        {
+          "uid": "290a2731cf20d1515dc2e8202b9fc94e",
+          "title": "TRG-MTG-001-BEFORE-LoadActionExecutionContext",
+          "sha256": "5abc412e9e9f760286d63c1570f1ca7555a79dfaa31e24e428b4be583f302a56"
+        },
+        {
+          "uid": "8666274ec4af8ae2eab09a4af385b4d5",
+          "title": "TRG-MTG-002-BEFORE-LoadActionReviewContext",
+          "sha256": "3f46cee25c8a3566aabe298a986047f66244de59e02860486a121332bfdaac93"
+        },
+        {
+          "uid": "a4f666dadb04c365e1762e0b33495692",
+          "title": "TRG-MTG-001-AFTER-SaveActionProgress_SQLMirrorFailOpen",
+          "sha256": "7ca4f34609a2db04edc6459c0c2c055b8d3ee3110fa644564c82f110c9f6498d"
+        },
+        {
+          "uid": "b12993814458ae485790da734d84eb38",
+          "title": "TRG-MTG-002-AFTER-SaveActionReview_SQLMirrorFailOpen",
+          "sha256": "c911df4d0abc7be2f2b80560a585e4e35c06629f95d58adeed37c1c02e6a50f3"
+        }
+      ]
+    },
+    {
+      "filename": "ابلاغ_داخلی_جلسات_(فقط_خواندنی)-1 (4).pmx",
+      "process_uid": "44896d94f59e4f9191b23f967cc5cd5b",
+      "title": "ابلاغ داخلی جلسات (فقط خواندنی)",
+      "sha256": "c794e004e13590acc0f4e6d3685c006214ab955ae24877eb7e79413cbbb29145",
+      "adapter": "native_tasks_v1 (read only)",
+      "forms": [
+        {
+          "uid": "d71385fdb9424aea9c982ee1c51d53fd",
+          "title": " مشاهده ابلاغ داخلی جلسه",
+          "files": []
+        }
+      ],
+      "routes": [
+        {
+          "tas_uid": "d22139d7ceea4e7896e7e57049547b0c",
+          "rou_next_task": "-1",
+          "rou_type": "SEQUENTIAL",
+          "rou_condition": ""
+        }
+      ],
+      "triggers": [
+        {
+          "uid": "45b42da1699f4d2e856b0711196b1b17",
+          "title": "TRG-MTGN-001-Before-ValidateRecipient",
+          "sha256": "869f97b8fa67217cb4dad8ccf38f4f976107623742cc93a2070a4c18752c929b"
+        },
+        {
+          "uid": "e9b9db7d7eb74700beea6e68213d352b",
+          "title": "TRG-MTGN-001-After-Acknowledge",
+          "sha256": "39e2fa10404645381fc9e3e4161e492e4cb4da4d8e59dd66a41d901ccfee00aa"
+        }
+      ]
+    }
+  ]
+}
