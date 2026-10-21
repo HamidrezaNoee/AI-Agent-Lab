@@ -15,7 +15,7 @@ def pack():
 def store(monkeypatch,pack):
  # Unit tests use the reviewed fixture contract; live DynaForm requiredness is
  # covered separately without opening a real ProcessMaker database.
- monkeypatch.setattr(c,'with_live_requiredness',lambda source_id,pack,stage,con=None:pack)
+ monkeypatch.setattr(c,'with_live_requiredness',lambda source_id,pack,stage,con=None,strict=False:pack)
  data={c.STORE:[copy.deepcopy(pack)]}
  class Tx:
   def get(self,k,default=None,**kw):return copy.deepcopy(data.get(k,default))
@@ -589,6 +589,8 @@ def test_minutes_direct_advance_uses_rest_only_and_routes_same_case(pack,store,m
     'usr_uid':S['external_user_id'],
     'del_thread_status':'OPEN','del_index':1,
    }]}
+  def variables(self,*args):
+   pytest.fail('assigned secretary must not GET case variables before routing')
   def set_variables(self,case,index,values,operation=None):
    calls.append(('variables',case,index,operation))
   def execute_trigger(self,case,trigger,operation=None):
@@ -605,6 +607,56 @@ def test_minutes_direct_advance_uses_rest_only_and_routes_same_case(pack,store,m
  assert [x[0] for x in calls if x][1:]==['info','variables','trigger','route','close']
  saved=store[r.task_key(S,t['case_uid'],t['index'])]
  assert saved['status']=='sent'
+
+
+
+@pytest.mark.parametrize('has_document',[False,True])
+def test_minutes_direct_respects_required_native_document_without_get_variables(pack,store,monkeypatch,has_document):
+ native=copy.deepcopy(V)
+ native.update(MTG_MeetingHeld='Held',MTG_MeetingDiscussionSummary='جمع‌بندی',
+               MTG_MeetingEndTime='17:00')
+ native['MTG_Participants']['1'].update(MTG_AttendanceStatus='Present',MTG_AttendanceTime='10:00')
+ t=task(pack,'minutes',native)
+ row=r.draft(S,'actor',t)
+ checked=copy.deepcopy(pack)
+ field=checked['stages']['minutes']['fields']['MTG002_MeetingAttachment']
+ field['required']=True
+ monkeypatch.setattr(c,'with_live_requiredness',
+                     lambda source_id,configured,stage,con=None,strict=False:checked)
+ trusted=c._trusted_meeting_pack()
+ calls=[]
+ class PM:
+  def __init__(self,*a,**kw):pass
+  def info(self,case):
+   return {'current_task':[{'tas_uid':trusted['stages']['minutes']['task_uid'],
+           'usr_uid':S['external_user_id'],'del_thread_status':'OPEN','del_index':1}]}
+  def variables(self,*args):
+   pytest.fail('403 REST variables endpoint must never be consulted')
+  def call(self,method,path,operation=None):
+   calls.append((method,path))
+   assert method=='GET' and path.endswith('/input-documents')
+   return [{'doc_uid':field['inp_doc_uid']}] if has_document else []
+  def set_variables(self,*args,**kwargs):calls.append(('write',))
+  def execute_trigger(self,*args,**kwargs):calls.append(('trigger',))
+  def route(self,*args):calls.append(('route',))
+  def close(self):pass
+ monkeypatch.setattr(r,'PM',PM)
+ monkeypatch.setattr(r,'_native_case_values',
+                     lambda *a:pytest.fail('final route must not reopen PM MySQL'))
+ if has_document:
+  result=r.advance_minutes_direct(S['tenant_id'],'actor',S['source_id'],
+          S['external_user_id'],t['case_uid'],1,pack['id'],'token',
+          revision=row['revision'],directory=S['directory'])
+  assert result['status']=='sent'
+  assert ('route',) in calls
+ else:
+  with pytest.raises(ValueError,match='فایل الزامی ProcessMaker'):
+   r.advance_minutes_direct(S['tenant_id'],'actor',S['source_id'],
+          S['external_user_id'],t['case_uid'],1,pack['id'],'token',
+          revision=row['revision'],directory=S['directory'])
+  assert ('write',) not in calls
+ assert any(call[0]=='GET' and call[1].endswith('/input-documents')
+            for call in calls if len(call)==2)
 
 
 def test_minutes_direct_advance_is_idempotent_after_case_reaches_approval(pack,store,monkeypatch):
