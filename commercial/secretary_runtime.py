@@ -1011,7 +1011,7 @@ def submit(scope,actor,task,revision,*,pm=None):
 
 
 def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,index,pack_id,bearer,*,revision=None,directory=None):
- """Commit FR-MTG-003 and route the same native PM case without any MySQL read path.
+ """Commit FR-MTG-003 without a whole-case ProcessMaker REST variable read.
 
  ProcessMaker REST is the source of truth for this write. The actual FR-MTG-003
  AFTER trigger remains authoritative for validation/normalization. It is safe to
@@ -1061,8 +1061,13 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
    # minutes route. Chat, form rendering and submit must share one authority.
    configured=catalog.get(source_id,pack_id)
    live_pack=catalog.with_live_requiredness(source_id,configured,'minutes',strict=True)
-   live_native=normalize(pm.variables(case_uid))
-   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':live_native}
+   # The bound owner's GET /cases/{uid}/variables may be forbidden (HTTP 403)
+   # even though native task ownership, live DynaForm Required metadata and the
+   # subsequent write/trigger/route are authorized. Do not make that optional
+   # whole-case read a prerequisite for completing FR-MTG-003. Validation here
+   # uses only the persisted, revision-checked AVAN draft; required native files
+   # are checked through their own ProcessMaker document endpoint below.
+   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':{}}
    # Resolve a blank owner from the explicit row position only when that role
    # maps to one active ProcessMaker user. This also repairs drafts created
    # before the row-context resolver fix.
