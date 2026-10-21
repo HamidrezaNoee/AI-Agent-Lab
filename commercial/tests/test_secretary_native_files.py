@@ -112,14 +112,15 @@ def test_native_upload_uses_current_task_and_reviewed_input_doc_uid(monkeypatch)
                 "app_doc_type":"INPUT",
             }
         def variables(self,case):
-            calls["variables"]=case
-            return {}
+            raise AssertionError("native upload must not GET ProcessMaker case variables (403)")
         def set_variables(self,case,index,values,operation=None):
             calls["set_variables"]=(case,index,copy.deepcopy(values),operation)
         def close(self):pass
 
     monkeypatch.setattr(evidence,"PM",PM)
     monkeypatch.setattr(evidence,"token",lambda *a,**kw:"token")
+    monkeypatch.setattr(evidence.runtime,"_native_case_values",
+                        lambda scope,case: {})
     monkeypatch.setattr(evidence,"field_documents",lambda *a,**kw:[{
         "app_doc_uid":"3"*32,
         "app_doc_version":"1",
