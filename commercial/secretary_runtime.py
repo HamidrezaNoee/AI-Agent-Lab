@@ -1061,8 +1061,14 @@ def advance_minutes_direct(tenant_id,actor,source_id,external_user_id,case_uid,i
    # minutes route. Chat, form rendering and submit must share one authority.
    configured=catalog.get(source_id,pack_id)
    live_pack=catalog.with_live_requiredness(source_id,configured,'minutes',strict=True)
-   live_native=normalize(pm.variables(case_uid))
-   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':live_native}
+   # ProcessMaker may authorize the assigned secretary to update/route this
+   # case while denying GET /cases/{uid}/variables. The owned AVAN draft is
+   # already loaded above; live DynaForm Required flags come from ProcessMaker.
+   # Do not trust cached/draft file references as proof of an uploaded document:
+   # use the case's native Input Documents endpoint when a file is Required.
+   # This keeps authorization, file validation and routing intact without an
+   # unrelated REST case-variable read permission.
+   live_task={'stage':'minutes','pack':live_pack,'case_uid':case_uid,'native':{}}
    # Resolve a blank owner from the explicit row position only when that role
    # maps to one active ProcessMaker user. This also repairs drafts created
    # before the row-context resolver fix.
