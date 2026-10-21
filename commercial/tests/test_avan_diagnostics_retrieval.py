@@ -41,6 +41,8 @@ def test_upload_preserves_previous_refs_and_reports_partial_success(monkeypatch,
         variables=lambda *a:{'MTGA_EvidenceFile1':{'1':previous}},set_variables=link)
     monkeypatch.setattr(evidence,'PM',lambda *a,**k:pm)
     monkeypatch.setattr(evidence,'token',lambda *a:'private-token')
+    monkeypatch.setattr(evidence.runtime,'_native_case_values',
+                        lambda scope,case:{'MTGA_EvidenceFile1':{'1':previous}})
     def run():return evidence.upload_field_document(task('action_execution'),S,'actor','MTGA_EvidenceFile1','new.txt','text/plain',b'new')
     if link_fails:
         with pytest.raises(HTTPException) as exc:run()
