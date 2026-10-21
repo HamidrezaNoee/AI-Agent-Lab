@@ -94,7 +94,12 @@ def upload_field_document(task,scope,actor,field,filename,content_type,data):
   # processes normalize this exact {appDocUid,name,version} shape in their
   # BEFORE triggers, so the following approval/review DynaForm can render it.
   phase='link'
-  current=pm.variables(task['case_uid'])
+  # The assigned user's OAuth may forbid GET /cases/{uid}/variables (403).
+  # Read the current APP_DATA via AVAN's read-only ProcessMaker connection
+  # instead, so another previously attached document is never overwritten.
+  # If this read fails after transfer, report a partial upload rather than
+  # inventing an empty array or re-uploading the same file.
+  current=runtime._native_case_values(scope,task['case_uid'])
   refs=runtime.native_file_refs(current.get(field))
   if not any(x['appDocUid']==new_ref['appDocUid'] and int(x['version'])==new_ref['version'] for x in refs):
    if spec.get('multiple'):
